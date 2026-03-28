@@ -2,12 +2,20 @@ mod api;
 mod db;
 mod external;
 
-use axum::Router;
+use axum::{Router, response::Html};
 use db::Db;
 use reqwest::Client;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
+
+const ASSET_VERSION: &str = env!("ASSET_VERSION");
+
+async fn serve_index() -> Html<String> {
+    let html = std::fs::read_to_string("static/index.html")
+        .unwrap_or_else(|_| "index.html not found".to_string());
+    Html(html.replace("ASSET_VERSION", ASSET_VERSION))
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -57,6 +65,7 @@ async fn main() {
 
     let images_dir_arc = Arc::new(images_dir);
     let app = Router::new()
+        .route("/", axum::routing::get(serve_index))
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
