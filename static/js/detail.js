@@ -53,6 +53,8 @@ function showDetail(id) {
             <div class="detail-title-block">
                 ${currentSeries ? `<div class="detail-series-name">${escapeHtml(currentSeries.name)}</div>` : ""}
                 <div class="detail-title">${escapeHtml(book.title)}</div>
+                ${book.volume ? `<div class="detail-volume">${escapeHtml(book.volume)}</div>` : ""}
+                ${book.alternative ? `<div class="detail-alternative">${escapeHtml(book.alternative)}</div>` : ""}
                 ${book.authors && book.authors.length > 0 ? `<div class="detail-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
                 <div class="detail-meta-list">${metaParts.join("")}</div>
             </div>

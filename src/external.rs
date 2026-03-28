@@ -397,9 +397,11 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
                 let p = &path;
 
                 if title.is_none()
-                    && p.len() == 2
+                    && p.len() == 4
                     && p[0] == "BibResource"
                     && p[1] == "title"
+                    && p[2] == "Description"
+                    && p[3] == "value"
                 {
                     title = Some(text);
                 } else if in_dcterms_creator

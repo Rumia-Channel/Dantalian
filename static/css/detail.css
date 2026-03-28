@@ -83,6 +83,19 @@
     margin-bottom: 0.3rem;
 }
 
+.detail-volume {
+    font-size: 0.9rem;
+    color: #4ecca3;
+    margin-bottom: 0.3rem;
+}
+
+.detail-alternative {
+    font-size: 0.85rem;
+    color: #888;
+    font-style: italic;
+    margin-bottom: 0.3rem;
+}
+
 .detail-author {
     font-size: 0.95rem;
     color: #aaa;

@@ -23,3 +23,8 @@
 - `static/index.html` 内の `?v=ASSET_VERSION` はコンパイル時に実際のハッシュ値に置換される（`src/main.rs` の `serve_index` ハンドラ経由）。
 - CSS/JS を変更した場合は必ずリビルド（`cargo build`）すること。リビルドしないとハッシュが更新されず、ブラウザが古いキャッシュを使い続ける。
 - 新しい静的アセット（CSS/JS ファイル）を追加した場合は、`build.rs` に `println!("cargo:rerun-if-changed=static/<file>");` を追加し、`index.html` にも `?v=ASSET_VERSION` を付与すること。
+
+## DB スキーマ変更ルール
+
+- バージョン 1.0.0 未満の場合、DB の構造が大きく変わる際は後方互換性を気にせず大幅な変更を加えてよい。
+- バージョン 1.0.0 以降では、DB スキーマの大幅な変更（既存データの破棄を伴うもの）は加えてはならない。
