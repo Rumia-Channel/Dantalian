@@ -27,8 +27,8 @@ pub struct Book {
 pub struct Db(pub Arc<Mutex<Connection>>);
 
 impl Db {
-    pub fn new() -> Result<Self, rusqlite::Error> {
-        let conn = Connection::open("books.db")?;
+    pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
+        let conn = Connection::open(db_path)?;
         conn.execute_batch("DROP TABLE IF EXISTS books;")?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS books (

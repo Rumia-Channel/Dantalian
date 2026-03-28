@@ -5,6 +5,7 @@ mod external;
 use axum::Router;
 use db::Db;
 use reqwest::Client;
+use std::sync::Arc;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
@@ -12,10 +13,13 @@ use tracing_subscriber::EnvFilter;
 pub struct AppState {
     pub db: Db,
     pub client: Client,
+    pub images_dir: Arc<String>,
 }
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -23,16 +27,38 @@ async fn main() {
         )
         .init();
 
-    let db = Db::new().expect("Failed to initialize database");
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| {
+        dirs::document_dir()
+            .or_else(dirs::data_dir)
+            .expect("Could not determine data directory")
+            .join("Tsukuyomi")
+            .to_string_lossy()
+            .to_string()
+    });
+    let db_dir = format!("{}{}db", data_dir, std::path::MAIN_SEPARATOR);
+    let images_dir = format!("{}{}images", data_dir, std::path::MAIN_SEPARATOR);
+    std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
+    std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
+
+    let db_path = format!("{}{}books.db", db_dir, std::path::MAIN_SEPARATOR);
+    tracing::info!(%data_dir, %db_path, %images_dir, "Data directories");
+
+    let db = Db::new(&db_path).expect("Failed to initialize database");
     let client = Client::builder()
         .cookie_store(true)
         .build()
         .expect("Failed to build HTTP client");
 
-    let state = AppState { db, client };
+    let state = AppState {
+        db,
+        client,
+        images_dir: Arc::new(images_dir.clone()),
+    };
 
+    let images_dir_arc = Arc::new(images_dir);
     let app = Router::new()
         .nest("/api", api::routes())
+        .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
         .with_state(state);
 

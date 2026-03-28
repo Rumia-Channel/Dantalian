@@ -64,7 +64,7 @@ function renderBooks(books) {
         <div class="book-card" data-id="${book.id}">
             ${
                 book.cover_url
-                    ? `<img class="book-cover" src="${book.cover_url}" alt="${book.title}" loading="lazy" onerror="this.outerHTML='<div class=\\'book-cover-placeholder\\'>No Image</div>'">`
+                    ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${book.title}" loading="lazy" onerror="this.outerHTML='<div class=\\'book-cover-placeholder\\'>No Image</div>'">`
                     : '<div class="book-cover-placeholder">No Image</div>'
             }
             <div class="book-info">

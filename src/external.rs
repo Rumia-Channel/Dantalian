@@ -1,5 +1,7 @@
 use crate::db::NewBook;
+use base64::Engine;
 use reqwest::Client;
+use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
 
 fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
@@ -25,13 +27,13 @@ struct NdlBookInfo {
     ndl_url: Option<String>,
 }
 
-pub async fn lookup_isbn(client: &Client, isbn: &str) -> Result<Option<NewBook>, String> {
+pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<NewBook>, String> {
     let ndl = lookup_ndl(client, isbn).await?;
     let Some(ndl) = ndl else {
         return Ok(None);
     };
 
-    let cover_url = lookup_amazon_cover(client, isbn).await.ok().flatten();
+    let cover_url = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
 
     Ok(Some(NewBook {
         isbn: isbn.to_string(),
@@ -53,7 +55,47 @@ pub async fn lookup_isbn(client: &Client, isbn: &str) -> Result<Option<NewBook>,
     }))
 }
 
-async fn lookup_amazon_cover(client: &Client, isbn: &str) -> Result<Option<String>, String> {
+async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<String, String> {
+    let response = amazon_request(client, url)
+        .send()
+        .await
+        .map_err(|e| format!("Cover download failed: {}", e))?;
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+
+    let ext = match content_type.as_str() {
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "jpg",
+    };
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Cover read failed: {}", e))?;
+
+    let hash = Sha3_256::digest(&bytes);
+    let filename = format!("{}.{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash), ext);
+    let filepath = std::path::Path::new(images_dir).join(&filename);
+
+    if !filepath.exists() {
+        std::fs::write(&filepath, &bytes)
+            .map_err(|e| format!("Failed to save cover: {}", e))?;
+        debug!(%url, %filename, "Cover saved");
+    } else {
+        debug!(%url, %filename, "Cover already exists");
+    }
+
+    Ok(filename)
+}
+
+async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<String>, String> {
     let search_url = format!("https://www.amazon.co.jp/s?k={}", isbn);
     debug!(isbn = %isbn, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
@@ -140,7 +182,17 @@ async fn lookup_amazon_cover(client: &Client, isbn: &str) -> Result<Option<Strin
         None => warn!(isbn = %isbn, "No cover image found on Amazon detail page"),
     }
 
-    Ok(cover_url)
+    let Some(url) = cover_url else {
+        return Ok(None);
+    };
+
+    download_cover(client, &url, images_dir)
+        .await
+        .map(Some)
+        .map_err(|e| {
+            warn!(isbn = %isbn, "Failed to download cover: {}", e);
+            e
+        })
 }
 
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {

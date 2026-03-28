@@ -43,7 +43,7 @@ pub async fn register(
         ));
     }
 
-    let new_book = external::lookup_isbn(&state.client, &isbn)
+    let new_book = external::lookup_isbn(&state.client, &isbn, &state.images_dir)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e}))))?;
 
