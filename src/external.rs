@@ -1,4 +1,4 @@
-use crate::db::NewBook;
+use crate::db::{NewAuthor, NewBook};
 use base64::Engine;
 use reqwest::Client;
 use sha3::{Digest, Sha3_256};
@@ -12,19 +12,21 @@ fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
 
 struct NdlBookInfo {
     title: String,
-    author: Option<String>,
     publisher: Option<String>,
     publish_date: Option<String>,
     description: Option<String>,
     title_transcription: Option<String>,
-    creator_transcription: Option<String>,
     series_title: Option<String>,
     series_title_transcription: Option<String>,
-    edition: Option<String>,
+    alternative: Option<String>,
+    alternative_transcription: Option<String>,
+    volume: Option<String>,
+    volume_transcription: Option<String>,
     price: Option<String>,
     extent: Option<String>,
-    subject: Option<String>,
+    jpno: Option<String>,
     ndl_url: Option<String>,
+    authors: Vec<NewAuthor>,
 }
 
 pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<NewBook>, String> {
@@ -38,20 +40,22 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
     Ok(Some(NewBook {
         isbn: isbn.to_string(),
         title: ndl.title,
-        author: ndl.author,
         publisher: ndl.publisher,
         publish_date: ndl.publish_date,
         cover_url,
         description: ndl.description,
         title_transcription: ndl.title_transcription,
-        creator_transcription: ndl.creator_transcription,
         series_title: ndl.series_title,
         series_title_transcription: ndl.series_title_transcription,
-        edition: ndl.edition,
+        alternative: ndl.alternative,
+        alternative_transcription: ndl.alternative_transcription,
+        volume: ndl.volume,
+        volume_transcription: ndl.volume_transcription,
         price: ndl.price,
         extent: ndl.extent,
-        subject: ndl.subject,
+        jpno: ndl.jpno,
         ndl_url: ndl.ndl_url,
+        authors: ndl.authors,
     }))
 }
 
@@ -257,9 +261,11 @@ fn parse_amazon_detail_cover(html: &str) -> Option<String> {
 }
 
 async fn lookup_ndl(client: &Client, isbn: &str) -> Result<Option<NdlBookInfo>, String> {
+    let raw_query = format!("isbn=\"{}\"", isbn);
+    let query = urlencoding::encode(&raw_query);
     let url = format!(
-        "https://ndlsearch.ndl.go.jp/api/opensearch?isbn={}&cnt=1",
-        isbn
+        "https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl&onlyBib=true&maximumRecords=1&startRecord=1&recordPacking=xml&query={}",
+        query
     );
     let body = client
         .get(&url)
@@ -269,72 +275,247 @@ async fn lookup_ndl(client: &Client, isbn: &str) -> Result<Option<NdlBookInfo>, 
         .text()
         .await
         .map_err(|e| format!("NDL read failed: {}", e))?;
-    parse_ndl_rss(&body)
+    parse_ndl_sru(&body)
 }
 
-fn parse_ndl_rss(xml: &str) -> Result<Option<NdlBookInfo>, String> {
+fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
     let mut reader = quick_xml::Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
-    let mut in_item = false;
-    let mut current_tag = String::new();
+    let mut in_record_data = false;
+    let mut in_main_resource = false;
+    let mut path: Vec<String> = Vec::new();
+
     let mut title: Option<String> = None;
-    let mut author: Option<String> = None;
     let mut publisher: Option<String> = None;
     let mut pub_date: Option<String> = None;
     let mut description: Option<String> = None;
     let mut title_transcription: Option<String> = None;
-    let mut creator_transcription: Option<String> = None;
     let mut series_title: Option<String> = None;
     let mut series_title_transcription: Option<String> = None;
-    let mut edition: Option<String> = None;
+    let mut alternative: Option<String> = None;
+    let mut alternative_transcription: Option<String> = None;
+    let mut volume: Option<String> = None;
+    let mut volume_transcription: Option<String> = None;
     let mut price: Option<String> = None;
     let mut extent: Option<String> = None;
-    let mut subject: Option<String> = None;
+    let mut jpno: Option<String> = None;
     let mut ndl_url: Option<String> = None;
+    let mut authors: Vec<NewAuthor> = Vec::new();
+    let mut cur_author_ndl_id: Option<String> = None;
+    let mut cur_author_name: Option<String> = None;
+    let mut cur_author_transcription: Option<String> = None;
+    let mut in_dcterms_creator = false;
+
     let mut buf = Vec::new();
 
     use quick_xml::events::Event;
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
-                if tag == "item" {
-                    in_item = true;
+                let prefix = e.name().prefix()
+                    .map(|p| String::from_utf8_lossy(p.as_ref()).to_string());
+
+                if tag == "recordData" {
+                    in_record_data = true;
+                    path.clear();
+                } else if in_record_data && !in_main_resource && tag == "BibResource" {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.local_name().as_ref() == b"about"
+                            && attr.value.windows(9).any(|w| w == b"#material")
+                        {
+                            in_main_resource = true;
+                            ndl_url = Some(String::from_utf8_lossy(&attr.value).to_string());
+                            path.clear();
+                            break;
+                        }
+                    }
+                    if in_main_resource {
+                        path.push(tag);
+                    }
+                } else if in_main_resource {
+                    let is_creator = tag == "creator" && prefix.as_deref() == Some("dcterms");
+                    path.push(tag.clone());
+
+                    if is_creator {
+                        in_dcterms_creator = true;
+                        cur_author_ndl_id = None;
+                        cur_author_name = None;
+                        cur_author_transcription = None;
+                    }
+
+                    if tag == "Agent" && in_dcterms_creator {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.local_name().as_ref() == b"about" {
+                                let full = String::from_utf8_lossy(&attr.value);
+                                let id = full.rsplit('/').next().map(|s| s.to_string());
+                                cur_author_ndl_id = id;
+                                break;
+                            }
+                        }
+                    }
                 }
-                current_tag = tag;
             }
-            Ok(Event::Empty(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
-                if tag == "item" {
-                    in_item = true;
-                }
-                current_tag = tag;
-            }
+            Ok(Event::Empty(_)) => {}
             Ok(Event::End(ref e)) => {
                 let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
-                if tag == "item" {
+                let prefix = e.name().prefix()
+                    .map(|p| String::from_utf8_lossy(p.as_ref()).to_string());
+
+                if in_record_data && tag == "recordData" {
                     break;
                 }
+                if in_main_resource && tag == "BibResource" && path.len() == 1 {
+                    in_main_resource = false;
+                }
+                if in_main_resource {
+                    if path.last().map(|s| s.as_str()) == Some(&tag) {
+                        path.pop();
+                    }
+
+                    if tag == "creator" && prefix.as_deref() == Some("dcterms") && in_dcterms_creator {
+                        in_dcterms_creator = false;
+                        if let Some(name) = cur_author_name.take() {
+                            authors.push(NewAuthor {
+                                ndl_id: cur_author_ndl_id.take(),
+                                name,
+                                transcription: cur_author_transcription.take(),
+                            });
+                        }
+                    }
+                }
             }
-            Ok(Event::Text(ref e)) if in_item => {
+            Ok(Event::Text(ref e)) if in_main_resource => {
                 let text = e.decode().unwrap_or_default().to_string();
-                match current_tag.as_str() {
-                    "title" if title.is_none() => title = Some(text),
-                    "creator" if author.is_none() => author = Some(text),
-                    "publisher" if publisher.is_none() => publisher = Some(text),
-                    "issued" if pub_date.is_none() => pub_date = Some(text),
-                    "description" if description.is_none() => description = Some(text),
-                    "titleTranscription" if title_transcription.is_none() => title_transcription = Some(text),
-                    "creatorTranscription" if creator_transcription.is_none() => creator_transcription = Some(text),
-                    "seriesTitle" if series_title.is_none() => series_title = Some(text),
-                    "seriesTitleTranscription" if series_title_transcription.is_none() => series_title_transcription = Some(text),
-                    "edition" if edition.is_none() => edition = Some(text),
-                    "price" if price.is_none() => price = Some(text),
-                    "extent" if extent.is_none() => extent = Some(text),
-                    "subject" if subject.is_none() => subject = Some(text),
-                    "link" if ndl_url.is_none() => ndl_url = Some(text),
-                    _ => {}
+                if text.is_empty() {
+                    buf.clear();
+                    continue;
+                }
+
+                let p = &path;
+
+                if title.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "title"
+                {
+                    title = Some(text);
+                } else if in_dcterms_creator
+                    && cur_author_name.is_none()
+                    && p.len() == 4
+                    && p[1] == "creator"
+                    && p[2] == "Agent"
+                    && p[3] == "name"
+                {
+                    cur_author_name = Some(text);
+                } else if in_dcterms_creator
+                    && cur_author_transcription.is_none()
+                    && p.len() == 4
+                    && p[1] == "creator"
+                    && p[2] == "Agent"
+                    && p[3] == "transcription"
+                {
+                    cur_author_transcription = Some(text);
+                } else if publisher.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "publisher"
+                    && p[2] == "Agent"
+                    && p[3] == "name"
+                {
+                    publisher = Some(text);
+                } else if pub_date.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "date"
+                {
+                    pub_date = Some(text);
+                } else if title_transcription.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "title"
+                    && p[2] == "Description"
+                    && p[3] == "transcription"
+                {
+                    title_transcription = Some(text);
+                } else if series_title_transcription.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "seriesTitle"
+                    && p[2] == "Description"
+                    && p[3] == "transcription"
+                {
+                    series_title_transcription = Some(text);
+                } else if series_title.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "seriesTitle"
+                    && p[2] == "Description"
+                    && p[3] == "value"
+                {
+                    series_title = Some(text);
+                } else if price.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "price"
+                {
+                    price = Some(text);
+                } else if extent.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "extent"
+                {
+                    extent = Some(text);
+                } else if alternative.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "alternative"
+                    && p[2] == "Description"
+                    && p[3] == "value"
+                {
+                    alternative = Some(text);
+                } else if alternative_transcription.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "alternative"
+                    && p[2] == "Description"
+                    && p[3] == "transcription"
+                {
+                    alternative_transcription = Some(text);
+                } else if volume.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "volume"
+                    && p[2] == "Description"
+                    && p[3] == "value"
+                {
+                    volume = Some(text);
+                } else if volume_transcription.is_none()
+                    && p.len() == 4
+                    && p[0] == "BibResource"
+                    && p[1] == "volume"
+                    && p[2] == "Description"
+                    && p[3] == "transcription"
+                {
+                    volume_transcription = Some(text);
+                } else if jpno.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "identifier"
+                    && text.chars().all(|c| c.is_ascii_digit())
+                {
+                    jpno = Some(text);
+                } else if description.is_none()
+                    && p.len() == 2
+                    && p[0] == "BibResource"
+                    && p[1] == "description"
+                    && !text.starts_with("表現種別")
+                    && !text.starts_with("機器種別")
+                    && !text.starts_with("キャリア種別")
+                {
+                    description = Some(text);
                 }
             }
             Ok(Event::Eof) => break,
@@ -351,18 +532,20 @@ fn parse_ndl_rss(xml: &str) -> Result<Option<NdlBookInfo>, String> {
 
     Ok(Some(NdlBookInfo {
         title,
-        author,
         publisher,
         publish_date: pub_date,
         description,
         title_transcription,
-        creator_transcription,
         series_title,
         series_title_transcription,
-        edition,
+        alternative,
+        alternative_transcription,
+        volume,
+        volume_transcription,
         price,
         extent,
-        subject,
+        jpno,
         ndl_url,
+        authors,
     }))
 }

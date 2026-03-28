@@ -63,7 +63,7 @@ function renderBooks() {
             }
             <div class="book-info">
                 <div class="book-title">${escapeHtml(book.title)}</div>
-                ${book.author ? `<div class="book-author">${escapeHtml(book.author)}</div>` : ""}
+                ${book.authors && book.authors.length > 0 ? `<div class="book-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
                 ${book.publisher ? `<div class="book-meta">${escapeHtml(book.publisher)}</div>` : ""}
             </div>
         </div>`;

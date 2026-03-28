@@ -48,7 +48,7 @@ async fn main() {
     std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
     std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
 
-    let db_path = format!("{}{}books.db", db_dir, std::path::MAIN_SEPARATOR);
+    let db_path = format!("{}{}tsukuyomi.db", db_dir, std::path::MAIN_SEPARATOR);
     tracing::info!(%data_dir, %db_path, %images_dir, "Data directories");
 
     let db = Db::new(&db_path).expect("Failed to initialize database");

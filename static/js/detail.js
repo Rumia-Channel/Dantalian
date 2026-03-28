@@ -8,7 +8,7 @@ function showSeriesModal(seriesId) {
             ${
                 b.cover_url
                     ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                    : '<div class="book-cover-placeholder"></div>'
+                    : '<div class="book-cover-placeholder">No Image</div>'
             }
             <div class="volume-title">${escapeHtml(b.title)}</div>
         </div>`
@@ -53,7 +53,7 @@ function showDetail(id) {
             <div class="detail-title-block">
                 ${currentSeries ? `<div class="detail-series-name">${escapeHtml(currentSeries.name)}</div>` : ""}
                 <div class="detail-title">${escapeHtml(book.title)}</div>
-                ${book.author ? `<div class="detail-author">${escapeHtml(book.author)}</div>` : ""}
+                ${book.authors && book.authors.length > 0 ? `<div class="detail-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
                 <div class="detail-meta-list">${metaParts.join("")}</div>
             </div>
         </div>

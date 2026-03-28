@@ -20,10 +20,12 @@ function escapeAttr(text) {
 async function loadBooks() {
     try {
         const res = await fetch("/api/books");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allBooks = await res.json();
         bookCount.textContent = `(${allBooks.length}冊)`;
         renderBooks();
-    } catch {
+    } catch (err) {
+        console.error("loadBooks failed:", err);
         bookGrid.innerHTML = '<p class="empty-state">読み込みに失敗しました</p>';
     }
 }

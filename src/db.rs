@@ -3,25 +3,70 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Author {
+    pub id: i64,
+    pub ndl_id: Option<String>,
+    pub name: String,
+    pub transcription: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewAuthor {
+    pub ndl_id: Option<String>,
+    pub name: String,
+    pub transcription: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Book {
     pub id: i64,
     pub isbn: String,
     pub title: String,
-    pub author: Option<String>,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
     pub cover_url: Option<String>,
     pub description: Option<String>,
     pub title_transcription: Option<String>,
-    pub creator_transcription: Option<String>,
     pub series_title: Option<String>,
     pub series_title_transcription: Option<String>,
-    pub edition: Option<String>,
+    pub alternative: Option<String>,
+    pub alternative_transcription: Option<String>,
+    pub volume: Option<String>,
+    pub volume_transcription: Option<String>,
     pub price: Option<String>,
     pub extent: Option<String>,
-    pub subject: Option<String>,
+    pub jpno: Option<String>,
     pub ndl_url: Option<String>,
     pub series_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BookWithAuthors {
+    #[serde(flatten)]
+    pub book: Book,
+    pub authors: Vec<Author>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewBook {
+    pub isbn: String,
+    pub title: String,
+    pub publisher: Option<String>,
+    pub publish_date: Option<String>,
+    pub cover_url: Option<String>,
+    pub description: Option<String>,
+    pub title_transcription: Option<String>,
+    pub series_title: Option<String>,
+    pub series_title_transcription: Option<String>,
+    pub alternative: Option<String>,
+    pub alternative_transcription: Option<String>,
+    pub volume: Option<String>,
+    pub volume_transcription: Option<String>,
+    pub price: Option<String>,
+    pub extent: Option<String>,
+    pub jpno: Option<String>,
+    pub ndl_url: Option<String>,
+    pub authors: Vec<NewAuthor>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -30,56 +75,49 @@ pub struct Series {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct NewBook {
-    pub isbn: String,
-    pub title: String,
-    pub author: Option<String>,
-    pub publisher: Option<String>,
-    pub publish_date: Option<String>,
-    pub cover_url: Option<String>,
-    pub description: Option<String>,
-    pub title_transcription: Option<String>,
-    pub creator_transcription: Option<String>,
-    pub series_title: Option<String>,
-    pub series_title_transcription: Option<String>,
-    pub edition: Option<String>,
-    pub price: Option<String>,
-    pub extent: Option<String>,
-    pub subject: Option<String>,
-    pub ndl_url: Option<String>,
-}
-
 #[derive(Clone)]
 pub struct Db(pub Arc<Mutex<Connection>>);
 
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS series (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS authors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ndl_id TEXT UNIQUE,
+                name TEXT NOT NULL,
+                transcription TEXT
+            );
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 isbn TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
-                author TEXT,
                 publisher TEXT,
                 publish_date TEXT,
                 cover_url TEXT,
                 description TEXT,
                 title_transcription TEXT,
-                creator_transcription TEXT,
                 series_title TEXT,
                 series_title_transcription TEXT,
-                edition TEXT,
+                alternative TEXT,
+                alternative_transcription TEXT,
+                volume TEXT,
+                volume_transcription TEXT,
                 price TEXT,
                 extent TEXT,
-                subject TEXT,
+                jpno TEXT,
                 ndl_url TEXT,
                 series_id INTEGER REFERENCES series(id) ON DELETE SET NULL
+            );
+            CREATE TABLE IF NOT EXISTS book_authors (
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
+                PRIMARY KEY (book_id, author_id)
             );",
         )?;
         Ok(Self(Arc::new(Mutex::new(conn))))
@@ -90,58 +128,142 @@ impl Db {
             id: row.get(0)?,
             isbn: row.get(1)?,
             title: row.get(2)?,
-            author: row.get(3)?,
-            publisher: row.get(4)?,
-            publish_date: row.get(5)?,
-            cover_url: row.get(6)?,
-            description: row.get(7)?,
-            title_transcription: row.get(8)?,
-            creator_transcription: row.get(9)?,
-            series_title: row.get(10)?,
-            series_title_transcription: row.get(11)?,
-            edition: row.get(12)?,
-            price: row.get(13)?,
-            extent: row.get(14)?,
-            subject: row.get(15)?,
-            ndl_url: row.get(16)?,
-            series_id: row.get(17)?,
+            publisher: row.get(3)?,
+            publish_date: row.get(4)?,
+            cover_url: row.get(5)?,
+            description: row.get(6)?,
+            title_transcription: row.get(7)?,
+            series_title: row.get(8)?,
+            series_title_transcription: row.get(9)?,
+            alternative: row.get(10)?,
+            alternative_transcription: row.get(11)?,
+            volume: row.get(12)?,
+            volume_transcription: row.get(13)?,
+            price: row.get(14)?,
+            extent: row.get(15)?,
+            jpno: row.get(16)?,
+            ndl_url: row.get(17)?,
+            series_id: row.get(18)?,
+        })
+    }
+
+    fn row_to_author(row: &Row<'_>) -> rusqlite::Result<Author> {
+        Ok(Author {
+            id: row.get(0)?,
+            ndl_id: row.get(1)?,
+            name: row.get(2)?,
+            transcription: row.get(3)?,
         })
     }
 
     pub fn insert_book(&self, book: &NewBook) -> Result<Book, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR IGNORE INTO books (isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            params![book.isbn, book.title, book.author, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.creator_transcription, book.series_title, book.series_title_transcription, book.edition, book.price, book.extent, book.subject, book.ndl_url],
+            "INSERT OR IGNORE INTO books (isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![book.isbn, book.title, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.series_title, book.series_title_transcription, book.alternative, book.alternative_transcription, book.volume, book.volume_transcription, book.price, book.extent, book.jpno, book.ndl_url],
         )?;
         let id = conn.last_insert_rowid();
         Ok(Book {
             id,
             isbn: book.isbn.clone(),
             title: book.title.clone(),
-            author: book.author.clone(),
             publisher: book.publisher.clone(),
             publish_date: book.publish_date.clone(),
             cover_url: book.cover_url.clone(),
             description: book.description.clone(),
             title_transcription: book.title_transcription.clone(),
-            creator_transcription: book.creator_transcription.clone(),
             series_title: book.series_title.clone(),
             series_title_transcription: book.series_title_transcription.clone(),
-            edition: book.edition.clone(),
+            alternative: book.alternative.clone(),
+            alternative_transcription: book.alternative_transcription.clone(),
+            volume: book.volume.clone(),
+            volume_transcription: book.volume_transcription.clone(),
             price: book.price.clone(),
             extent: book.extent.clone(),
-            subject: book.subject.clone(),
+            jpno: book.jpno.clone(),
             ndl_url: book.ndl_url.clone(),
             series_id: None,
         })
     }
 
+    pub fn insert_author(
+        &self,
+        ndl_id: Option<&str>,
+        name: &str,
+        transcription: Option<&str>,
+    ) -> Result<i64, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+
+        if let Some(nid) = ndl_id {
+            let mut stmt = conn.prepare("SELECT id FROM authors WHERE ndl_id = ?1")?;
+            if let Some(row) = stmt
+                .query_row(params![nid], |row| row.get::<_, i64>(0))
+                .ok()
+            {
+                conn.execute(
+                    "UPDATE authors SET name = ?1, transcription = ?2 WHERE id = ?3",
+                    params![name, transcription, row],
+                )?;
+                return Ok(row);
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO authors (ndl_id, name, transcription) VALUES (?1, ?2, ?3)",
+            params![ndl_id, name, transcription],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn add_book_author(&self, book_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO book_authors (book_id, author_id) VALUES (?1, ?2)",
+            params![book_id, author_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_book_authors(&self, book_id: i64) -> Result<Vec<Author>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.ndl_id, a.name, a.transcription
+             FROM authors a
+             JOIN book_authors ba ON a.id = ba.author_id
+             WHERE ba.book_id = ?1
+             ORDER BY ba.author_id",
+        )?;
+        let rows = stmt.query_map(params![book_id], Self::row_to_author)?;
+        rows.collect()
+    }
+
+    pub fn get_author_by_id(&self, id: i64) -> Result<Option<Author>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE id = ?1")?;
+        let mut rows = stmt.query_map(params![id], Self::row_to_author)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_author_by_ndl_id(&self, ndl_id: &str) -> Result<Option<Author>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE ndl_id = ?1")?;
+        let mut rows = stmt.query_map(params![ndl_id], Self::row_to_author)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url, series_id FROM books ORDER BY id DESC",
+            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id FROM books ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
@@ -150,7 +272,7 @@ impl Db {
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url, series_id FROM books WHERE isbn = ?1",
+            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id FROM books WHERE isbn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
         match rows.next() {
