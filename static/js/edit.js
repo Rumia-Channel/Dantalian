@@ -116,8 +116,8 @@ function renderBookEdit(id) {
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
             </div>
             <div class="edit-actions">
-                <a href="/" class="btn-cancel">戻る</a>
-                <button type="submit">保存</button>
+                <a href="/" class="btn btn-md btn-ghost">戻る</a>
+                <button type="submit" class="btn btn-md btn-primary">保存</button>
             </div>
         </form>
     `;

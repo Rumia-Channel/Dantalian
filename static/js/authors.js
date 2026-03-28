@@ -30,7 +30,7 @@ function renderAuthorList() {
             <input type="text" id="new-author-name" placeholder="著者名">
             <input type="text" id="new-author-transcription" placeholder="よみ（任意）">
             <input type="text" id="new-author-ndl-id" placeholder="NDL ID（任意）">
-            <button onclick="createAuthor()">追加</button>
+            <button onclick="createAuthor()" class="btn btn-primary">追加</button>
         </div>
         <div class="edit-author-list">
             ${authors.map((a) => `
@@ -42,7 +42,7 @@ function renderAuthorList() {
                             ${a.transcription ? `<span>${escapeHtml(a.transcription)}</span>` : ""}
                         </div>
                     </div>
-                    <button class="btn-edit-sm" onclick="renderAuthorEdit(${a.id})">編集</button>
+                    <button class="btn btn-xs btn-outline-success" onclick="renderAuthorEdit(${a.id})">編集</button>
                 </div>
             `).join("")}
             ${authors.length === 0 ? '<p class="series-empty">著者がいません</p>' : ""}
@@ -78,8 +78,8 @@ function renderAuthorEdit(id) {
                 <input type="text" name="ndl_id" value="${escapeAttr(author.ndl_id || '')}">
             </div>
             <div class="edit-actions">
-                <button type="button" class="btn-cancel" onclick="renderAuthorList()">一覧に戻る</button>
-                <button type="submit">保存</button>
+                <button type="button" class="btn btn-md btn-ghost" onclick="renderAuthorList()">一覧に戻る</button>
+                <button type="submit" class="btn btn-md btn-primary">保存</button>
             </div>
         </form>
     `;

@@ -95,26 +95,6 @@
     gap: 0.3rem;
 }
 
-.series-list-actions button {
-    font-size: 0.7rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 0.25rem;
-    background: transparent;
-    border: 0.0625rem solid #555;
-    color: #aaa;
-    cursor: pointer;
-}
-
-.series-list-actions .btn-rename:hover {
-    border-color: #4ecca3;
-    color: #4ecca3;
-}
-
-.series-list-actions .btn-delete:hover {
-    border-color: #e94560;
-    color: #e94560;
-}
-
 .inline-edit-input {
     padding: 0.2rem 0.4rem;
     font-size: 0.9rem;
@@ -306,20 +286,4 @@
 .gs-add-item select:focus {
     outline: none;
     border-color: #4ecca3;
-}
-
-.gs-add-item button {
-    font-size: 0.7rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 0.25rem;
-    background: transparent;
-    border: 0.0625rem solid #4ecca3;
-    color: #4ecca3;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: background 0.15s;
-}
-
-.gs-add-item button:hover {
-    background: rgba(78, 204, 163, 0.1);
 }

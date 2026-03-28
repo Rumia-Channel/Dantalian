@@ -64,19 +64,3 @@
     color: #777;
     margin-top: 0.3rem;
 }
-
-.book-delete {
-    margin-top: 0.5rem;
-    padding: 0.3rem 0.8rem;
-    font-size: 0.75rem;
-    background: transparent;
-    border: 0.0625rem solid #e94560;
-    color: #e94560;
-    border-radius: 0.25rem;
-    cursor: pointer;
-}
-
-.book-delete:hover {
-    background: #e94560;
-    color: #fff;
-}

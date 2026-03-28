@@ -123,7 +123,7 @@ function showDetail(id) {
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url
-                ? `<a href="${escapeHtml(book.ndl_url)}" target="_blank" rel="noopener" style="color:#4ecca3;font-size:0.85rem;">国立国会図書館で見る</a>`
+                ? `<a href="${escapeHtml(book.ndl_url)}" target="_blank" rel="noopener" class="detail-ndl-link">国立国会図書館で見る</a>`
                 : ""
         }
         <div class="detail-series-assign">
@@ -141,8 +141,8 @@ function showDetail(id) {
             </select>
         </div>
         <div class="detail-actions">
-            <a href="/edit/?mode=book&book=${book.id}" class="btn-edit">編集</a>
-            <button class="book-delete" onclick="deleteBook(${book.id})">削除</button>
+            <a href="/edit/?mode=book&book=${book.id}" class="btn btn-sm btn-outline-success">編集</a>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteBook(${book.id})">削除</button>
         </div>
     `;
 
@@ -162,7 +162,9 @@ async function assignSeries(bookId, value) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ series_id: seriesId }),
         });
+        await loadSeries();
         await loadBooks();
+        renderBooks();
     } catch {}
 }
 
@@ -187,7 +189,9 @@ async function assignGrandSeries(bookId, value) {
     }
 
     await loadGrandSeries();
+    await loadSeries();
     await loadBooks();
+    renderBooks();
     showDetail(bookId);
 }
 

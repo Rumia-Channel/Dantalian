@@ -9,6 +9,10 @@
     box-sizing: border-box;
 }
 
+button {
+    font: inherit;
+}
+
 body {
     font-family: "Segoe UI", sans-serif;
     background: #0f0f1a;
@@ -71,7 +75,8 @@ nav a.active {
 }
 
 input,
-select {
+select,
+textarea {
     padding: 0.6rem 1rem;
     border-radius: 0.375rem;
     border: 0.0625rem solid #444;
@@ -86,23 +91,83 @@ select:focus {
     border-color: #e94560;
 }
 
-button {
-    padding: 0.6rem 1.5rem;
-    border: none;
-    border-radius: 0.375rem;
-    background: #e94560;
-    color: #fff;
-    cursor: pointer;
-    font-size: 1rem;
+.btn {
+    font-family: inherit;
+    line-height: 1;
+    display: inline-block;
+    text-align: center;
+    text-decoration: none;
     white-space: nowrap;
+    cursor: pointer;
+    border-radius: 0.375rem;
+    box-sizing: border-box;
+    padding: 0.6rem 1.5rem;
+    font-size: 1rem;
+    border: none;
+    background: transparent;
+    color: inherit;
     transition: background 0.15s;
 }
 
-button:hover {
+.btn:disabled {
+    background: #555;
+    color: #aaa;
+    cursor: not-allowed;
+}
+
+.btn-md {
+    padding: 0.45rem 1.2rem;
+    font-size: 0.85rem;
+}
+
+.btn-sm {
+    padding: 0.5rem 1.4rem;
+    font-size: 0.9rem;
+}
+
+.btn-xs {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+}
+
+.btn-primary {
+    background: #e94560;
+    border: none;
+    color: #fff;
+}
+
+.btn-primary:hover {
     background: #c73a52;
 }
 
-button:disabled {
-    background: #555;
-    cursor: not-allowed;
+.btn-outline-success {
+    background: transparent;
+    border: 0.0625rem solid #4ecca3;
+    color: #4ecca3;
+}
+
+.btn-outline-success:hover {
+    background: rgba(78, 204, 163, 0.1);
+}
+
+.btn-outline-danger {
+    background: transparent;
+    border: 0.0625rem solid #e94560;
+    color: #e94560;
+}
+
+.btn-outline-danger:hover {
+    background: #e94560;
+    color: #fff;
+}
+
+.btn-ghost {
+    background: transparent;
+    border: 0.0625rem solid #555;
+    color: #aaa;
+}
+
+.btn-ghost:hover {
+    border-color: #888;
+    color: #eee;
 }

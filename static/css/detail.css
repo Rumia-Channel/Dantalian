@@ -131,6 +131,17 @@
     white-space: pre-wrap;
 }
 
+.detail-ndl-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    font-size: 0.85rem;
+    color: #4ecca3;
+}
+
+.detail-ndl-link:hover {
+    color: #6ee0be;
+}
+
 .detail-series-assign {
     margin-bottom: 1.5rem;
     padding: 1rem;
@@ -241,32 +252,6 @@
     border-bottom-color: #4ecca3;
 }
 
-.btn-edit {
-    padding: 0.3rem 0.8rem;
-    font-size: 0.75rem;
-    background: transparent;
-    border: 0.0625rem solid #4ecca3;
-    color: #4ecca3;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.btn-edit:hover {
-    background: rgba(78, 204, 163, 0.1);
-}
-
-.btn-cancel {
-    background: transparent !important;
-    border: 0.0625rem solid #555 !important;
-    color: #aaa !important;
-}
-
-.btn-cancel:hover {
-    border-color: #888 !important;
-    color: #eee !important;
-}
-
 .edit-form {
     display: flex;
     flex-direction: column;
@@ -312,11 +297,6 @@
     justify-content: flex-end;
     padding-top: 0.5rem;
     border-top: 0.0625rem solid #333;
-}
-
-.edit-actions button {
-    padding: 0.45rem 1.2rem;
-    font-size: 0.85rem;
 }
 
 .edit-header {
@@ -374,24 +354,6 @@
     border-color: #4ecca3;
 }
 
-.btn-cancel {
-    display: inline-block;
-    padding: 0.45rem 1.2rem;
-    font-size: 0.85rem;
-    background: transparent;
-    border: 0.0625rem solid #555;
-    color: #aaa;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    text-decoration: none;
-    transition: border-color 0.15s, color 0.15s;
-}
-
-.btn-cancel:hover {
-    border-color: #888;
-    color: #eee;
-}
-
 .edit-author-list {
     display: flex;
     flex-direction: column;
@@ -429,23 +391,6 @@
 .edit-author-yomi {
     font-size: 0.75rem;
     color: #666;
-}
-
-.btn-edit-sm {
-    padding: 0.2rem 0.5rem;
-    font-size: 0.7rem;
-    background: transparent;
-    border: 0.0625rem solid #555;
-    color: #aaa;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: border-color 0.15s, color 0.15s;
-}
-
-.btn-edit-sm:hover {
-    border-color: #4ecca3;
-    color: #4ecca3;
 }
 
 .edit-author-edit-header {
