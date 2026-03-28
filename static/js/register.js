@@ -3,6 +3,12 @@ const isbnInput = document.getElementById("isbn-input");
 const registerBtn = document.getElementById("register-btn");
 const registerStatus = document.getElementById("register-status");
 
+isbnInput.addEventListener("input", () => {
+    isbnInput.value = isbnInput.value
+        .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[\s\u3000\-－ー]/g, "");
+});
+
 registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const isbn = isbnInput.value.trim().replace(/-/g, "");
