@@ -35,19 +35,21 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
         return Ok(None);
     };
 
-    let cover_url = {
+    let (cover_url, amazon_description) = {
         let delays: &[u64] = &[3, 5, 10];
-        let mut result = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
+        let mut result = lookup_amazon_cover(client, isbn, images_dir).await.ok();
         for &delay in delays {
-            if result.is_some() {
+            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
                 break;
             }
             warn!(isbn = %isbn, "Amazon cover fetch failed, retrying in {}s", delay);
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            result = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
+            result = lookup_amazon_cover(client, isbn, images_dir).await.ok();
         }
-        result
+        result.unwrap_or((None, None))
     };
+
+    let description = amazon_description.or(ndl.description);
 
     Ok(Some(NewBook {
         isbn: isbn.to_string(),
@@ -55,7 +57,7 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
         publisher: ndl.publisher,
         publish_date: ndl.publish_date,
         cover_url,
-        description: ndl.description,
+        description,
         title_transcription: ndl.title_transcription,
         series_title: ndl.series_title,
         series_title_transcription: ndl.series_title_transcription,
@@ -111,7 +113,7 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     Ok(filename)
 }
 
-async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<String>, String> {
+async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> Result<(Option<String>, Option<String>), String> {
     let search_url = format!("https://www.amazon.co.jp/s?k={}", isbn);
     debug!(isbn = %isbn, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
@@ -133,7 +135,7 @@ async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> R
 
     let Some(href) = product_url else {
         warn!(isbn = %isbn, "No product link found in Amazon search results");
-        return Ok(None);
+        return Ok((None, None));
     };
 
     let detail_url = if href.starts_with("http") {
@@ -187,28 +189,32 @@ async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> R
         detail_body
     };
 
-    let cover_url = tokio::task::spawn_blocking({
-        move || parse_amazon_detail_cover(&detail_body)
+    let amazon_info = tokio::task::spawn_blocking({
+        move || parse_amazon_detail(&detail_body)
     })
     .await
     .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
 
-    match &cover_url {
+    match &amazon_info.cover_url {
         Some(url) => debug!(isbn = %isbn, "Amazon cover found: {}", url),
         None => warn!(isbn = %isbn, "No cover image found on Amazon detail page"),
     }
+    if amazon_info.description.is_some() {
+        debug!(isbn = %isbn, "Amazon description found");
+    }
 
-    let Some(url) = cover_url else {
-        return Ok(None);
+    let Some(url) = amazon_info.cover_url else {
+        return Ok((None, amazon_info.description));
     };
 
-    download_cover(client, &url, images_dir)
+    let cover = download_cover(client, &url, images_dir)
         .await
-        .map(Some)
         .map_err(|e| {
             warn!(isbn = %isbn, "Failed to download cover: {}", e);
             e
-        })
+        })?;
+
+    Ok((Some(cover), amazon_info.description))
 }
 
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
@@ -242,34 +248,54 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
     Ok(all_hrefs.first().map(|s| s.to_string()))
 }
 
-fn parse_amazon_detail_cover(html: &str) -> Option<String> {
+struct AmazonInfo {
+    cover_url: Option<String>,
+    description: Option<String>,
+}
+
+fn parse_amazon_detail(html: &str) -> AmazonInfo {
     let document = scraper::Html::parse_document(html);
 
-    if let Ok(selector) = scraper::Selector::parse(r#"img#landingImage"#) {
-        if let Some(el) = document.select(&selector).next() {
-            if let Some(hires) = el.value().attr("data-old-hires") {
-                return Some(hires.to_string());
-            }
-            if let Some(dynamic) = el.value().attr("data-a-dynamic-image") {
-                if let Ok(map) = serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(dynamic) {
-                    let max = map.keys().max_by_key(|k| k.len());
-                    if let Some(url) = max {
-                        return Some(url.clone());
-                    }
-                }
-            }
-        }
-    }
+    let cover_url = if let Ok(selector) = scraper::Selector::parse(r#"img#landingImage"#) {
+        document.select(&selector).next().and_then(|el| {
+            el.value().attr("data-old-hires").map(|s| s.to_string()).or_else(|| {
+                el.value().attr("data-a-dynamic-image").and_then(|dynamic| {
+                    serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(dynamic)
+                        .ok()
+                        .and_then(|map| map.keys().max_by_key(|k| k.len()).cloned())
+                })
+            })
+        })
+    } else {
+        None
+    };
 
-    if let Ok(selector) = scraper::Selector::parse(r#"img#imgBlkFront"#) {
-        if let Some(el) = document.select(&selector).next() {
-            if let Some(src) = el.value().attr("src") {
-                return Some(src.to_string());
-            }
-        }
-    }
+    let cover_url = cover_url.or_else(|| {
+        scraper::Selector::parse(r#"img#imgBlkFront"#).ok().and_then(|selector| {
+            document.select(&selector).next().and_then(|el| {
+                el.value().attr("src").map(|s| s.to_string())
+            })
+        })
+    });
 
-    None
+    let description = scraper::Selector::parse(r#"div#bookDescription_feature_div div.a-expander-content span"#)
+        .ok()
+        .and_then(|selector| {
+            document.select(&selector).next().map(|el| {
+                let html = el.inner_html();
+                let text = html
+                    .replace("<br>", "\n")
+                    .replace("<br/>", "\n")
+                    .replace("<br />", "\n")
+                    .replace("<BR>", "\n")
+                    .replace("<BR/>", "\n")
+                    .replace("<BR />", "\n");
+                let trimmed = text.trim().to_string();
+                if trimmed.is_empty() { None } else { Some(trimmed) }
+            }).flatten()
+        });
+
+    AmazonInfo { cover_url, description }
 }
 
 async fn lookup_ndl(client: &Client, isbn: &str) -> Result<Option<NdlBookInfo>, String> {
