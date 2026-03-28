@@ -41,3 +41,17 @@ async function loadBooks() {
         allBooks = [];
     }
 }
+
+function findBookGrandSeries(bookId) {
+    for (const gs of allGrandSeries) {
+        if (gs.items.some((it) => it.item_type === "book" && it.item_id === bookId)) return gs;
+    }
+    return null;
+}
+
+function findSeriesGrandSeries(seriesId) {
+    for (const gs of allGrandSeries) {
+        if (gs.items.some((it) => it.item_type === "series" && it.item_id === seriesId)) return gs;
+    }
+    return null;
+}

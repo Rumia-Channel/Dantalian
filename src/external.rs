@@ -449,7 +449,7 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
                     && p[2] == "Agent"
                     && p[3] == "name"
                 {
-                    cur_author_name = Some(text);
+                    cur_author_name = Some(text.replace(',', "").replace('，', ""));
                 } else if in_dcterms_creator
                     && cur_author_transcription.is_none()
                     && p.len() == 4
@@ -457,7 +457,7 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
                     && p[2] == "Agent"
                     && p[3] == "transcription"
                 {
-                    cur_author_transcription = Some(text);
+                    cur_author_transcription = Some(text.replace(',', "").replace('，', ""));
                 } else if publisher.is_none()
                     && p.len() == 4
                     && p[0] == "BibResource"

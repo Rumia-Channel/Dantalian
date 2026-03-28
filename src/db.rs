@@ -231,10 +231,6 @@ impl Db {
                 .query_row(params![nid], |row| row.get::<_, i64>(0))
                 .ok()
             {
-                conn.execute(
-                    "UPDATE authors SET name = ?1, transcription = ?2 WHERE id = ?3",
-                    params![name, transcription, row],
-                )?;
                 return Ok(row);
             }
         }
@@ -326,6 +322,82 @@ impl Db {
         let affected = conn.execute(
             "UPDATE books SET series_id = ?1 WHERE id = ?2",
             params![series_id, book_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn update_book(
+        &self,
+        id: i64,
+        title: &str,
+        publisher: Option<&str>,
+        publish_date: Option<&str>,
+        description: Option<&str>,
+        title_transcription: Option<&str>,
+        series_title: Option<&str>,
+        series_title_transcription: Option<&str>,
+        alternative: Option<&str>,
+        alternative_transcription: Option<&str>,
+        volume: Option<&str>,
+        volume_transcription: Option<&str>,
+        price: Option<&str>,
+        extent: Option<&str>,
+        jpno: Option<&str>,
+        ndl_url: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE books SET title=?1, publisher=?2, publish_date=?3, description=?4,
+             title_transcription=?5, series_title=?6, series_title_transcription=?7,
+             alternative=?8, alternative_transcription=?9, volume=?10, volume_transcription=?11,
+             price=?12, extent=?13, jpno=?14, ndl_url=?15
+             WHERE id=?16",
+            params![
+                title,
+                publisher,
+                publish_date,
+                description,
+                title_transcription,
+                series_title,
+                series_title_transcription,
+                alternative,
+                alternative_transcription,
+                volume,
+                volume_transcription,
+                price,
+                extent,
+                jpno,
+                ndl_url,
+                id
+            ],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn update_author(
+        &self,
+        id: i64,
+        name: &str,
+        transcription: Option<&str>,
+        ndl_id: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE authors SET name=?1, transcription=?2, ndl_id=?3 WHERE id=?4",
+            params![name, transcription, ndl_id, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn remove_book_author(
+        &self,
+        book_id: i64,
+        author_id: i64,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "DELETE FROM book_authors WHERE book_id = ?1 AND author_id = ?2",
+            params![book_id, author_id],
         )?;
         Ok(affected > 0)
     }

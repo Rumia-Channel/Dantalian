@@ -7,6 +7,7 @@ fn main() {
         "static/index.html",
         "static/register/index.html",
         "static/manage/index.html",
+        "static/edit/index.html",
     ];
 
     let css_files = [

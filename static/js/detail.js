@@ -97,6 +97,10 @@ function showDetail(id) {
         .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
         .join("");
 
+    const authorLinks = book.authors && book.authors.length > 0
+        ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/edit/?mode=author&author=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
+        : "";
+
     detailContent.innerHTML = `
         <div class="detail-header">
             <div class="detail-cover">
@@ -112,7 +116,7 @@ function showDetail(id) {
                 <div class="detail-title">${escapeHtml(book.title)}</div>
                 ${book.volume ? `<div class="detail-volume">${escapeHtml(book.volume)}</div>` : ""}
                 ${book.alternative ? `<div class="detail-alternative">${escapeHtml(book.alternative)}</div>` : ""}
-                ${book.authors && book.authors.length > 0 ? `<div class="detail-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
+                ${authorLinks ? `<div class="detail-author">${authorLinks}</div>` : ""}
                 <div class="detail-meta-list">${metaParts.join("")}</div>
             </div>
         </div>
@@ -137,6 +141,7 @@ function showDetail(id) {
             </select>
         </div>
         <div class="detail-actions">
+            <a href="/edit/?mode=book&book=${book.id}" class="btn-edit">編集</a>
             <button class="book-delete" onclick="deleteBook(${book.id})">削除</button>
         </div>
     `;

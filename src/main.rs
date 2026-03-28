@@ -29,6 +29,10 @@ async fn serve_manage() -> Html<String> {
     serve_html("static/manage/index.html")
 }
 
+async fn serve_edit() -> Html<String> {
+    serve_html("static/edit/index.html")
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Db,
@@ -82,6 +86,8 @@ async fn main() {
         .route("/register/", axum::routing::get(serve_register))
         .route("/manage", axum::routing::get(serve_manage))
         .route("/manage/", axum::routing::get(serve_manage))
+        .route("/edit", axum::routing::get(serve_edit))
+        .route("/edit/", axum::routing::get(serve_edit))
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
