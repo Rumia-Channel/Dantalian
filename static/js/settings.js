@@ -15,6 +15,11 @@ function applyContentWidth(pct) {
 
 (function initContentWidth() {
     const container = document.getElementById("width-buttons");
+    if (!container) {
+        const saved = localStorage.getItem("tsukuyomi_content_width");
+        if (saved) document.documentElement.style.setProperty("--content-width", saved + "%");
+        return;
+    }
     const saved = localStorage.getItem("tsukuyomi_content_width");
     const defaultPct = saved ? parseInt(saved, 10) : 70;
 

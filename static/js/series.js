@@ -9,7 +9,7 @@ function switchSeriesTab(tab) {
 function renderSeriesManager() {
     const list = document.getElementById("series-list");
     if (allSeries.length === 0) {
-        list.innerHTML = '<p style="color:#555;font-size:0.85rem;padding:0.5rem 0;">シリーズがありません</p>';
+        list.innerHTML = '<p class="series-empty">シリーズがありません</p>';
         return;
     }
     list.innerHTML = allSeries.map((s) => {
@@ -121,7 +121,7 @@ async function deleteSeries(id) {
 function renderGrandSeriesManager() {
     const list = document.getElementById("grand-series-list");
     if (allGrandSeries.length === 0) {
-        list.innerHTML = '<p style="color:#555;font-size:0.85rem;padding:0.5rem 0;">大シリーズがありません</p>';
+        list.innerHTML = '<p class="series-empty">大シリーズがありません</p>';
         return;
     }
     list.innerHTML = allGrandSeries.map((gs) => {

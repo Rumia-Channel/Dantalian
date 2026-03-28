@@ -6,6 +6,7 @@
     <title>Tsukuyomi - シリーズ管理</title>
     <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/series.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
 </head>
 <body>
     <div id="app">
@@ -15,6 +16,11 @@
             <a href="/register/">登録</a>
             <a href="/manage/" class="active">管理</a>
         </nav>
+
+        <div class="settings-bar">
+            <span class="settings-label">表示幅</span>
+            <div class="settings-buttons" id="width-buttons"></div>
+        </div>
 
         <section class="series-manage">
             <h2>シリーズ管理</h2>
@@ -39,6 +45,7 @@
         </section>
     </div>
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings.js?v=ASSET_VERSION"></script>
     <script src="/js/series.js?v=ASSET_VERSION"></script>
     <script>
         (async () => {
