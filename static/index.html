@@ -32,11 +32,24 @@
         <section class="series-manage">
             <h2>シリーズ管理 <button class="series-toggle" onclick="toggleSeriesManager()">管理</button></h2>
             <div id="series-manager" class="series-manager-panel hidden">
-                <div class="series-create">
-                    <input type="text" id="new-series-name" placeholder="新しいシリーズ名">
-                    <button onclick="createSeries()">作成</button>
+                <div class="series-tabs">
+                    <button class="series-tab active" onclick="switchSeriesTab('series')" id="tab-series">シリーズ</button>
+                    <button class="series-tab" onclick="switchSeriesTab('grand-series')" id="tab-grand-series">大シリーズ</button>
                 </div>
-                <div id="series-list"></div>
+                <div id="panel-series" class="series-tab-panel">
+                    <div class="series-create">
+                        <input type="text" id="new-series-name" placeholder="新しいシリーズ名">
+                        <button onclick="createSeries()">作成</button>
+                    </div>
+                    <div id="series-list"></div>
+                </div>
+                <div id="panel-grand-series" class="series-tab-panel hidden">
+                    <div class="series-create">
+                        <input type="text" id="new-grand-series-name" placeholder="新しい大シリーズ名">
+                        <button onclick="createGrandSeries()">作成</button>
+                    </div>
+                    <div id="grand-series-list"></div>
+                </div>
             </div>
         </section>
 

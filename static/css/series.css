@@ -153,3 +153,169 @@
     color: #eee;
     width: 100%;
 }
+
+.series-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 0.0625rem solid #333;
+}
+
+.series-tab {
+    font-size: 0.85rem;
+    padding: 0.4rem 1rem;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    border-bottom: 0.125rem solid transparent;
+    margin-bottom: -0.0625rem;
+}
+
+.series-tab:hover {
+    color: #ccc;
+}
+
+.series-tab.active {
+    color: #4ecca3;
+    border-bottom-color: #4ecca3;
+}
+
+.series-tab-panel.hidden {
+    display: none;
+}
+
+.grand-series-card {
+    background: #1a2744;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: transform 0.2s;
+    grid-column: span 3;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    min-height: 28rem;
+}
+
+.grand-series-card:hover {
+    transform: translateY(-0.125rem);
+}
+
+.grand-series-covers {
+    grid-template-columns: repeat(6, 1fr) !important;
+}
+
+.grand-label {
+    color: #4ecca3 !important;
+}
+
+.series-belong-grand {
+    font-size: 0.7rem;
+    color: #4ecca3;
+    margin-left: 0.3rem;
+}
+
+.gs-list-item {
+    background: #1a1a2e;
+    border-radius: 0.375rem;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.gs-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.gs-list-name {
+    font-size: 0.9rem;
+    flex: 1;
+    cursor: pointer;
+    color: #eee;
+}
+
+.gs-list-name:hover {
+    color: #4ecca3;
+}
+
+.gs-items {
+    margin-top: 0.4rem;
+    padding-left: 0.5rem;
+}
+
+.gs-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0;
+    font-size: 0.8rem;
+}
+
+.gs-item-type {
+    font-size: 0.65rem;
+    color: #4ecca3;
+    background: #16213e;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.2rem;
+    flex-shrink: 0;
+}
+
+.gs-item-name {
+    flex: 1;
+    color: #ccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gs-item-remove {
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 0.2rem;
+    line-height: 1;
+}
+
+.gs-item-remove:hover {
+    color: #e94560;
+}
+
+.gs-add-item {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+    align-items: center;
+}
+
+.gs-add-item select {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.3rem;
+    border-radius: 0.25rem;
+    border: 0.0625rem solid #444;
+    background: #16213e;
+    color: #eee;
+    max-width: 12rem;
+}
+
+.gs-add-item select:nth-child(2) {
+    flex: 1;
+    max-width: none;
+}
+
+.gs-add-item button {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
+    background: #253258;
+    border: none;
+    color: #4ecca3;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.gs-add-item button:hover {
+    background: #1a2744;
+}

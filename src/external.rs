@@ -35,7 +35,19 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
         return Ok(None);
     };
 
-    let cover_url = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
+    let cover_url = {
+        let delays: &[u64] = &[3, 5, 10];
+        let mut result = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
+        for &delay in delays {
+            if result.is_some() {
+                break;
+            }
+            warn!(isbn = %isbn, "Amazon cover fetch failed, retrying in {}s", delay);
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            result = lookup_amazon_cover(client, isbn, images_dir).await.ok().flatten();
+        }
+        result
+    };
 
     Ok(Some(NewBook {
         isbn: isbn.to_string(),

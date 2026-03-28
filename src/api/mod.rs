@@ -1,4 +1,5 @@
 pub mod books;
+pub mod grand_series;
 pub mod series;
 
 use axum::routing::{delete, get, post, put};
@@ -15,4 +16,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/series", get(series::list))
         .route("/series/{id}", put(series::rename))
         .route("/series/{id}", delete(series::delete))
+        .route("/grand-series", post(grand_series::create))
+        .route("/grand-series", get(grand_series::list))
+        .route("/grand-series/{id}", put(grand_series::rename))
+        .route("/grand-series/{id}", delete(grand_series::delete))
+        .route("/grand-series/{id}/items", post(grand_series::add_item))
+        .route("/grand-series/{id}/items/{item_type}/{item_id}", delete(grand_series::remove_item))
 }

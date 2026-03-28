@@ -1,3 +1,54 @@
+function showGrandSeriesModal(gsId) {
+    const gs = allGrandSeries.find((g) => g.id === gsId);
+    if (!gs) return;
+
+    let contentHtml = "";
+
+    for (const item of gs.items) {
+        if (item.item_type === "series") {
+            const series = allSeries.find((s) => s.id === item.item_id);
+            const books = allBooks.filter((b) => b.series_id === item.item_id).sort((a, b) => a.id - b.id);
+            contentHtml += `
+            <div class="gs-modal-section">
+                <div class="gs-modal-section-title">${escapeHtml(series ? series.name : item.name)}</div>
+                <div class="series-modal-grid">
+                    ${books.map((b) => `
+                        <div class="series-modal-item" onclick="showDetail(${b.id})">
+                            ${b.cover_url
+                                ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                                : '<div class="book-cover-placeholder">No Image</div>'}
+                            <div class="volume-title">${escapeHtml(b.title)}</div>
+                        </div>`
+                    ).join("")}
+                </div>
+            </div>`;
+        } else if (item.item_type === "book") {
+            const book = allBooks.find((b) => b.id === item.item_id);
+            if (book) {
+                contentHtml += `
+                <div class="gs-modal-section">
+                    <div class="gs-modal-section-title">個別書籍</div>
+                    <div class="series-modal-grid">
+                        <div class="series-modal-item" onclick="showDetail(${book.id})">
+                            ${book.cover_url
+                                ? `<img class="book-cover" src="/images/${book.cover_url}" alt="" loading="lazy">`
+                                : '<div class="book-cover-placeholder">No Image</div>'}
+                            <div class="volume-title">${escapeHtml(book.title)}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+        }
+    }
+
+    detailContent.innerHTML = `
+        <div class="detail-title" style="margin-bottom:1rem;">${escapeHtml(gs.name)}</div>
+        ${contentHtml || '<p style="color:#555;">アイテムがありません</p>'}
+    `;
+
+    detailOverlay.classList.remove("hidden");
+}
+
 function showSeriesModal(seriesId) {
     const series = allSeries.find((s) => s.id === seriesId);
     if (!series) return;
@@ -29,6 +80,7 @@ function showDetail(id) {
     const currentSeries = book.series_id != null
         ? allSeries.find((s) => s.id === book.series_id)
         : null;
+    const currentGrandSeries = findBookGrandSeries(book.id);
 
     const metaParts = [];
     if (book.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(book.publisher)}</div>`);
@@ -41,6 +93,10 @@ function showDetail(id) {
         .map((s) => `<option value="${s.id}" ${s.id === book.series_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
         .join("");
 
+    const grandSeriesOptions = allGrandSeries
+        .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
+        .join("");
+
     detailContent.innerHTML = `
         <div class="detail-header">
             <div class="detail-cover">
@@ -51,6 +107,7 @@ function showDetail(id) {
                 }
             </div>
             <div class="detail-title-block">
+                ${currentGrandSeries ? `<div class="detail-grand-series-name">${escapeHtml(currentGrandSeries.name)}</div>` : ""}
                 ${currentSeries ? `<div class="detail-series-name">${escapeHtml(currentSeries.name)}</div>` : ""}
                 <div class="detail-title">${escapeHtml(book.title)}</div>
                 ${book.volume ? `<div class="detail-volume">${escapeHtml(book.volume)}</div>` : ""}
@@ -70,6 +127,13 @@ function showDetail(id) {
             <select onchange="assignSeries(${book.id}, this.value)">
                 <option value="">なし</option>
                 ${seriesOptions}
+            </select>
+        </div>
+        <div class="detail-series-assign">
+            <label>大シリーズ</label>
+            <select onchange="assignGrandSeries(${book.id}, this.value)">
+                <option value="">なし</option>
+                ${grandSeriesOptions}
             </select>
         </div>
         <div class="detail-actions">
@@ -95,6 +159,31 @@ async function assignSeries(bookId, value) {
         });
         await loadBooks();
     } catch {}
+}
+
+async function assignGrandSeries(bookId, value) {
+    const gsId = value === "" ? null : parseInt(value, 10);
+
+    const currentGs = findBookGrandSeries(bookId);
+    if (currentGs) {
+        try {
+            await fetch(`/api/grand-series/${currentGs.id}/items/book/${bookId}`, { method: "DELETE" });
+        } catch {}
+    }
+
+    if (gsId != null) {
+        try {
+            await fetch(`/api/grand-series/${gsId}/items`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item_type: "book", item_id: bookId }),
+            });
+        } catch {}
+    }
+
+    await loadGrandSeries();
+    await loadBooks();
+    showDetail(bookId);
 }
 
 async function deleteBook(id) {

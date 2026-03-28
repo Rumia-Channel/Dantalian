@@ -5,6 +5,7 @@ const detailContent = document.getElementById("detail-content");
 
 let allBooks = [];
 let allSeries = [];
+let allGrandSeries = [];
 
 function escapeHtml(text) {
     if (text == null) return "";
@@ -36,5 +37,14 @@ async function loadSeries() {
         allSeries = await res.json();
     } catch {
         allSeries = [];
+    }
+}
+
+async function loadGrandSeries() {
+    try {
+        const res = await fetch("/api/grand-series");
+        allGrandSeries = await res.json();
+    } catch {
+        allGrandSeries = [];
     }
 }

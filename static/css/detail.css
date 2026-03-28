@@ -83,6 +83,12 @@
     margin-bottom: 0.3rem;
 }
 
+.detail-grand-series-name {
+    font-size: 0.85rem;
+    color: #4ecca3;
+    margin-bottom: 0.15rem;
+}
+
 .detail-volume {
     font-size: 0.9rem;
     color: #4ecca3;
@@ -205,4 +211,20 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+.gs-modal-section {
+    margin-bottom: 1.25rem;
+}
+
+.gs-modal-section:last-child {
+    margin-bottom: 0;
+}
+
+.gs-modal-section-title {
+    font-size: 0.85rem;
+    color: #e94560;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 0.0625rem solid #333;
 }
