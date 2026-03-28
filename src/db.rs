@@ -389,6 +389,33 @@ impl Db {
         Ok(affected > 0)
     }
 
+    pub fn create_author(
+        &self,
+        name: &str,
+        transcription: Option<&str>,
+        ndl_id: Option<&str>,
+    ) -> Result<Author, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO authors (ndl_id, name, transcription) VALUES (?1, ?2, ?3)",
+            params![ndl_id, name, transcription],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Author {
+            id,
+            ndl_id: ndl_id.map(|s| s.to_string()),
+            name: name.to_string(),
+            transcription: transcription.map(|s| s.to_string()),
+        })
+    }
+
+    pub fn list_authors(&self) -> Result<Vec<Author>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")?;
+        let rows = stmt.query_map([], Self::row_to_author)?;
+        rows.collect()
+    }
+
     pub fn remove_book_author(
         &self,
         book_id: i64,

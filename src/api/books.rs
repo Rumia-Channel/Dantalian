@@ -3,7 +3,7 @@ use crate::db::BookWithAuthors;
 use crate::external;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -157,11 +157,6 @@ pub async fn set_series(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Deserialize)]
-pub struct AuthorQuery {
-    pub ndl_id: Option<String>,
-}
-
 pub async fn get_author(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -169,19 +164,6 @@ pub async fn get_author(
     state
         .db
         .get_author_by_id(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
-}
-
-pub async fn search_author(
-    State(state): State<AppState>,
-    Query(q): Query<AuthorQuery>,
-) -> Result<Json<crate::db::Author>, StatusCode> {
-    let ndl_id = q.ndl_id.ok_or(StatusCode::BAD_REQUEST)?;
-    state
-        .db
-        .get_author_by_ndl_id(&ndl_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
@@ -274,6 +256,45 @@ pub async fn update_author(
             )
         })?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_authors(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::db::Author>>, StatusCode> {
+    state
+        .db
+        .list_authors()
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Deserialize)]
+pub struct CreateAuthorRequest {
+    pub name: String,
+    pub transcription: Option<String>,
+    pub ndl_id: Option<String>,
+}
+
+pub async fn create_author(
+    State(state): State<AppState>,
+    Json(req): Json<CreateAuthorRequest>,
+) -> Result<(StatusCode, Json<crate::db::Author>), ApiError> {
+    if req.name.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Name is required"})),
+        ));
+    }
+    let author = state
+        .db
+        .create_author(req.name.trim(), req.transcription.as_deref(), req.ndl_id.as_deref())
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+    Ok((StatusCode::CREATED, Json(author)))
 }
 
 pub async fn remove_book_author(

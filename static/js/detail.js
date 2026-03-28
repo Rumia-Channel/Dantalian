@@ -98,7 +98,7 @@ function showDetail(id) {
         .join("");
 
     const authorLinks = book.authors && book.authors.length > 0
-        ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/edit/?mode=author&author=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
+        ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
         : "";
 
     detailContent.innerHTML = `

@@ -462,3 +462,17 @@
 .edit-author-id {
     color: #666;
 }
+
+.author-create {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.author-create input {
+    flex: 1;
+    min-width: 8rem;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.85rem;
+}
