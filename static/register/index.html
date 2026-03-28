@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tsukuyomi - ISBN登録</title>
+    <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/form.css?v=ASSET_VERSION">
+</head>
+<body>
+    <div id="app">
+        <h1>Tsukuyomi</h1>
+        <nav>
+            <a href="/">書籍一覧</a>
+            <a href="/register/" class="active">登録</a>
+            <a href="/manage/">管理</a>
+        </nav>
+
+        <section class="register">
+            <h2>ISBNで書籍登録</h2>
+            <form id="register-form">
+                <input type="text" id="isbn-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+" required>
+                <button type="submit" id="register-btn">登録</button>
+            </form>
+            <p id="register-status"></p>
+        </section>
+    </div>
+    <script src="/js/utils.js?v=ASSET_VERSION"></script>
+    <script src="/js/register.js?v=ASSET_VERSION"></script>
+</body>
+</html>

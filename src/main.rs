@@ -11,10 +11,22 @@ use tracing_subscriber::EnvFilter;
 
 const ASSET_VERSION: &str = env!("ASSET_VERSION");
 
-async fn serve_index() -> Html<String> {
-    let html = std::fs::read_to_string("static/index.html")
-        .unwrap_or_else(|_| "index.html not found".to_string());
+fn serve_html(path: &str) -> Html<String> {
+    let html = std::fs::read_to_string(path)
+        .unwrap_or_else(|_| "Page not found".to_string());
     Html(html.replace("ASSET_VERSION", ASSET_VERSION))
+}
+
+async fn serve_index() -> Html<String> {
+    serve_html("static/index.html")
+}
+
+async fn serve_register() -> Html<String> {
+    serve_html("static/register/index.html")
+}
+
+async fn serve_manage() -> Html<String> {
+    serve_html("static/manage/index.html")
 }
 
 #[derive(Clone)]
@@ -66,6 +78,10 @@ async fn main() {
     let images_dir_arc = Arc::new(images_dir);
     let app = Router::new()
         .route("/", axum::routing::get(serve_index))
+        .route("/register", axum::routing::get(serve_register))
+        .route("/register/", axum::routing::get(serve_register))
+        .route("/manage", axum::routing::get(serve_manage))
+        .route("/manage/", axum::routing::get(serve_manage))
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))

@@ -36,7 +36,6 @@ registerForm.addEventListener("submit", async (e) => {
         registerStatus.textContent = `「${data.book.title}」を${sourceLabel}から登録しました`;
         registerStatus.className = "success";
         isbnInput.value = "";
-        loadBooks();
     } catch (err) {
         registerStatus.textContent = "通信エラーが発生しました";
         registerStatus.className = "error";

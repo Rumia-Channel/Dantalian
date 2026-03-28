@@ -6,14 +6,6 @@ function switchSeriesTab(tab) {
     if (tab === "grand-series") renderGrandSeriesManager();
 }
 
-function toggleSeriesManager() {
-    const panel = document.getElementById("series-manager");
-    panel.classList.toggle("hidden");
-    if (!panel.classList.contains("hidden")) {
-        renderSeriesManager();
-    }
-}
-
 function renderSeriesManager() {
     const list = document.getElementById("series-list");
     if (allSeries.length === 0) {

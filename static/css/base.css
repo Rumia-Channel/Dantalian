@@ -41,3 +41,31 @@ h2 {
     color: #555;
     padding: 3rem;
 }
+
+nav {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 0.0625rem solid #1a1a2e;
+}
+
+nav a {
+    font-size: 0.85rem;
+    color: #888;
+    text-decoration: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.25rem;
+    transition: background 0.2s, color 0.2s;
+}
+
+nav a:hover {
+    background: #1a1a2e;
+    color: #eee;
+}
+
+nav a.active {
+    background: #253258;
+    color: #4ecca3;
+}
