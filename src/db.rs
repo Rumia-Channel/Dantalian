@@ -21,6 +21,33 @@ pub struct Book {
     pub extent: Option<String>,
     pub subject: Option<String>,
     pub ndl_url: Option<String>,
+    pub series_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Series {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewBook {
+    pub isbn: String,
+    pub title: String,
+    pub author: Option<String>,
+    pub publisher: Option<String>,
+    pub publish_date: Option<String>,
+    pub cover_url: Option<String>,
+    pub description: Option<String>,
+    pub title_transcription: Option<String>,
+    pub creator_transcription: Option<String>,
+    pub series_title: Option<String>,
+    pub series_title_transcription: Option<String>,
+    pub edition: Option<String>,
+    pub price: Option<String>,
+    pub extent: Option<String>,
+    pub subject: Option<String>,
+    pub ndl_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -29,9 +56,13 @@ pub struct Db(pub Arc<Mutex<Connection>>);
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
-        conn.execute_batch("DROP TABLE IF EXISTS books;")?;
+        conn.execute_batch("DROP TABLE IF EXISTS books; DROP TABLE IF EXISTS series;")?;
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS books (
+            "CREATE TABLE IF NOT EXISTS series (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 isbn TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
@@ -48,7 +79,8 @@ impl Db {
                 price TEXT,
                 extent TEXT,
                 subject TEXT,
-                ndl_url TEXT
+                ndl_url TEXT,
+                series_id INTEGER REFERENCES series(id) ON DELETE SET NULL
             );",
         )?;
         Ok(Self(Arc::new(Mutex::new(conn))))
@@ -73,6 +105,7 @@ impl Db {
             extent: row.get(14)?,
             subject: row.get(15)?,
             ndl_url: row.get(16)?,
+            series_id: row.get(17)?,
         })
     }
 
@@ -102,13 +135,14 @@ impl Db {
             extent: book.extent.clone(),
             subject: book.subject.clone(),
             ndl_url: book.ndl_url.clone(),
+            series_id: None,
         })
     }
 
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url FROM books ORDER BY id DESC",
+            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url, series_id FROM books ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
@@ -117,7 +151,7 @@ impl Db {
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url FROM books WHERE isbn = ?1",
+            "SELECT id, isbn, title, author, publisher, publish_date, cover_url, description, title_transcription, creator_transcription, series_title, series_title_transcription, edition, price, extent, subject, ndl_url, series_id FROM books WHERE isbn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
         match rows.next() {
@@ -131,24 +165,54 @@ impl Db {
         let affected = conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
-}
 
-#[derive(Debug, Deserialize)]
-pub struct NewBook {
-    pub isbn: String,
-    pub title: String,
-    pub author: Option<String>,
-    pub publisher: Option<String>,
-    pub publish_date: Option<String>,
-    pub cover_url: Option<String>,
-    pub description: Option<String>,
-    pub title_transcription: Option<String>,
-    pub creator_transcription: Option<String>,
-    pub series_title: Option<String>,
-    pub series_title_transcription: Option<String>,
-    pub edition: Option<String>,
-    pub price: Option<String>,
-    pub extent: Option<String>,
-    pub subject: Option<String>,
-    pub ndl_url: Option<String>,
+    pub fn set_book_series(
+        &self,
+        book_id: i64,
+        series_id: Option<i64>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE books SET series_id = ?1 WHERE id = ?2",
+            params![series_id, book_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn create_series(&self, name: &str) -> Result<Series, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("INSERT INTO series (name) VALUES (?1)", params![name])?;
+        let id = conn.last_insert_rowid();
+        Ok(Series {
+            id,
+            name: name.to_string(),
+        })
+    }
+
+    pub fn list_series(&self) -> Result<Vec<Series>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name FROM series ORDER BY name")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Series {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn rename_series(&self, id: i64, name: &str) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE series SET name = ?1 WHERE id = ?2",
+            params![name, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_series(&self, id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute("DELETE FROM series WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
 }

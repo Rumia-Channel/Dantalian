@@ -62,9 +62,14 @@ async fn main() {
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
         .unwrap();
-    println!("Server running on http://localhost:3000");
+    eprintln!("Server running on http://localhost:{}", port);
+    tracing::info!("Server running on http://localhost:{}", port);
     axum::serve(listener, app).await.unwrap();
 }

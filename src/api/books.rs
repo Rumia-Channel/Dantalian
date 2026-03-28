@@ -99,3 +99,20 @@ pub async fn delete(
         Err(StatusCode::NOT_FOUND)
     }
 }
+
+#[derive(Deserialize)]
+pub struct SetSeriesRequest {
+    pub series_id: Option<i64>,
+}
+
+pub async fn set_series(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(req): Json<SetSeriesRequest>,
+) -> Result<StatusCode, StatusCode> {
+    state
+        .db
+        .set_book_series(id, req.series_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}

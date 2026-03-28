@@ -298,21 +298,21 @@ fn parse_ndl_rss(xml: &str) -> Result<Option<NdlBookInfo>, String> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
                 if tag == "item" {
                     in_item = true;
                 }
                 current_tag = tag;
             }
             Ok(Event::Empty(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
                 if tag == "item" {
                     in_item = true;
                 }
                 current_tag = tag;
             }
             Ok(Event::End(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
                 if tag == "item" {
                     break;
                 }

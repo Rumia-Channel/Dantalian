@@ -19,10 +19,28 @@
             <p id="register-status"></p>
         </section>
 
+        <section class="series-manage">
+            <h2>シリーズ管理 <button class="series-toggle" onclick="toggleSeriesManager()">管理</button></h2>
+            <div id="series-manager" class="series-manager-panel hidden">
+                <div class="series-create">
+                    <input type="text" id="new-series-name" placeholder="新しいシリーズ名">
+                    <button onclick="createSeries()">作成</button>
+                </div>
+                <div id="series-list"></div>
+            </div>
+        </section>
+
         <section class="booklist">
             <h2>登録済み書籍 <span id="book-count"></span></h2>
             <div id="book-grid"></div>
         </section>
+
+        <div id="detail-overlay" class="detail-overlay hidden" onclick="closeDetail(event)">
+            <div class="detail-modal" onclick="event.stopPropagation()">
+                <button class="detail-close" onclick="closeDetail()">&times;</button>
+                <div id="detail-content"></div>
+            </div>
+        </div>
     </div>
     <script src="script.js"></script>
 </body>
