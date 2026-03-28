@@ -3,12 +3,32 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 fn main() {
-    println!("cargo:rerun-if-changed=static/style.css");
-    println!("cargo:rerun-if-changed=static/script.js");
+    let css_files = [
+        "static/css/base.css",
+        "static/css/form.css",
+        "static/css/book-card.css",
+        "static/css/series.css",
+        "static/css/detail.css",
+        "static/css/settings.css",
+    ];
+
+    let js_files = [
+        "static/js/utils.js",
+        "static/js/settings.js",
+        "static/js/register.js",
+        "static/js/series.js",
+        "static/js/book-grid.js",
+        "static/js/detail.js",
+        "static/js/app.js",
+    ];
+
+    for file in css_files.iter().chain(js_files.iter()) {
+        println!("cargo:rerun-if-changed={}", file);
+    }
 
     let mut hasher = DefaultHasher::new();
 
-    for file in &["static/style.css", "static/script.js"] {
+    for file in css_files.iter().chain(js_files.iter()) {
         let path = Path::new(file);
         if path.exists() {
             let meta = std::fs::metadata(path).unwrap();

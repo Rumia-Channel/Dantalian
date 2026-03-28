@@ -7,6 +7,15 @@
 - バージョン指定が必要な場合は `cargo add <crate-name>@<version>` を使用すること。
 - features を指定する場合は `cargo add <crate-name> --features <feature>` を使用すること。
 
+## ファイル分割ルール
+
+- **WEB UI（HTML/CSS/JS）および Rust（src/）のファイルは、責任ごとに分割して一ファイル当たりの容量を減らすこと。**
+- 1ファイルが肥大化した場合は、機能単位で別ファイルに切り出すこと。
+  - Rust: `mod` で分割し、`src/` 配下に配置（例: `api/books.rs`, `api/series.rs`）
+  - CSS: 機能ごとに別ファイルを作成し、`index.html` で `<link>` 読み込み
+  - JS: 機能ごとに別ファイルを作成し、`index.html` で `<script>` 読み込み
+- 新しい静的アセットファイルを追加した場合は、`build.rs` のキャッシュバスタ設定も忘れずに更新すること。
+
 ## Web UI アセットのキャッシュバスタ
 
 - `static/style.css` および `static/script.js` の変更をブラウザに即座に反映させるため、キャッシュバスタ（`?v=<hash>`）を使用している。
