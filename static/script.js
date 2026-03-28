@@ -10,6 +10,39 @@ const detailContent = document.getElementById("detail-content");
 let allBooks = [];
 let allSeries = [];
 
+const WIDTH_PRESETS = [
+    { label: "狭", pct: 50 },
+    { label: "標準", pct: 70 },
+    { label: "広", pct: 85 },
+    { label: "全幅", pct: 100 },
+];
+
+function applyContentWidth(pct) {
+    document.documentElement.style.setProperty("--content-width", pct + "%");
+    localStorage.setItem("tsukuyomi_content_width", pct);
+    document.querySelectorAll(".width-btn").forEach((btn) => {
+        btn.classList.toggle("active", parseInt(btn.dataset.pct, 10) === pct);
+    });
+}
+
+(function initContentWidth() {
+    const container = document.getElementById("width-buttons");
+    const saved = localStorage.getItem("tsukuyomi_content_width");
+    const defaultPct = saved ? parseInt(saved, 10) : 70;
+
+    container.innerHTML = WIDTH_PRESETS.map((p) =>
+        `<button class="width-btn" data-pct="${p.pct}">${p.label}</button>`
+    ).join("");
+
+    container.addEventListener("click", (e) => {
+        const btn = e.target.closest(".width-btn");
+        if (!btn) return;
+        applyContentWidth(parseInt(btn.dataset.pct, 10));
+    });
+
+    applyContentWidth(defaultPct);
+})();
+
 registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const isbn = isbnInput.value.trim().replace(/-/g, "");
@@ -206,34 +239,20 @@ function renderBooks() {
 
     for (const [, series] of seriesEntries) {
         series.books.sort((a, b) => a.id - b.id);
-        const coversHtml = series.books.slice(0, 4).map((b) =>
+        const coversHtml = series.books.slice(0, 8).map((b) =>
             b.cover_url
                 ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                : '<div class="book-cover-placeholder">-</div>'
-        ).join("");
-
-        const volumesHtml = series.books.map((b) => `
-            <div class="volume-item" onclick="showDetail(${b.id})">
-                ${
-                    b.cover_url
-                        ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                        : '<div class="book-cover-placeholder">-</div>'
-                }
-                <div class="volume-title">${escapeHtml(b.title)}</div>
-            </div>`
+                : '<div class="book-cover-placeholder"></div>'
         ).join("");
 
         html += `
-        <div class="series-card">
-            <div class="series-header" onclick="toggleSeries(this)">
-                <div class="series-covers">${coversHtml}</div>
-                <div class="series-info">
-                    <div class="series-label">シリーズ</div>
-                    <div class="series-title">${escapeHtml(series.series_name)}</div>
-                    <div class="series-count">${series.books.length}冊</div>
-                </div>
+        <div class="series-card" onclick="showSeriesModal(${series.series_id})">
+            <div class="series-covers">${coversHtml}</div>
+            <div class="series-info">
+                <div class="series-label">シリーズ</div>
+                <div class="series-title">${escapeHtml(series.series_name)}</div>
+                <div class="series-count">${series.books.length}冊</div>
             </div>
-            <div class="series-volumes">${volumesHtml}</div>
         </div>`;
     }
 
@@ -256,9 +275,28 @@ function renderBooks() {
     bookGrid.innerHTML = html;
 }
 
-function toggleSeries(headerEl) {
-    const volumes = headerEl.nextElementSibling;
-    volumes.classList.toggle("open");
+function showSeriesModal(seriesId) {
+    const series = allSeries.find((s) => s.id === seriesId);
+    if (!series) return;
+    const books = allBooks.filter((b) => b.series_id === seriesId).sort((a, b) => a.id - b.id);
+
+    const volumesHtml = books.map((b) => `
+        <div class="series-modal-item" onclick="showDetail(${b.id})">
+            ${
+                b.cover_url
+                    ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                    : '<div class="book-cover-placeholder"></div>'
+            }
+            <div class="volume-title">${escapeHtml(b.title)}</div>
+        </div>`
+    ).join("");
+
+    detailContent.innerHTML = `
+        <div class="detail-title" style="margin-bottom:1rem;">${escapeHtml(series.name)}</div>
+        <div class="series-modal-grid">${volumesHtml}</div>
+    `;
+
+    detailOverlay.classList.remove("hidden");
 }
 
 function showDetail(id) {
