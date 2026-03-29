@@ -1,5 +1,5 @@
 .series-card {
-    background: #16213e;
+    background: var(--color-bg-surface);
     border-radius: 0.5rem;
     overflow: hidden;
     transition: transform 0.2s;
@@ -42,7 +42,7 @@
 
 .series-label {
     font-size: 0.65rem;
-    color: #e94560;
+    color: var(--color-primary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 0.15rem;
@@ -60,7 +60,7 @@
 
 .series-count {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--color-text-secondary);
 }
 
 .series-create {
@@ -74,7 +74,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 0.75rem;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     border-radius: 0.375rem;
     margin-bottom: 0.4rem;
 }
@@ -83,11 +83,11 @@
     font-size: 0.9rem;
     flex: 1;
     cursor: pointer;
-    color: #eee;
+    color: var(--color-text-primary);
 }
 
 .series-list-name:hover {
-    color: #4ecca3;
+    color: var(--color-success);
 }
 
 .series-list-actions {
@@ -99,9 +99,9 @@
     padding: 0.2rem 0.4rem;
     font-size: 0.9rem;
     border-radius: 0.25rem;
-    border: 0.0625rem solid #4ecca3;
-    background: #1a1a2e;
-    color: #eee;
+    border: 0.0625rem solid var(--color-success);
+    background: var(--color-bg-input);
+    color: var(--color-text-primary);
     width: 100%;
 }
 
@@ -109,7 +109,7 @@
     display: flex;
     gap: 0;
     margin-bottom: 1rem;
-    border-bottom: 0.0625rem solid #333;
+    border-bottom: 0.0625rem solid var(--color-border);
 }
 
 .series-tab {
@@ -117,7 +117,7 @@
     padding: 0.4rem 1rem;
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--color-text-secondary);
     cursor: pointer;
     border-bottom: 0.125rem solid transparent;
     margin-bottom: -0.0625rem;
@@ -125,12 +125,12 @@
 }
 
 .series-tab:hover {
-    color: #ccc;
+    color: var(--color-text-faint);
 }
 
 .series-tab.active {
-    color: #4ecca3;
-    border-bottom-color: #4ecca3;
+    color: var(--color-success);
+    border-bottom-color: var(--color-success);
 }
 
 .series-tab-panel {
@@ -142,7 +142,7 @@
 }
 
 .series-empty {
-    color: #555;
+    color: var(--color-muted);
     font-size: 0.85rem;
     padding: 1.5rem 0;
     text-align: center;
@@ -150,12 +150,12 @@
 
 .series-belong-grand {
     font-size: 0.7rem;
-    color: #4ecca3;
+    color: var(--color-success);
     margin-left: 0.3rem;
 }
 
 .grand-series-card {
-    background: #1a2744;
+    background: var(--color-bg-series);
     border-radius: 0.5rem;
     overflow: hidden;
     transition: transform 0.2s;
@@ -175,11 +175,11 @@
 }
 
 .grand-label {
-    color: #4ecca3 !important;
+    color: var(--color-success) !important;
 }
 
 .gs-list-item {
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     border-radius: 0.375rem;
     margin-bottom: 0.5rem;
     padding: 0.75rem;
@@ -196,17 +196,17 @@
     font-weight: 600;
     flex: 1;
     cursor: pointer;
-    color: #eee;
+    color: var(--color-text-primary);
 }
 
 .gs-list-name:hover {
-    color: #4ecca3;
+    color: var(--color-success);
 }
 
 .gs-items {
     margin-top: 0.5rem;
     padding: 0.5rem;
-    background: #16213e;
+    background: var(--color-bg-surface);
     border-radius: 0.25rem;
 }
 
@@ -219,15 +219,15 @@
 }
 
 .gs-item + .gs-item {
-    border-top: 0.0625rem solid #1a1a2e;
+    border-top: 0.0625rem solid var(--color-bg-input);
     padding-top: 0.3rem;
 }
 
 .gs-item-type {
     font-size: 0.6rem;
     font-weight: 600;
-    color: #4ecca3;
-    background: #1a1a2e;
+    color: var(--color-success);
+    background: var(--color-bg-input);
     padding: 0.1rem 0.35rem;
     border-radius: 0.2rem;
     flex-shrink: 0;
@@ -236,7 +236,7 @@
 
 .gs-item-name {
     flex: 1;
-    color: #ccc;
+    color: var(--color-text-faint);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -245,7 +245,7 @@
 .gs-item-remove {
     background: transparent;
     border: none;
-    color: #555;
+    color: var(--color-muted);
     cursor: pointer;
     font-size: 0.9rem;
     padding: 0 0.25rem;
@@ -255,8 +255,8 @@
 }
 
 .gs-item-remove:hover {
-    color: #e94560;
-    background: rgba(233, 69, 96, 0.1);
+    color: var(--color-primary);
+    background: var(--color-primary-alpha);
 }
 
 .gs-add-item {
@@ -265,16 +265,16 @@
     margin-top: 0.5rem;
     align-items: center;
     padding-top: 0.5rem;
-    border-top: 0.0625rem dashed #333;
+    border-top: 0.0625rem dashed var(--color-border);
 }
 
 .gs-add-item select {
     font-size: 0.75rem;
     padding: 0.25rem 0.4rem;
     border-radius: 0.25rem;
-    border: 0.0625rem solid #444;
-    background: #16213e;
-    color: #eee;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
     max-width: 8rem;
 }
 
@@ -285,5 +285,5 @@
 
 .gs-add-item select:focus {
     outline: none;
-    border-color: #4ecca3;
+    border-color: var(--color-success);
 }

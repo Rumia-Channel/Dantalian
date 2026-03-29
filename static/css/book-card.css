@@ -1,6 +1,6 @@
 #book-count {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--color-text-secondary);
 }
 
 #book-grid {
@@ -10,7 +10,7 @@
 }
 
 .book-card {
-    background: #16213e;
+    background: var(--color-bg-surface);
     border-radius: 0.5rem;
     overflow: hidden;
     transition: transform 0.2s;
@@ -25,18 +25,18 @@
     width: 100%;
     aspect-ratio: 2/3;
     object-fit: contain;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     display: block;
 }
 
 .book-cover-placeholder {
     width: 100%;
     aspect-ratio: 2/3;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #555;
+    color: var(--color-muted);
     font-size: 0.8rem;
 }
 
@@ -56,11 +56,11 @@
 
 .book-author {
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--color-text-tertiary);
 }
 
 .book-meta {
     font-size: 0.75rem;
-    color: #777;
+    color: var(--color-text-label);
     margin-top: 0.3rem;
 }

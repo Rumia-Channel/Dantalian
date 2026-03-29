@@ -9,7 +9,7 @@
 }
 
 .settings-label {
-    color: #888;
+    color: var(--color-text-secondary);
 }
 
 .settings-buttons {
@@ -21,19 +21,19 @@
     padding: 0.25rem 0.65rem;
     font-size: 0.75rem;
     border-radius: 0.25rem;
-    background: #1a1a2e;
-    border: 0.0625rem solid #444;
-    color: #aaa;
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border-light);
+    color: var(--color-text-tertiary);
     cursor: pointer;
 }
 
 .width-btn:hover {
-    border-color: #888;
-    color: #eee;
+    border-color: var(--color-text-secondary);
+    color: var(--color-text-primary);
 }
 
 .width-btn.active {
-    background: #e94560;
-    border-color: #e94560;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
     color: #fff;
 }

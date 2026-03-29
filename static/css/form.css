@@ -14,9 +14,9 @@
 }
 
 #register-status.success {
-    color: #4ecca3;
+    color: var(--color-success);
 }
 
 #register-status.error {
-    color: #e94560;
+    color: var(--color-primary);
 }

@@ -1,7 +1,7 @@
 .detail-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--color-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -14,7 +14,7 @@
 }
 
 .detail-modal {
-    background: #16213e;
+    background: var(--color-bg-surface);
     border-radius: 0.75rem;
     max-width: 56.25rem;
     width: 95%;
@@ -30,7 +30,7 @@
     right: 0.75rem;
     background: transparent;
     border: none;
-    color: #888;
+    color: var(--color-text-secondary);
     font-size: 1.5rem;
     cursor: pointer;
     padding: 0.25rem 0.5rem;
@@ -38,7 +38,7 @@
 }
 
 .detail-close:hover {
-    color: #eee;
+    color: var(--color-text-primary);
 }
 
 .detail-header {
@@ -79,38 +79,38 @@
 
 .detail-series-name {
     font-size: 0.85rem;
-    color: #e94560;
+    color: var(--color-primary);
     margin-bottom: 0.3rem;
 }
 
 .detail-grand-series-name {
     font-size: 0.85rem;
-    color: #4ecca3;
+    color: var(--color-success);
     margin-bottom: 0.15rem;
 }
 
 .detail-volume {
     font-size: 0.9rem;
-    color: #4ecca3;
+    color: var(--color-success);
     margin-bottom: 0.3rem;
 }
 
 .detail-alternative {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--color-text-secondary);
     font-style: italic;
     margin-bottom: 0.3rem;
 }
 
 .detail-author {
     font-size: 0.95rem;
-    color: #aaa;
+    color: var(--color-text-tertiary);
     margin-bottom: 0.5rem;
 }
 
 .detail-meta-list {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--color-text-secondary);
     line-height: 1.8;
 }
 
@@ -119,14 +119,14 @@
 }
 
 .detail-meta-label {
-    color: #666;
+    color: var(--color-text-dim);
     font-size: 0.75rem;
 }
 
 .detail-description {
     font-size: 0.9rem;
     line-height: 1.7;
-    color: #ccc;
+    color: var(--color-text-faint);
     margin-bottom: 1.5rem;
     white-space: pre-wrap;
 }
@@ -135,23 +135,23 @@
     display: inline-block;
     margin-bottom: 1.5rem;
     font-size: 0.85rem;
-    color: #4ecca3;
+    color: var(--color-success);
 }
 
 .detail-ndl-link:hover {
-    color: #6ee0be;
+    color: var(--color-success-hover);
 }
 
 .detail-series-assign {
     margin-bottom: 1.5rem;
     padding: 1rem;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     border-radius: 0.5rem;
 }
 
 .detail-series-assign label {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--color-text-secondary);
     display: block;
     margin-bottom: 0.4rem;
 }
@@ -160,15 +160,15 @@
     width: 100%;
     padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
-    border: 0.0625rem solid #444;
-    background: #16213e;
-    color: #eee;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
     font-size: 0.9rem;
 }
 
 .detail-series-assign select:focus {
     outline: none;
-    border-color: #e94560;
+    border-color: var(--color-primary);
 }
 
 .detail-actions {
@@ -184,7 +184,7 @@
 }
 
 .series-modal-item {
-    background: #1a2744;
+    background: var(--color-bg-series);
     border-radius: 0.375rem;
     overflow: hidden;
     cursor: pointer;
@@ -199,18 +199,18 @@
     width: 100%;
     aspect-ratio: 2/3;
     object-fit: contain;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     display: block;
 }
 
 .series-modal-item .book-cover-placeholder {
     width: 100%;
     aspect-ratio: 2/3;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #555;
+    color: var(--color-muted);
     font-size: 0.6rem;
 }
 
@@ -234,22 +234,22 @@
 
 .gs-modal-section-title {
     font-size: 0.85rem;
-    color: #e94560;
+    color: var(--color-primary);
     margin-bottom: 0.5rem;
     padding-bottom: 0.3rem;
-    border-bottom: 0.0625rem solid #333;
+    border-bottom: 0.0625rem solid var(--color-border);
 }
 
 .detail-author-link {
-    color: #aaa;
+    color: var(--color-text-tertiary);
     cursor: pointer;
     border-bottom: 0.0625rem dashed transparent;
     transition: color 0.15s, border-color 0.15s;
 }
 
 .detail-author-link:hover {
-    color: #4ecca3;
-    border-bottom-color: #4ecca3;
+    color: var(--color-success);
+    border-bottom-color: var(--color-success);
 }
 
 .edit-form {
@@ -267,11 +267,11 @@
 
 .edit-field label {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--color-text-secondary);
 }
 
 .edit-required {
-    color: #e94560;
+    color: var(--color-primary);
 }
 
 .edit-field input,
@@ -296,7 +296,7 @@
     gap: 0.5rem;
     justify-content: flex-end;
     padding-top: 0.5rem;
-    border-top: 0.0625rem solid #333;
+    border-top: 0.0625rem solid var(--color-border);
 }
 
 .edit-header {
@@ -332,7 +332,7 @@
 
 .edit-isbn {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--color-text-secondary);
     margin-bottom: 0.4rem;
     word-break: break-all;
 }
@@ -340,18 +340,18 @@
 .edit-author-tag {
     display: inline-block;
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--color-text-tertiary);
     cursor: pointer;
     padding: 0.15rem 0.4rem;
     border-radius: 0.2rem;
-    border: 0.0625rem solid #444;
+    border: 0.0625rem solid var(--color-border-light);
     margin-right: 0.3rem;
     transition: color 0.15s, border-color 0.15s;
 }
 
 .edit-author-tag:hover {
-    color: #4ecca3;
-    border-color: #4ecca3;
+    color: var(--color-success);
+    border-color: var(--color-success);
 }
 
 .edit-author-list {
@@ -365,7 +365,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.6rem 0.75rem;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     border-radius: 0.375rem;
 }
 
@@ -376,7 +376,7 @@
 
 .edit-author-name {
     font-size: 0.95rem;
-    color: #eee;
+    color: var(--color-text-primary);
     margin-bottom: 0.15rem;
 }
 
@@ -384,13 +384,13 @@
     display: flex;
     gap: 0.75rem;
     font-size: 0.75rem;
-    color: #666;
+    color: var(--color-text-dim);
 }
 
 .edit-author-ndl,
 .edit-author-yomi {
     font-size: 0.75rem;
-    color: #666;
+    color: var(--color-text-dim);
 }
 
 .edit-author-edit-header {
@@ -398,14 +398,14 @@
     gap: 1rem;
     margin-bottom: 1rem;
     padding: 0.5rem 0.75rem;
-    background: #1a1a2e;
+    background: var(--color-bg-input);
     border-radius: 0.375rem;
     font-size: 0.8rem;
-    color: #888;
+    color: var(--color-text-secondary);
 }
 
 .edit-author-id {
-    color: #666;
+    color: var(--color-text-dim);
 }
 
 .author-create {
