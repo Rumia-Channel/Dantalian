@@ -177,7 +177,8 @@ select:focus {
 }
 
 .btn-outline-success:hover {
-    background: var(--color-success-alpha);
+    background: var(--color-success);
+    color: #fff;
 }
 
 .btn-outline-danger {
