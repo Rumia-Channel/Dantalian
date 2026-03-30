@@ -3,42 +3,54 @@ function showGrandSeriesModal(gsId) {
     if (!gs) return;
 
     let contentHtml = "";
+    const individualBooks = [];
+    const seriesSections = [];
 
     for (const item of gs.items) {
         if (item.item_type === "series") {
             const series = allSeries.find((s) => s.id === item.item_id);
-            const books = allBooks.filter((b) => b.series_id === item.item_id).sort((a, b) => a.id - b.id);
-            contentHtml += `
-            <div class="gs-modal-section">
-                <div class="gs-modal-section-title">${escapeHtml(series ? series.name : item.name)}</div>
-                <div class="series-modal-grid">
-                    ${books.map((b) => `
-                        <div class="series-modal-item" onclick="showDetail(${b.id})">
-                            ${b.cover_url
-                                ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                                : '<div class="book-cover-placeholder">No Image</div>'}
-                            <div class="volume-title">${escapeHtml(b.title)}</div>
-                        </div>`
-                    ).join("")}
-                </div>
-            </div>`;
+            const books = allBooks.filter((b) => b.series_id === item.item_id);
+            const sortedBooks = typeof sortBookList === "function" ? sortBookList(books) : books;
+            seriesSections.push({ series, sortedBooks });
         } else if (item.item_type === "book") {
             const book = allBooks.find((b) => b.id === item.item_id);
-            if (book) {
-                contentHtml += `
-                <div class="gs-modal-section">
-                    <div class="gs-modal-section-title">個別書籍</div>
-                    <div class="series-modal-grid">
-                        <div class="series-modal-item" onclick="showDetail(${book.id})">
-                            ${book.cover_url
-                                ? `<img class="book-cover" src="/images/${book.cover_url}" alt="" loading="lazy">`
-                                : '<div class="book-cover-placeholder">No Image</div>'}
-                            <div class="volume-title">${escapeHtml(book.title)}</div>
-                        </div>
-                    </div>
-                </div>`;
-            }
+            if (book) individualBooks.push(book);
         }
+    }
+
+    for (const { series, sortedBooks } of seriesSections) {
+        contentHtml += `
+        <div class="gs-modal-section">
+            <div class="gs-modal-section-title">${escapeHtml(series ? series.name : "")}</div>
+            <div class="series-modal-grid">
+                ${sortedBooks.map((b) => `
+                    <div class="series-modal-item" onclick="showDetail(${b.id})">
+                        ${b.cover_url
+                            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                            : '<div class="book-cover-placeholder">No Image</div>'}
+                        <div class="volume-title">${escapeHtml(b.title)}</div>
+                    </div>`
+                ).join("")}
+            </div>
+        </div>`;
+    }
+
+    if (individualBooks.length > 0) {
+        const sortedIndividuals = typeof sortBookList === "function" ? sortBookList(individualBooks) : individualBooks;
+        contentHtml += `
+        <div class="gs-modal-section">
+            <div class="gs-modal-section-title">個別書籍</div>
+            <div class="series-modal-grid">
+                ${sortedIndividuals.map((b) => `
+                    <div class="series-modal-item" onclick="showDetail(${b.id})">
+                        ${b.cover_url
+                            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                            : '<div class="book-cover-placeholder">No Image</div>'}
+                        <div class="volume-title">${escapeHtml(b.title)}</div>
+                    </div>`
+                ).join("")}
+            </div>
+        </div>`;
     }
 
     detailContent.innerHTML = `
@@ -52,9 +64,10 @@ function showGrandSeriesModal(gsId) {
 function showSeriesModal(seriesId) {
     const series = allSeries.find((s) => s.id === seriesId);
     if (!series) return;
-    const books = allBooks.filter((b) => b.series_id === seriesId).sort((a, b) => a.id - b.id);
+    const books = allBooks.filter((b) => b.series_id === seriesId);
+    const sortedBooks = typeof sortBookList === "function" ? sortBookList(books) : books;
 
-    const volumesHtml = books.map((b) => `
+    const volumesHtml = sortedBooks.map((b) => `
         <div class="series-modal-item" onclick="showDetail(${b.id})">
             ${
                 b.cover_url

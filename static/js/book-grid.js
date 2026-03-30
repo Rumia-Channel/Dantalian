@@ -1,3 +1,46 @@
+let currentView = "author";
+let currentSort = localStorage.getItem("tsukuyomi_sort") || "id";
+
+document.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+        document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        currentView = tab.dataset.view;
+        renderBooks();
+    });
+});
+
+document.getElementById("sort-buttons").addEventListener("click", (e) => {
+    const btn = e.target.closest(".width-btn");
+    if (!btn) return;
+    currentSort = btn.dataset.sort;
+    localStorage.setItem("tsukuyomi_sort", currentSort);
+    document.querySelectorAll("#sort-buttons .width-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.sort === currentSort);
+    });
+    renderBooks();
+});
+
+function getPrimaryAuthor(book) {
+    if (!book.authors || book.authors.length === 0) return null;
+    return book.authors.reduce((best, a) =>
+        (a.sort_order < best.sort_order) ? a : best
+    );
+}
+
+function getGrandSeriesBookIds(gs) {
+    const ids = new Set();
+    for (const item of gs.items) {
+        if (item.item_type === "book") {
+            ids.add(item.item_id);
+        } else if (item.item_type === "series") {
+            const seriesBooks = allBooks.filter((b) => b.series_id === item.item_id);
+            for (const b of seriesBooks) ids.add(b.id);
+        }
+    }
+    return ids;
+}
+
 function groupByUserSeries(books) {
     const groups = {};
     const singles = [];
@@ -21,25 +64,125 @@ function groupByUserSeries(books) {
     return { groups, singles };
 }
 
-function getGrandSeriesBookIds(gs) {
-    const ids = new Set();
-    for (const item of gs.items) {
-        if (item.item_type === "book") {
-            ids.add(item.item_id);
-        } else if (item.item_type === "series") {
-            const seriesBooks = allBooks.filter((b) => b.series_id === item.item_id);
-            for (const b of seriesBooks) ids.add(b.id);
+function parseVolumeSortKey(vol) {
+    if (!vol) return [4, 0];
+    const prefixes = [
+        ["上", 1],
+        ["中", 2],
+        ["下", 3],
+    ];
+    for (const [p, base] of prefixes) {
+        if (vol.startsWith(p)) {
+            const rest = vol.slice(p.length);
+            const num = rest ? parseInt(rest, 10) : 0;
+            return [base, isNaN(num) ? 0 : num];
         }
     }
-    return ids;
+    const num = parseInt(vol, 10);
+    return [4, isNaN(num) ? 0 : num];
 }
 
-function renderBooks() {
-    if (allBooks.length === 0) {
-        bookGrid.innerHTML = '<p class="empty-state">ISBNで書籍を登録してください</p>';
-        return;
-    }
+function sortBookList(books) {
+    return [...books].sort((a, b) => {
+        const snA = a.series_number != null ? a.series_number : Infinity;
+        const snB = b.series_number != null ? b.series_number : Infinity;
 
+        if (snA !== Infinity || snB !== Infinity) {
+            if (snA !== snB) return snA - snB;
+            const va = parseVolumeSortKey(a.volume);
+            const vb = parseVolumeSortKey(b.volume);
+            if (va[0] !== vb[0] || va[1] !== vb[1]) return va[0] - vb[0] || va[1] - vb[1];
+            return b.id - a.id;
+        }
+
+        let cmp = 0;
+        if (currentSort === "title") {
+            cmp = a.title.localeCompare(b.title, "ja");
+        } else if (currentSort === "publish_date") {
+            const da = a.publish_date || "";
+            const db = b.publish_date || "";
+            cmp = db.localeCompare(da);
+        } else {
+            cmp = b.id - a.id;
+        }
+        if (cmp !== 0) return cmp;
+        const va = parseVolumeSortKey(a.volume);
+        const vb = parseVolumeSortKey(b.volume);
+        if (va[0] !== vb[0] || va[1] !== vb[1]) return va[0] - vb[0] || va[1] - vb[1];
+        return b.id - a.id;
+    });
+}
+
+function getMaxId(books) {
+    return books.length > 0 ? Math.max(...books.map((b) => b.id)) : 0;
+}
+
+function getLatestDate(books) {
+    const dates = books.map((b) => b.publish_date || "").filter((d) => d);
+    if (dates.length === 0) return "";
+    return [...dates].sort().reverse()[0];
+}
+
+function renderBookCard(book) {
+    return `
+    <div class="book-card" onclick="showDetail(${book.id})">
+        ${
+            book.cover_url
+                ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeHtml(book.title)}" loading="lazy">`
+                : '<div class="book-cover-placeholder">No Image</div>'
+        }
+        <div class="book-info">
+            <div class="book-title">${escapeHtml(book.title)}</div>
+            ${book.authors && book.authors.length > 0 ? `<div class="book-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
+            ${book.publisher ? `<div class="book-meta">${escapeHtml(book.publisher)}</div>` : ""}
+        </div>
+    </div>`;
+}
+
+function renderSeriesCard(series, books) {
+    const coversHtml = books.slice(0, 8).map((b) =>
+        b.cover_url
+            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+            : '<div class="book-cover-placeholder"></div>'
+    ).join("");
+
+    return `
+    <div class="series-card" onclick="showSeriesModal(${series.series_id})">
+        <div class="series-covers">${coversHtml}</div>
+        <div class="series-info">
+            <div class="series-label">シリーズ</div>
+            <div class="series-title">${escapeHtml(series.series_name)}</div>
+            <div class="series-count">${books.length}冊</div>
+        </div>
+    </div>`;
+}
+
+function renderGrandSeriesCard(gs, books) {
+    const coversHtml = books.slice(0, 12).map((b) =>
+        b.cover_url
+            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+            : '<div class="book-cover-placeholder"></div>'
+    ).join("");
+
+    const seriesCount = gs.items.filter((it) => it.item_type === "series").length;
+    const directBookCount = gs.items.filter((it) => it.item_type === "book").length;
+    const subInfo = [];
+    if (seriesCount > 0) subInfo.push(`${seriesCount}シリーズ`);
+    if (directBookCount > 0) subInfo.push(`${directBookCount}冊`);
+    const subInfoStr = subInfo.join(" + ");
+
+    return `
+    <div class="grand-series-card" onclick="showGrandSeriesModal(${gs.id})">
+        <div class="series-covers grand-series-covers">${coversHtml}</div>
+        <div class="series-info">
+            <div class="series-label grand-label">大シリーズ</div>
+            <div class="series-title">${escapeHtml(gs.name)}</div>
+            <div class="series-count">${books.length}冊${subInfoStr ? ` (${subInfoStr})` : ""}</div>
+        </div>
+    </div>`;
+}
+
+function buildGridHtml(books) {
     const seriesIdsInGrand = new Set();
     const bookIdsInGrand = new Set();
     for (const gs of allGrandSeries) {
@@ -49,79 +192,128 @@ function renderBooks() {
         }
     }
 
-    const { groups, singles } = groupByUserSeries(allBooks);
-    let html = "";
+    const items = [];
 
     for (const gs of allGrandSeries) {
         const gsBookIds = getGrandSeriesBookIds(gs);
-        const gsBooks = allBooks.filter((b) => gsBookIds.has(b.id));
+        const gsBooks = books.filter((b) => gsBookIds.has(b.id));
         if (gsBooks.length === 0) continue;
-
-        gsBooks.sort((a, b) => a.id - b.id);
-        const coversHtml = gsBooks.slice(0, 12).map((b) =>
-            b.cover_url
-                ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                : '<div class="book-cover-placeholder"></div>'
-        ).join("");
-
-        const seriesCount = gs.items.filter((it) => it.item_type === "series").length;
-        const directBookCount = gs.items.filter((it) => it.item_type === "book").length;
-        const subInfo = [];
-        if (seriesCount > 0) subInfo.push(`${seriesCount}シリーズ`);
-        if (directBookCount > 0) subInfo.push(`${directBookCount}冊`);
-        const subInfoStr = subInfo.join(" + ");
-
-        html += `
-        <div class="grand-series-card" onclick="showGrandSeriesModal(${gs.id})">
-            <div class="series-covers grand-series-covers">${coversHtml}</div>
-            <div class="series-info">
-                <div class="series-label grand-label">大シリーズ</div>
-                <div class="series-title">${escapeHtml(gs.name)}</div>
-                <div class="series-count">${gsBooks.length}冊${subInfoStr ? ` (${subInfoStr})` : ""}</div>
-            </div>
-        </div>`;
+        items.push({ type: "grand_series", gs, books: gsBooks });
     }
 
-    const seriesEntries = Object.entries(groups).sort((a, b) =>
-        b[1].books[0].id - a[1].books[0].id
-    );
+    const { groups, singles } = groupByUserSeries(books);
 
-    for (const [sid, series] of seriesEntries) {
+    for (const [sid, series] of Object.entries(groups)) {
         if (seriesIdsInGrand.has(parseInt(sid, 10))) continue;
-        series.books.sort((a, b) => a.id - b.id);
-        const coversHtml = series.books.slice(0, 8).map((b) =>
-            b.cover_url
-                ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
-                : '<div class="book-cover-placeholder"></div>'
-        ).join("");
-
-        html += `
-        <div class="series-card" onclick="showSeriesModal(${series.series_id})">
-            <div class="series-covers">${coversHtml}</div>
-            <div class="series-info">
-                <div class="series-label">シリーズ</div>
-                <div class="series-title">${escapeHtml(series.series_name)}</div>
-                <div class="series-count">${series.books.length}冊</div>
-            </div>
-        </div>`;
+        items.push({ type: "series", series, books: series.books });
     }
 
     for (const book of singles) {
         if (bookIdsInGrand.has(book.id)) continue;
-        html += `
-        <div class="book-card" onclick="showDetail(${book.id})">
-            ${
-                book.cover_url
-                    ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeHtml(book.title)}" loading="lazy">`
-                    : '<div class="book-cover-placeholder">No Image</div>'
-            }
-            <div class="book-info">
-                <div class="book-title">${escapeHtml(book.title)}</div>
-                ${book.authors && book.authors.length > 0 ? `<div class="book-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
-                ${book.publisher ? `<div class="book-meta">${escapeHtml(book.publisher)}</div>` : ""}
-            </div>
-        </div>`;
+        items.push({ type: "book", book, books: [book] });
     }
 
-    bookGrid.innerHTML = html;
+    for (const item of items) {
+        item._sorted = sortBookList(item.books);
+    }
+
+    function getItemVolumeKey(item) {
+        if (item._sorted.length > 0) return parseVolumeSortKey(item._sorted[0].volume);
+        return [99, 0];
+    }
+
+    items.sort((a, b) => {
+        if (currentSort === "title") {
+            const nameA = a.type === "grand_series" ? a.gs.name : a.type === "series" ? a.series.series_name : a.book.title;
+            const nameB = b.type === "grand_series" ? b.gs.name : b.type === "series" ? b.series.series_name : b.book.title;
+            const cmp = nameA.localeCompare(nameB, "ja");
+            if (cmp !== 0) return cmp;
+            const vkA = getItemVolumeKey(a);
+            const vkB = getItemVolumeKey(b);
+            if (vkA[0] !== vkB[0] || vkA[1] !== vkB[1]) return vkA[0] - vkB[0] || vkA[1] - vkB[1];
+        } else if (currentSort === "publish_date") {
+            const da = getLatestDate(a.books);
+            const db = getLatestDate(b.books);
+            if (da !== db) return db.localeCompare(da);
+        }
+        return getMaxId(b.books) - getMaxId(a.books);
+    });
+
+    let html = "";
+    for (const item of items) {
+        const sortedBooks = item._sorted;
+        if (item.type === "grand_series") {
+            html += renderGrandSeriesCard(item.gs, sortedBooks);
+        } else if (item.type === "series") {
+            html += renderSeriesCard(item.series, sortedBooks);
+        } else {
+            html += renderBookCard(item.book);
+        }
+    }
+    return html;
 }
+
+function renderBooksByAuthor() {
+    const authorMap = new Map();
+
+    for (const book of allBooks) {
+        const primary = getPrimaryAuthor(book);
+        if (!primary) {
+            if (!authorMap.has("__none__")) authorMap.set("__none__", { author: null, books: [] });
+            authorMap.get("__none__").books.push(book);
+            continue;
+        }
+        if (!authorMap.has(primary.id)) {
+            authorMap.set(primary.id, { author: primary, books: [] });
+        }
+        authorMap.get(primary.id).books.push(book);
+    }
+
+    const entries = [...authorMap.entries()].sort((a, b) => {
+        if (a[0] === "__none__") return 1;
+        if (b[0] === "__none__") return -1;
+        return a[1].author.name.localeCompare(b[1].author.name, "ja");
+    });
+
+    let html = "";
+
+    for (const [, { author, books }] of entries) {
+        const headerHtml = author
+            ? `<a href="/authors/?edit=${author.id}" class="author-group-header">
+                    <span class="author-group-name">${escapeHtml(author.name)}</span>
+                    <span class="author-group-count">${books.length}冊</span>
+                </a>`
+            : `<div class="author-group-header author-group-header--none">
+                    <span class="author-group-name">作者未設定</span>
+                    <span class="author-group-count">${books.length}冊</span>
+                </div>`;
+
+        html += `<div class="author-group">${headerHtml}<div class="author-group-grid">`;
+        html += buildGridHtml(books);
+        html += `</div></div>`;
+    }
+
+    return html;
+}
+
+function renderBooks() {
+    if (allBooks.length === 0) {
+        bookGrid.innerHTML = '<p class="empty-state">ISBNで書籍を登録してください</p>';
+        return;
+    }
+
+    if (currentView === "author") {
+        bookGrid.className = "book-grid-author";
+        bookGrid.innerHTML = renderBooksByAuthor();
+    } else {
+        bookGrid.className = "";
+        bookGrid.id = "book-grid";
+        bookGrid.innerHTML = buildGridHtml(allBooks);
+    }
+}
+
+(function initSortButtons() {
+    document.querySelectorAll("#sort-buttons .width-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.sort === currentSort);
+    });
+})();

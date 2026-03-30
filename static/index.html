@@ -21,12 +21,28 @@
         </nav>
 
         <div class="settings-bar">
-            <span class="settings-label">表示幅</span>
-            <div class="settings-buttons" id="width-buttons"></div>
+            <div class="settings-group">
+                <span class="settings-label">表示幅</span>
+                <div class="settings-buttons" id="width-buttons"></div>
+            </div>
+            <div class="settings-group">
+                <span class="settings-label">並び順</span>
+                <div class="settings-buttons" id="sort-buttons">
+                    <button class="width-btn" data-sort="id">登録順</button>
+                    <button class="width-btn" data-sort="title">タイトル順</button>
+                    <button class="width-btn" data-sort="publish_date">発売日順</button>
+                </div>
+            </div>
         </div>
 
         <section class="booklist">
-            <h2>登録済み書籍 <span id="book-count"></span></h2>
+            <div class="booklist-header">
+                <h2>登録済み書籍 <span id="book-count"></span></h2>
+                <div class="view-tabs">
+                    <button class="view-tab active" data-view="author">作者別</button>
+                    <button class="view-tab" data-view="grid">一覧</button>
+                </div>
+            </div>
             <div id="book-grid"></div>
         </section>
 
