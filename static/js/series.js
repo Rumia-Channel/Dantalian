@@ -91,7 +91,7 @@ async function startRenameSeries(id, oldName) {
 async function deleteSeries(id) {
     const s = allSeries.find((x) => x.id === id);
     if (!s) return;
-    if (!confirm(`シリーズ「${s.name}」を削除しますか？\n所属している本はシリーズから外れます。`)) return;
+    if (!await showConfirm({ message: `シリーズ「${s.name}」を削除しますか？\n所属している本はシリーズから外れます。`, okLabel: "削除" })) return;
 
     try {
         const res = await fetch(`/api/series/${id}`, { method: "DELETE" });
@@ -210,7 +210,7 @@ async function startRenameGrandSeries(id, oldName) {
 async function deleteGrandSeries(id) {
     const gs = allGrandSeries.find((x) => x.id === id);
     if (!gs) return;
-    if (!confirm(`大シリーズ「${gs.name}」を削除しますか？`)) return;
+    if (!await showConfirm({ message: `大シリーズ「${gs.name}」を削除しますか？`, okLabel: "削除" })) return;
 
     try {
         const res = await fetch(`/api/grand-series/${id}`, { method: "DELETE" });

@@ -196,12 +196,16 @@ async function assignGrandSeries(bookId, value) {
 }
 
 async function deleteBook(id) {
-    if (!confirm("この書籍を削除しますか？")) return;
+    const ok = await showConfirm({ message: "この書籍を削除しますか？", okLabel: "削除" });
+    if (!ok) return;
     try {
         const res = await fetch(`/api/books/${id}`, { method: "DELETE" });
         if (res.ok) {
             detailOverlay.classList.add("hidden");
-            loadBooks();
+            await loadSeries();
+            await loadGrandSeries();
+            await loadBooks();
+            renderBooks();
         }
     } catch {}
 }

@@ -202,3 +202,40 @@ select:focus {
     border-color: var(--color-text-secondary);
     color: var(--color-text-primary);
 }
+
+/* --- Confirm dialog --- */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+
+.confirm-overlay.hidden {
+    display: none;
+}
+
+.confirm-box {
+    background: var(--color-bg-surface);
+    border-radius: 0.75rem;
+    padding: 1.5rem 2rem;
+    max-width: 24rem;
+    width: 90%;
+}
+
+.confirm-message {
+    font-size: 1rem;
+    color: var(--color-text-primary);
+    margin-bottom: 1.25rem;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
