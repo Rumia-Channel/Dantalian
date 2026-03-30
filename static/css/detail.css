@@ -370,6 +370,31 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.edit-author-add {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.edit-author-add select {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+.edit-author-order {
+    width: 3.5rem;
+    flex-shrink: 0;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.8rem;
+    text-align: center;
+    border-radius: 0.25rem;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-input);
+    color: var(--color-text-primary);
 }
 
 .edit-author-item {

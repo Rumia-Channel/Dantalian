@@ -1,5 +1,5 @@
 use crate::AppState;
-use crate::db::BookWithAuthors;
+use crate::db::{BookAuthor, BookWithAuthors};
 use crate::external;
 use axum::{
     Json,
@@ -97,7 +97,13 @@ pub async fn register(
             )
         })?;
         if let Some(author) = full {
-            authors.push(author);
+            authors.push(BookAuthor {
+                id: author.id,
+                ndl_id: author.ndl_id,
+                name: author.name,
+                transcription: author.transcription,
+                sort_order: authors.len() as i64,
+            });
         }
     }
 
@@ -171,6 +177,7 @@ pub async fn get_author(
 
 #[derive(Deserialize)]
 pub struct UpdateBookRequest {
+    pub isbn: String,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -196,6 +203,13 @@ pub async fn update_book(
     Path(id): Path<i64>,
     Json(req): Json<UpdateBookRequest>,
 ) -> Result<StatusCode, ApiError> {
+    let isbn = req.isbn.trim().replace(['-', ' '], "");
+    if isbn.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "ISBN is required"})),
+        ));
+    }
     if req.title.trim().is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -218,6 +232,7 @@ pub async fn update_book(
         .db
         .update_book(
             id,
+            &isbn,
             req.title.trim(),
             req.publisher.as_deref(),
             req.publish_date.as_deref(),
@@ -312,6 +327,34 @@ pub async fn create_author(
             )
         })?;
     Ok((StatusCode::CREATED, Json(author)))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAuthorOrderRequest {
+    pub sort_order: i64,
+}
+
+pub async fn update_book_author_order(
+    State(state): State<AppState>,
+    Path((book_id, author_id)): Path<(i64, i64)>,
+    Json(req): Json<UpdateAuthorOrderRequest>,
+) -> Result<StatusCode, StatusCode> {
+    state
+        .db
+        .update_book_author_order(book_id, author_id, req.sort_order)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_book_author(
+    State(state): State<AppState>,
+    Path((book_id, author_id)): Path<(i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    state
+        .db
+        .add_book_author(book_id, author_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_book_author(

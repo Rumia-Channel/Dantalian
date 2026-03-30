@@ -3,10 +3,15 @@ const editContent = document.getElementById("edit-content");
 const params = new URLSearchParams(window.location.search);
 const bookId = params.get("book");
 
+let allAuthors = [];
+
 (async () => {
     await loadBooks();
     await loadSeries();
     await loadGrandSeries();
+
+    const res = await fetch("/api/authors");
+    if (res.ok) allAuthors = await res.json();
 
     if (bookId) {
         renderBookEdit(parseInt(bookId, 10));
@@ -31,6 +36,8 @@ function renderBookEdit(id) {
 
     const authorList = book.authors || [];
     const currentGrandSeries = findBookGrandSeries(book.id);
+    const linkedAuthorIds = new Set(authorList.map((a) => a.id));
+    const availableAuthors = allAuthors.filter((a) => !linkedAuthorIds.has(a.id));
 
     const seriesOptions = allSeries
         .map((s) => `<option value="${s.id}" ${s.id === book.series_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
@@ -38,6 +45,10 @@ function renderBookEdit(id) {
 
     const grandSeriesOptions = allGrandSeries
         .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
+        .join("");
+
+    const authorAddOptions = availableAuthors
+        .map((a) => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)
         .join("");
 
     editContent.innerHTML = `
@@ -50,14 +61,15 @@ function renderBookEdit(id) {
             </div>
             <div class="edit-header-info">
                 <div class="edit-isbn">${escapeHtml(book.isbn)}</div>
-                <div class="edit-authors">
-                    ${authorList.map((a) => `
-                        <span class="edit-author-tag" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>
-                    `).join("")}
-                </div>
             </div>
         </div>
         <form class="edit-form" onsubmit="saveBook(event, ${book.id})">
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>ISBN <span class="edit-required">*</span></label>
+                    <input type="text" name="isbn" value="${escapeAttr(book.isbn)}" required>
+                </div>
+            </div>
             <div class="edit-field">
                 <label>タイトル <span class="edit-required">*</span></label>
                 <input type="text" name="title" value="${escapeAttr(book.title)}" required>
@@ -127,6 +139,34 @@ function renderBookEdit(id) {
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
             </div>
             <div class="edit-section">
+                <h3 class="edit-section-title">作者</h3>
+                <div class="edit-author-list" id="edit-author-list">
+                    ${authorList.map((a) => `
+                        <div class="edit-author-item" data-author-id="${a.id}">
+                            <input type="number" class="edit-author-order" value="${a.sort_order != null ? a.sort_order : 0}" min="0" step="1" onchange="updateAuthorOrder(${book.id}, ${a.id}, this.value)">
+                            <div class="edit-author-info">
+                                <div class="edit-author-name">${escapeHtml(a.name)}</div>
+                                <div class="edit-author-meta">
+                                    ${a.transcription ? `<span class="edit-author-yomi">${escapeHtml(a.transcription)}</span>` : ""}
+                                    ${a.ndl_id ? `<span class="edit-author-ndl">NDL: ${escapeHtml(a.ndl_id)}</span>` : ""}
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeAuthorFromBook(${book.id}, ${a.id})">削除</button>
+                        </div>
+                    `).join("")}
+                    ${authorList.length === 0 ? '<p class="series-empty">作者がいません</p>' : ""}
+                </div>
+                ${availableAuthors.length > 0 ? `
+                    <div class="edit-author-add">
+                        <select id="add-author-select">
+                            <option value="">作者を追加...</option>
+                            ${authorAddOptions}
+                        </select>
+                        <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToBook(${book.id})">追加</button>
+                    </div>
+                ` : ""}
+            </div>
+            <div class="edit-section">
                 <h3 class="edit-section-title">シリーズ設定</h3>
                 <div class="edit-row">
                     <div class="edit-field">
@@ -155,6 +195,49 @@ function renderBookEdit(id) {
             </div>
         </form>
     `;
+}
+
+async function updateAuthorOrder(bookId, authorId, value) {
+    const sort_order = parseInt(value, 10);
+    if (isNaN(sort_order)) return;
+    try {
+        await fetch(`/api/books/${bookId}/authors/${authorId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sort_order }),
+        });
+    } catch {}
+}
+
+async function addAuthorToBook(bookId) {
+    const sel = document.getElementById("add-author-select");
+    const authorId = parseInt(sel.value, 10);
+    if (!authorId) return;
+
+    try {
+        const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "POST" });
+        if (res.ok) {
+            await loadBooks();
+            const res2 = await fetch("/api/authors");
+            if (res2.ok) allAuthors = await res2.json();
+            renderBookEdit(bookId);
+        }
+    } catch {}
+}
+
+async function removeAuthorFromBook(bookId, authorId) {
+    const ok = await showConfirm({ message: "この作者を削除しますか？", okLabel: "削除" });
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "DELETE" });
+        if (res.ok) {
+            await loadBooks();
+            const res2 = await fetch("/api/authors");
+            if (res2.ok) allAuthors = await res2.json();
+            renderBookEdit(bookId);
+        }
+    } catch {}
 }
 
 async function saveBook(e, bookId) {

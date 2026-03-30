@@ -11,7 +11,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/books/{id}", delete(books::delete))
         .route("/books/{id}", put(books::update_book))
         .route("/books/{id}/series", put(books::set_series))
-        .route("/books/{id}/authors/{author_id}", delete(books::remove_book_author))
+        .route("/books/{id}/authors/{author_id}", post(books::add_book_author).delete(books::remove_book_author).put(books::update_book_author_order))
         .route("/authors", get(books::list_authors))
         .route("/authors", post(books::create_author))
         .route("/authors/{id}", get(books::get_author))

@@ -42,10 +42,19 @@ pub struct Book {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BookAuthor {
+    pub id: i64,
+    pub ndl_id: Option<String>,
+    pub name: String,
+    pub transcription: Option<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BookWithAuthors {
     #[serde(flatten)]
     pub book: Book,
-    pub authors: Vec<Author>,
+    pub authors: Vec<BookAuthor>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -262,17 +271,39 @@ impl Db {
         Ok(())
     }
 
-    pub fn get_book_authors(&self, book_id: i64) -> Result<Vec<Author>, rusqlite::Error> {
+    pub fn get_book_authors(&self, book_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT a.id, a.ndl_id, a.name, a.transcription
+            "SELECT a.id, a.ndl_id, a.name, a.transcription, ba.sort_order
              FROM authors a
              JOIN book_authors ba ON a.id = ba.author_id
              WHERE ba.book_id = ?1
              ORDER BY ba.sort_order, ba.author_id",
         )?;
-        let rows = stmt.query_map(params![book_id], Self::row_to_author)?;
+        let rows = stmt.query_map(params![book_id], |row| {
+            Ok(BookAuthor {
+                id: row.get(0)?,
+                ndl_id: row.get(1)?,
+                name: row.get(2)?,
+                transcription: row.get(3)?,
+                sort_order: row.get(4)?,
+            })
+        })?;
         rows.collect()
+    }
+
+    pub fn update_book_author_order(
+        &self,
+        book_id: i64,
+        author_id: i64,
+        sort_order: i64,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE book_authors SET sort_order = ?1 WHERE book_id = ?2 AND author_id = ?3",
+            params![sort_order, book_id, author_id],
+        )?;
+        Ok(affected > 0)
     }
 
     pub fn get_author_by_id(&self, id: i64) -> Result<Option<Author>, rusqlite::Error> {
@@ -340,6 +371,7 @@ impl Db {
     pub fn update_book(
         &self,
         id: i64,
+        isbn: &str,
         title: &str,
         publisher: Option<&str>,
         publish_date: Option<&str>,
@@ -360,14 +392,14 @@ impl Db {
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute(
-            "UPDATE books SET title=?1, publisher=?2, publish_date=?3, description=?4,
-             title_transcription=?5, series_title=?6, series_title_transcription=?7,
-             alternative=?8, alternative_transcription=?9, volume=?10, volume_transcription=?11,
-             price=?12, extent=?13, jpno=?14, ndl_url=?15,
-             series_id=?16, series_number=?17
-             WHERE id=?18",
+            "UPDATE books SET isbn=?1, title=?2, publisher=?3, publish_date=?4, description=?5,
+             title_transcription=?6, series_title=?7, series_title_transcription=?8,
+             alternative=?9, alternative_transcription=?10, volume=?11, volume_transcription=?12,
+             price=?13, extent=?14, jpno=?15, ndl_url=?16,
+             series_id=?17, series_number=?18
+             WHERE id=?19",
             params![
-                title, publisher, publish_date, description,
+                isbn, title, publisher, publish_date, description,
                 title_transcription, series_title, series_title_transcription,
                 alternative, alternative_transcription, volume, volume_transcription,
                 price, extent, jpno, ndl_url,
