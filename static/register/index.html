@@ -15,7 +15,7 @@
             <a href="/">書籍一覧</a>
             <a href="/register/" class="active">登録</a>
             <a href="/manage/">管理</a>
-            <a href="/authors/" class="active">著者</a>
+            <a href="/authors/">著者</a>
         </nav>
 
         <div class="settings-bar">
@@ -23,13 +23,34 @@
             <div class="settings-buttons" id="width-buttons"></div>
         </div>
 
-        <section class="register">
+        <div class="register-tabs">
+            <button class="register-tab active" data-tab="single">単体登録</button>
+            <button class="register-tab" data-tab="bulk">一括登録</button>
+        </div>
+
+        <section class="register" id="single-panel">
             <h2>ISBNで書籍登録</h2>
             <form id="register-form">
                 <input type="text" id="isbn-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+" required>
                 <button type="submit" id="register-btn" class="btn btn-primary">登録</button>
             </form>
             <p id="register-status"></p>
+        </section>
+
+        <section class="register" id="bulk-panel" hidden>
+            <h2>ISBN一括登録</h2>
+            <p class="bulk-hint">バーコードリーダーでISBNを読み取ると自動的にキューに追加されます。</p>
+            <form id="bulk-form" class="bulk-form">
+                <input type="text" id="bulk-isbn-input" placeholder="ISBNを読み取る..." autocomplete="off">
+                <button type="button" id="bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
+            </form>
+            <div class="bulk-controls">
+                <button type="button" id="bulk-start-btn" class="btn btn-primary btn-sm" disabled>開始</button>
+                <button type="button" id="bulk-stop-btn" class="btn btn-ghost btn-sm" hidden>停止</button>
+                <span class="bulk-progress" id="bulk-progress"></span>
+            </div>
+            <ul class="bulk-queue" id="bulk-queue"></ul>
+            <div class="bulk-empty" id="bulk-empty">キューは空です</div>
         </section>
     </div>
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
