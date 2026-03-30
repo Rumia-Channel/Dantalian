@@ -4,6 +4,7 @@ const params = new URLSearchParams(window.location.search);
 const bookId = params.get("book");
 
 let allAuthors = [];
+let editAuthorSelect = null;
 
 (async () => {
     await loadBooks();
@@ -39,31 +40,30 @@ function renderBookEdit(id) {
     const linkedAuthorIds = new Set(authorList.map((a) => a.id));
     const availableAuthors = allAuthors.filter((a) => !linkedAuthorIds.has(a.id));
 
-    const seriesOptions = allSeries
-        .map((s) => `<option value="${s.id}" ${s.id === book.series_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
-        .join("");
-
-    const grandSeriesOptions = allGrandSeries
-        .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
-        .join("");
-
-    const authorAddOptions = availableAuthors
-        .map((a) => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)
-        .join("");
-
     editContent.innerHTML = `
         <h2>書籍情報編集</h2>
         <div class="edit-header">
-            <div class="edit-cover">
-                ${book.cover_url
-                    ? `<img class="book-cover" src="/images/${book.cover_url}" alt="">`
-                    : '<div class="book-cover-placeholder">No Image</div>'}
+            <div class="edit-cover-wrap">
+                <div class="edit-cover" id="edit-cover-display">
+                    ${book.cover_url
+                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="">`
+                        : '<div class="book-cover-placeholder">No Image</div>'}
+                </div>
+                <div class="edit-cover-actions">
+                    <label class="btn btn-xs btn-outline-success edit-cover-upload-label">
+                        変更
+                        <input type="file" id="edit-cover-input" accept="image/*" hidden>
+                    </label>
+                    ${book.cover_url ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteCover(${book.id})">削除</button>` : ""}
+                </div>
             </div>
             <div class="edit-header-info">
                 <div class="edit-isbn">${escapeHtml(book.isbn)}</div>
             </div>
         </div>
-        <form class="edit-form" onsubmit="saveBook(event, ${book.id})">
+        <form class="edit-form" id="edit-form">
+            <input type="hidden" name="series_id" value="${book.series_id != null ? book.series_id : ''}">
+            <input type="hidden" name="grand_series_id" value="${currentGrandSeries ? currentGrandSeries.id : ''}">
             <div class="edit-row">
                 <div class="edit-field">
                     <label>ISBN <span class="edit-required">*</span></label>
@@ -156,25 +156,17 @@ function renderBookEdit(id) {
                     `).join("")}
                     ${authorList.length === 0 ? '<p class="series-empty">作者がいません</p>' : ""}
                 </div>
-                ${availableAuthors.length > 0 ? `
-                    <div class="edit-author-add">
-                        <select id="add-author-select">
-                            <option value="">作者を追加...</option>
-                            ${authorAddOptions}
-                        </select>
-                        <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToBook(${book.id})">追加</button>
-                    </div>
-                ` : ""}
+                <div class="edit-author-add" id="edit-author-add-wrap">
+                    <div id="edit-author-select-container"></div>
+                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToBook(${book.id})">追加</button>
+                </div>
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">シリーズ設定</h3>
                 <div class="edit-row">
                     <div class="edit-field">
                         <label>シリーズ</label>
-                        <select name="series_id">
-                            <option value="">なし</option>
-                            ${seriesOptions}
-                        </select>
+                        <div id="edit-series-select-container"></div>
                     </div>
                     <div class="edit-field">
                         <label>シリーズ巻数</label>
@@ -183,10 +175,7 @@ function renderBookEdit(id) {
                 </div>
                 <div class="edit-field">
                     <label>大シリーズ</label>
-                    <select name="grand_series_id">
-                        <option value="">なし</option>
-                        ${grandSeriesOptions}
-                    </select>
+                    <div id="edit-grand-series-select-container"></div>
                 </div>
             </div>
             <div class="edit-actions">
@@ -195,6 +184,38 @@ function renderBookEdit(id) {
             </div>
         </form>
     `;
+
+    const form = document.getElementById("edit-form");
+
+    const seriesOpts = allSeries.map((s) => ({ value: s.id, label: s.name }));
+    createSearchableSelect(document.getElementById("edit-series-select-container"), {
+        options: seriesOpts,
+        value: book.series_id,
+        placeholder: "なし",
+        onChange: (val) => {
+            form.querySelector("input[name=series_id]").value = val != null ? val : "";
+        },
+    });
+
+    const gsOpts = allGrandSeries.map((gs) => ({ value: gs.id, label: gs.name }));
+    createSearchableSelect(document.getElementById("edit-grand-series-select-container"), {
+        options: gsOpts,
+        value: currentGrandSeries ? currentGrandSeries.id : null,
+        placeholder: "なし",
+        onChange: (val) => {
+            form.querySelector("input[name=grand_series_id]").value = val != null ? val : "";
+        },
+    });
+
+    const authorOpts = availableAuthors.map((a) => ({ value: a.id, label: a.name }));
+    editAuthorSelect = createSearchableSelect(document.getElementById("edit-author-select-container"), {
+        options: authorOpts,
+        value: null,
+        placeholder: "作者を追加...",
+        clearable: false,
+    });
+
+    form.addEventListener("submit", (e) => saveBook(e, book.id));
 }
 
 async function updateAuthorOrder(bookId, authorId, value) {
@@ -210,8 +231,8 @@ async function updateAuthorOrder(bookId, authorId, value) {
 }
 
 async function addAuthorToBook(bookId) {
-    const sel = document.getElementById("add-author-select");
-    const authorId = parseInt(sel.value, 10);
+    if (!editAuthorSelect) return;
+    const authorId = editAuthorSelect.getValue();
     if (!authorId) return;
 
     try {
@@ -242,6 +263,14 @@ async function removeAuthorFromBook(bookId, authorId) {
 
 async function saveBook(e, bookId) {
     e.preventDefault();
+
+    if (editAuthorSelect) {
+        const authorId = editAuthorSelect.getValue();
+        if (authorId) {
+            await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "POST" });
+        }
+    }
+
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
@@ -259,6 +288,42 @@ async function saveBook(e, bookId) {
         });
         if (res.ok) {
             window.location.href = "/";
+        }
+    } catch {}
+}
+
+document.getElementById("edit-content").addEventListener("change", async (e) => {
+    if (e.target.id !== "edit-cover-input") return;
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const bid = parseInt(new URLSearchParams(window.location.search).get("book"), 10);
+    if (!bid) return;
+
+    const fd = new FormData();
+    fd.append("cover", file);
+
+    try {
+        const res = await fetch(`/api/books/${bid}/cover`, {
+            method: "POST",
+            body: fd,
+        });
+        if (res.ok) {
+            await loadBooks();
+            renderBookEdit(bid);
+        }
+    } catch {}
+});
+
+async function deleteCover(bookId) {
+    const ok = await showConfirm({ message: "表紙画像を削除しますか？", okLabel: "削除" });
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/books/${bookId}/cover`, { method: "DELETE" });
+        if (res.ok) {
+            await loadBooks();
+            renderBookEdit(bookId);
         }
     } catch {}
 }

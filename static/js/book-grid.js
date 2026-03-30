@@ -68,8 +68,10 @@ function parseVolumeSortKey(vol) {
     if (!vol) return [4, 0];
     const prefixes = [
         ["上", 1],
+        ["前", 1],
         ["中", 2],
         ["下", 3],
+        ["後", 3],
     ];
     for (const [p, base] of prefixes) {
         if (vol.startsWith(p)) {

@@ -1,12 +1,15 @@
 use crate::AppState;
-use crate::db::{BookAuthor, BookWithAuthors};
+use crate::db::{BookAuthor, BookWithAuthors, NewBook};
 use crate::external;
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
+use axum_extra::extract::Multipart;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -112,6 +115,135 @@ pub async fn register(
         Json(RegisterResponse {
             book: BookWithAuthors { book, authors },
             source,
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct ManualRegisterRequest {
+    pub isbn: String,
+    pub title: String,
+    pub publisher: Option<String>,
+    pub publish_date: Option<String>,
+    pub description: Option<String>,
+    pub title_transcription: Option<String>,
+    pub series_title: Option<String>,
+    pub series_title_transcription: Option<String>,
+    pub alternative: Option<String>,
+    pub alternative_transcription: Option<String>,
+    pub volume: Option<String>,
+    pub volume_transcription: Option<String>,
+    pub price: Option<String>,
+    pub extent: Option<String>,
+    pub jpno: Option<String>,
+    pub ndl_url: Option<String>,
+    pub series_id: Option<Option<i64>>,
+    pub series_number: Option<i64>,
+    pub grand_series_id: Option<Option<i64>>,
+    pub author_ids: Option<Vec<i64>>,
+}
+
+pub async fn manual_register(
+    State(state): State<AppState>,
+    Json(req): Json<ManualRegisterRequest>,
+) -> Result<(StatusCode, Json<RegisterResponse>), ApiError> {
+    let isbn = req.isbn.trim().replace(['-', ' '], "");
+    if isbn.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "ISBN is required"})),
+        ));
+    }
+    if req.title.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Title is required"})),
+        ));
+    }
+
+    if let Ok(Some(existing)) = state.db.find_by_isbn(&isbn) {
+        let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
+        return Ok((
+            StatusCode::OK,
+            Json(RegisterResponse {
+                book: BookWithAuthors { book: existing, authors },
+                source: "cache".to_string(),
+            }),
+        ));
+    }
+
+    let new_book = NewBook {
+        isbn,
+        title: req.title.trim().to_string(),
+        publisher: req.publisher.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        publish_date: req.publish_date.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        cover_url: None,
+        description: req.description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        title_transcription: req.title_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        series_title: req.series_title.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        series_title_transcription: req.series_title_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        alternative: req.alternative.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        alternative_transcription: req.alternative_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        volume: req.volume.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        volume_transcription: req.volume_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        price: req.price.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        extent: req.extent.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        jpno: req.jpno.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        ndl_url: req.ndl_url.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        authors: Vec::new(),
+    };
+
+    let mut book = state.db.insert_book(&new_book).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
+
+    let series_id = req.series_id.unwrap_or(None);
+    let series_number = req.series_number.filter(|&n| n > 0);
+    let grand_series_id = req.grand_series_id.unwrap_or(None);
+
+    if series_id.is_some() || series_number.is_some() {
+        let _ = state.db.set_book_series(book.id, series_id);
+    }
+    if series_number.is_some() {
+        let conn = state.db.0.lock().unwrap();
+        let _ = conn.execute(
+            "UPDATE books SET series_number = ?1 WHERE id = ?2",
+            rusqlite::params![series_number, book.id],
+        );
+    }
+    if let Some(gs_id) = grand_series_id {
+        if gs_id != 0 {
+            let _ = state.db.add_grand_series_item(gs_id, "book", book.id);
+        }
+    }
+    book.series_id = series_id;
+    book.series_number = series_number;
+
+    let mut authors = Vec::new();
+    if let Some(aids) = req.author_ids {
+        for (i, &aid) in aids.iter().enumerate() {
+            let _ = state.db.add_book_author(book.id, aid);
+            let _ = state.db.update_book_author_order(book.id, aid, i as i64);
+            if let Ok(Some(author)) = state.db.get_author_by_id(aid) {
+                authors.push(BookAuthor {
+                    id: author.id,
+                    ndl_id: author.ndl_id,
+                    name: author.name,
+                    transcription: author.transcription,
+                    sort_order: i as i64,
+                });
+            }
+        }
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(RegisterResponse {
+            book: BookWithAuthors { book, authors },
+            source: "manual".to_string(),
         }),
     ))
 }
@@ -365,5 +497,112 @@ pub async fn remove_book_author(
         .db
         .remove_book_author(book_id, author_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn upload_cover(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let book = state
+        .db
+        .find_by_id(id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Book not found"}))))?;
+
+    let mut data: Option<Vec<u8>> = None;
+    let mut content_type: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "cover" {
+            let ct = field.content_type().unwrap_or("image/jpeg").to_string();
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))))?
+                .to_vec();
+            if bytes.len() > 10 * 1024 * 1024 {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "File too large (max 10MB)"})),
+                ));
+            }
+            data = Some(bytes);
+            content_type = Some(ct);
+        }
+    }
+
+    let bytes = data.ok_or_else(|| (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({"error": "No file uploaded"})),
+    ))?;
+
+    let ct = content_type.unwrap_or("image/jpeg".to_string());
+    let ext = match ct.as_str() {
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "jpg",
+    };
+
+    let hash = Sha3_256::digest(&bytes);
+    let filename = format!(
+        "{}.{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash),
+        ext
+    );
+    let filepath = std::path::Path::new(state.images_dir.as_str()).join(&filename);
+
+    std::fs::write(&filepath, &bytes)
+        .map_err(|e| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ))?;
+
+    state
+        .db
+        .update_book_cover_url(id, Some(&filename))
+        .map_err(|e| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ))?;
+
+    if let Some(old) = &book.cover_url {
+        if old != &filename {
+            let old_path = std::path::Path::new(state.images_dir.as_str()).join(old);
+            let _ = std::fs::remove_file(old_path);
+        }
+    }
+
+    Ok(Json(serde_json::json!({"cover_url": filename})))
+}
+
+pub async fn delete_cover(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let book = state
+        .db
+        .find_by_id(id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Book not found"}))))?;
+
+    if let Some(old) = &book.cover_url {
+        let old_path = std::path::Path::new(state.images_dir.as_str()).join(old);
+        let _ = std::fs::remove_file(old_path);
+    }
+
+    state
+        .db
+        .update_book_cover_url(id, None)
+        .map_err(|e| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ))?;
+
     Ok(StatusCode::NO_CONTENT)
 }

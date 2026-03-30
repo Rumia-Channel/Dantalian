@@ -130,19 +130,49 @@ function renderGrandSeriesManager() {
                 </div>
             </div>
             <div class="gs-items">${itemsHtml}</div>
-            <div class="gs-add-item">
-                <select id="gs-add-type-${gs.id}">
-                    <option value="series">シリーズ</option>
-                    <option value="book">書籍</option>
-                </select>
-                <select id="gs-add-target-${gs.id}">
-                    ${allSeries.map((s) => `<option value="series:${s.id}">${escapeHtml(s.name)}</option>`).join("")}
-                    ${allBooks.map((b) => `<option value="book:${b.id}">${escapeHtml(b.title)}</option>`).join("")}
-                </select>
+            <div class="gs-add-item" id="gs-add-item-${gs.id}">
+                <div id="gs-add-type-${gs.id}"></div>
+                <div id="gs-add-target-${gs.id}"></div>
                 <button class="btn btn-xs btn-outline-success" onclick="addGrandSeriesItem(${gs.id})">追加</button>
             </div>
         </div>`;
     }).join("");
+
+    allGrandSeries.forEach((gs) => {
+        const typeContainer = document.getElementById(`gs-add-type-${gs.id}`);
+        const targetContainer = document.getElementById(`gs-add-target-${gs.id}`);
+        if (!typeContainer || !targetContainer) return;
+
+        createSearchableSelect(typeContainer, {
+            options: [
+                { value: "series", label: "シリーズ" },
+                { value: "book", label: "書籍" },
+            ],
+            value: "series",
+            placeholder: "種別",
+            clearable: false,
+            onChange: (val) => {
+                const type = val || "series";
+                const opts = type === "series"
+                    ? allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }))
+                    : allBooks.map((b) => ({ value: `book:${b.id}`, label: b.title }));
+                const existing = targetContainer._ssInstance;
+                if (existing) {
+                    existing.updateOptions(opts);
+                    existing.setValue(null);
+                }
+            },
+        });
+
+        const targetOpts = allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }));
+        const ss = createSearchableSelect(targetContainer, {
+            options: targetOpts,
+            value: null,
+            placeholder: "選択...",
+            clearable: false,
+        });
+        targetContainer._ssInstance = ss;
+    });
 }
 
 async function createGrandSeries() {
@@ -223,9 +253,11 @@ async function deleteGrandSeries(id) {
 }
 
 async function addGrandSeriesItem(gsId) {
-    const targetSel = document.getElementById(`gs-add-target-${gsId}`);
-    if (!targetSel) return;
-    const val = targetSel.value;
+    const targetContainer = document.getElementById(`gs-add-target-${gsId}`);
+    if (!targetContainer) return;
+    const ss = targetContainer._ssInstance;
+    if (!ss) return;
+    const val = String(ss.getValue());
     const colonIdx = val.indexOf(":");
     if (colonIdx < 0) return;
     const itemType = val.substring(0, colonIdx);

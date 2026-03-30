@@ -102,14 +102,6 @@ function showDetail(id) {
     if (book.extent) metaParts.push(`<div><span class="detail-meta-label">ページ数</span>${escapeHtml(book.extent)}</div>`);
     if (book.isbn) metaParts.push(`<div><span class="detail-meta-label">ISBN</span>${escapeHtml(book.isbn)}</div>`);
 
-    const seriesOptions = allSeries
-        .map((s) => `<option value="${s.id}" ${s.id === book.series_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
-        .join("");
-
-    const grandSeriesOptions = allGrandSeries
-        .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
-        .join("");
-
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
         : "";
@@ -141,23 +133,31 @@ function showDetail(id) {
         }
         <div class="detail-series-assign">
             <label>シリーズ</label>
-            <select onchange="assignSeries(${book.id}, this.value)">
-                <option value="">なし</option>
-                ${seriesOptions}
-            </select>
+            <div id="detail-series-select-container"></div>
         </div>
         <div class="detail-series-assign">
             <label>大シリーズ</label>
-            <select onchange="assignGrandSeries(${book.id}, this.value)">
-                <option value="">なし</option>
-                ${grandSeriesOptions}
-            </select>
+            <div id="detail-grand-series-select-container"></div>
         </div>
         <div class="detail-actions">
             <a href="/edit/?mode=book&book=${book.id}" class="btn btn-sm btn-outline-success">編集</a>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteBook(${book.id})">削除</button>
         </div>
     `;
+
+    createSearchableSelect(document.getElementById("detail-series-select-container"), {
+        options: allSeries.map((s) => ({ value: s.id, label: s.name })),
+        value: book.series_id,
+        placeholder: "なし",
+        onChange: (val) => assignSeries(book.id, val),
+    });
+
+    createSearchableSelect(document.getElementById("detail-grand-series-select-container"), {
+        options: allGrandSeries.map((gs) => ({ value: gs.id, label: gs.name })),
+        value: currentGrandSeries ? currentGrandSeries.id : null,
+        placeholder: "なし",
+        onChange: (val) => assignGrandSeries(book.id, val),
+    });
 
     detailOverlay.classList.remove("hidden");
 }
@@ -168,7 +168,7 @@ function closeDetail(e) {
 }
 
 async function assignSeries(bookId, value) {
-    const seriesId = value === "" ? null : parseInt(value, 10);
+    const seriesId = value != null ? value : null;
     try {
         await fetch(`/api/books/${bookId}/series`, {
             method: "PUT",
@@ -182,7 +182,7 @@ async function assignSeries(bookId, value) {
 }
 
 async function assignGrandSeries(bookId, value) {
-    const gsId = value === "" ? null : parseInt(value, 10);
+    const gsId = value != null ? value : null;
 
     const currentGs = findBookGrandSeries(bookId);
     if (currentGs) {

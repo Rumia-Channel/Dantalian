@@ -7,11 +7,13 @@ use axum::routing::{delete, get, post, put};
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
         .route("/books", post(books::register))
+        .route("/books/manual", post(books::manual_register))
         .route("/books", get(books::list))
         .route("/books/{id}", delete(books::delete))
         .route("/books/{id}", put(books::update_book))
         .route("/books/{id}/series", put(books::set_series))
         .route("/books/{id}/authors/{author_id}", post(books::add_book_author).delete(books::remove_book_author).put(books::update_book_author_order))
+        .route("/books/{id}/cover", post(books::upload_cover).delete(books::delete_cover))
         .route("/authors", get(books::list_authors))
         .route("/authors", post(books::create_author))
         .route("/authors/{id}", get(books::get_author))

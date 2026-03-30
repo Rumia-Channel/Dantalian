@@ -4,6 +4,22 @@ use reqwest::Client;
 use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
 
+fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
+    let digits: Vec<u8> = isbn13.chars().filter_map(|c| c.to_digit(10).map(|d| d as u8)).collect();
+    if digits.len() != 13 || (digits[0] != 9 || digits[1] != 7 || (digits[2] != 8 && digits[2] != 9)) {
+        return None;
+    }
+    let body = &digits[3..12];
+    let mut sum: u32 = 0;
+    for (i, &d) in body.iter().enumerate() {
+        sum += (d as u32) * ((i + 1) as u32);
+    }
+    let check = (11 - (sum % 11)) % 11;
+    let check_char = if check == 10 { 'X' } else { char::from_digit(check as u32, 10)? };
+    let s: String = body.iter().map(|d| char::from_digit(*d as u32, 10).unwrap()).collect();
+    Some(format!("{}{}", s, check_char))
+}
+
 fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
     client.get(url)
         .header("User-Agent", ua_generator::ua::spoof_ua())
@@ -30,21 +46,37 @@ struct NdlBookInfo {
 }
 
 pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<NewBook>, String> {
-    let ndl = lookup_ndl(client, isbn).await?;
+    let mut ndl = lookup_ndl(client, isbn).await?;
+    let used_isbn = if ndl.is_none() && isbn.len() == 13 {
+        if let Some(isbn10) = isbn13_to_isbn10(isbn) {
+            debug!(isbn13 = %isbn, isbn10 = %isbn10, "NDL not found with ISBN-13, retrying with ISBN-10");
+            ndl = lookup_ndl(client, &isbn10).await?;
+            if ndl.is_some() { Some(isbn10) } else { None }
+        } else { None }
+    } else { None };
+
     let Some(ndl) = ndl else {
         return Ok(None);
     };
 
+    let effective_isbn = used_isbn.as_deref().unwrap_or(isbn);
+
     let (cover_url, amazon_description) = {
         let delays: &[u64] = &[3, 5, 10];
-        let mut result = lookup_amazon_cover(client, isbn, images_dir).await.ok();
+        let mut result = lookup_amazon_cover(client, effective_isbn, images_dir).await.ok();
+        if result.as_ref().is_none_or(|(c, _)| c.is_none()) && effective_isbn.len() == 13 {
+            if let Some(isbn10) = isbn13_to_isbn10(effective_isbn) {
+                debug!(isbn13 = %effective_isbn, isbn10 = %isbn10, "Amazon cover not found with ISBN-13, retrying with ISBN-10");
+                result = lookup_amazon_cover(client, &isbn10, images_dir).await.ok();
+            }
+        }
         for &delay in delays {
             if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
                 break;
             }
-            warn!(isbn = %isbn, "Amazon cover fetch failed, retrying in {}s", delay);
+            warn!(isbn = %effective_isbn, "Amazon cover fetch failed, retrying in {}s", delay);
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            result = lookup_amazon_cover(client, isbn, images_dir).await.ok();
+            result = lookup_amazon_cover(client, effective_isbn, images_dir).await.ok();
         }
         result.unwrap_or((None, None))
     };

@@ -239,3 +239,118 @@ select:focus {
     gap: 0.5rem;
     justify-content: flex-end;
 }
+
+/* --- Searchable select --- */
+.ss {
+    position: relative;
+    width: 100%;
+}
+
+.ss-control {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: 0.375rem;
+    padding: 0;
+    transition: border-color 0.15s;
+}
+
+.ss-control:focus-within {
+    border-color: var(--color-primary);
+}
+
+.ss-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.9rem;
+    color: var(--color-text-primary);
+    font-family: inherit;
+    min-width: 0;
+}
+
+.ss-input::placeholder {
+    color: var(--color-text-dim);
+}
+
+.ss-arrow {
+    padding: 0 0.6rem;
+    color: var(--color-text-dim);
+    font-size: 0.7rem;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.ss-clear {
+    padding: 0 0.4rem;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.ss-clear:hover {
+    color: var(--color-primary);
+}
+
+.ss-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 12rem;
+    overflow-y: auto;
+    background: var(--color-bg-surface);
+    border: 0.0625rem solid var(--color-border-light);
+    border-top: none;
+    border-radius: 0 0 0.375rem 0.375rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
+}
+
+.ss-dropdown.hidden {
+    display: none;
+}
+
+.ss-list {
+    padding: 0.25rem 0;
+}
+
+.ss-list.hidden {
+    display: none;
+}
+
+.ss-item {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.ss-item:hover {
+    background: var(--color-bg-input);
+}
+
+.ss-item--active {
+    color: var(--color-success);
+    font-weight: bold;
+}
+
+.ss-empty {
+    padding: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--color-text-dim);
+    text-align: center;
+}
+
+.ss-empty.hidden {
+    display: none;
+}

@@ -163,11 +163,11 @@ impl Db {
             );",
         )?;
         conn.execute_batch(
-            "ALTER TABLE book_authors ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;"
-        ).ok();
-        conn.execute_batch(
-            "ALTER TABLE books ADD COLUMN series_number INTEGER;"
-        ).ok();
+            "ALTER TABLE book_authors ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
+        )
+        .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN series_number INTEGER;")
+            .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -233,7 +233,7 @@ impl Db {
             jpno: book.jpno.clone(),
             ndl_url: book.ndl_url.clone(),
             series_id: None,
-                series_number: None,
+            series_number: None,
         })
     }
 
@@ -349,6 +349,18 @@ impl Db {
         }
     }
 
+    pub fn find_by_id(&self, id: i64) -> Result<Option<Book>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], Self::row_to_book)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn delete_book(&self, id: i64) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
@@ -399,11 +411,25 @@ impl Db {
              series_id=?17, series_number=?18
              WHERE id=?19",
             params![
-                isbn, title, publisher, publish_date, description,
-                title_transcription, series_title, series_title_transcription,
-                alternative, alternative_transcription, volume, volume_transcription,
-                price, extent, jpno, ndl_url,
-                series_id, series_number, id,
+                isbn,
+                title,
+                publisher,
+                publish_date,
+                description,
+                title_transcription,
+                series_title,
+                series_title_transcription,
+                alternative,
+                alternative_transcription,
+                volume,
+                volume_transcription,
+                price,
+                extent,
+                jpno,
+                ndl_url,
+                series_id,
+                series_number,
+                id,
             ],
         )?;
         Ok(affected > 0)
@@ -446,7 +472,8 @@ impl Db {
 
     pub fn list_authors(&self) -> Result<Vec<Author>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")?;
+        let mut stmt =
+            conn.prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")?;
         let rows = stmt.query_map([], Self::row_to_author)?;
         rows.collect()
     }
@@ -589,6 +616,19 @@ impl Db {
         let affected = conn.execute(
             "DELETE FROM grand_series_items WHERE grand_series_id = ?1 AND item_type = ?2 AND item_id = ?3",
             params![grand_series_id, item_type, item_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn update_book_cover_url(
+        &self,
+        id: i64,
+        cover_url: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE books SET cover_url = ?1 WHERE id = ?2",
+            params![cover_url, id],
         )?;
         Ok(affected > 0)
     }
