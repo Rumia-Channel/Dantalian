@@ -186,6 +186,9 @@ pub struct UpdateBookRequest {
     pub extent: Option<String>,
     pub jpno: Option<String>,
     pub ndl_url: Option<String>,
+    pub series_id: Option<Option<i64>>,
+    pub series_number: Option<i64>,
+    pub grand_series_id: Option<Option<i64>>,
 }
 
 pub async fn update_book(
@@ -199,6 +202,18 @@ pub async fn update_book(
             Json(serde_json::json!({"error": "Title is required"})),
         ));
     }
+    let series_id = req.series_id.unwrap_or(None);
+    let grand_series_id = req.grand_series_id.unwrap_or(None);
+
+    if let Some(gs_id) = grand_series_id {
+        if let Ok(Some(old_gs)) = state.db.get_book_grand_series(id) {
+            let _ = state.db.remove_grand_series_item(old_gs.id, "book", id);
+        }
+        if gs_id != 0 {
+            let _ = state.db.add_grand_series_item(gs_id, "book", id);
+        }
+    }
+
     state
         .db
         .update_book(
@@ -218,6 +233,8 @@ pub async fn update_book(
             req.extent.as_deref(),
             req.jpno.as_deref(),
             req.ndl_url.as_deref(),
+            series_id,
+            req.series_number,
         )
         .map_err(|e| {
             (

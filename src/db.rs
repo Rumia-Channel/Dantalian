@@ -38,6 +38,7 @@ pub struct Book {
     pub jpno: Option<String>,
     pub ndl_url: Option<String>,
     pub series_id: Option<i64>,
+    pub series_number: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -142,14 +143,22 @@ impl Db {
                 extent TEXT,
                 jpno TEXT,
                 ndl_url TEXT,
-                series_id INTEGER REFERENCES series(id) ON DELETE SET NULL
+                series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
+                series_number INTEGER
             );
             CREATE TABLE IF NOT EXISTS book_authors (
                 book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
                 author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (book_id, author_id)
             );",
         )?;
+        conn.execute_batch(
+            "ALTER TABLE book_authors ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;"
+        ).ok();
+        conn.execute_batch(
+            "ALTER TABLE books ADD COLUMN series_number INTEGER;"
+        ).ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -174,6 +183,7 @@ impl Db {
             jpno: row.get(16)?,
             ndl_url: row.get(17)?,
             series_id: row.get(18)?,
+            series_number: row.get(19)?,
         })
     }
 
@@ -214,6 +224,7 @@ impl Db {
             jpno: book.jpno.clone(),
             ndl_url: book.ndl_url.clone(),
             series_id: None,
+                series_number: None,
         })
     }
 
@@ -258,7 +269,7 @@ impl Db {
              FROM authors a
              JOIN book_authors ba ON a.id = ba.author_id
              WHERE ba.book_id = ?1
-             ORDER BY ba.author_id",
+             ORDER BY ba.sort_order, ba.author_id",
         )?;
         let rows = stmt.query_map(params![book_id], Self::row_to_author)?;
         rows.collect()
@@ -289,7 +300,7 @@ impl Db {
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id FROM books ORDER BY id DESC",
+            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
@@ -298,7 +309,7 @@ impl Db {
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id FROM books WHERE isbn = ?1",
+            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books WHERE isbn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
         match rows.next() {
@@ -344,31 +355,23 @@ impl Db {
         extent: Option<&str>,
         jpno: Option<&str>,
         ndl_url: Option<&str>,
+        series_id: Option<i64>,
+        series_number: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute(
             "UPDATE books SET title=?1, publisher=?2, publish_date=?3, description=?4,
              title_transcription=?5, series_title=?6, series_title_transcription=?7,
              alternative=?8, alternative_transcription=?9, volume=?10, volume_transcription=?11,
-             price=?12, extent=?13, jpno=?14, ndl_url=?15
-             WHERE id=?16",
+             price=?12, extent=?13, jpno=?14, ndl_url=?15,
+             series_id=?16, series_number=?17
+             WHERE id=?18",
             params![
-                title,
-                publisher,
-                publish_date,
-                description,
-                title_transcription,
-                series_title,
-                series_title_transcription,
-                alternative,
-                alternative_transcription,
-                volume,
-                volume_transcription,
-                price,
-                extent,
-                jpno,
-                ndl_url,
-                id
+                title, publisher, publish_date, description,
+                title_transcription, series_title, series_title_transcription,
+                alternative, alternative_transcription, volume, volume_transcription,
+                price, extent, jpno, ndl_url,
+                series_id, series_number, id,
             ],
         )?;
         Ok(affected > 0)

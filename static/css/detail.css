@@ -354,6 +354,18 @@
     border-color: var(--color-success);
 }
 
+.edit-section {
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 0.0625rem solid var(--color-border);
+}
+
+.edit-section-title {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.75rem;
+}
+
 .edit-author-list {
     display: flex;
     flex-direction: column;

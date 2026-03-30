@@ -5,6 +5,8 @@ const bookId = params.get("book");
 
 (async () => {
     await loadBooks();
+    await loadSeries();
+    await loadGrandSeries();
 
     if (bookId) {
         renderBookEdit(parseInt(bookId, 10));
@@ -28,6 +30,15 @@ function renderBookEdit(id) {
     }
 
     const authorList = book.authors || [];
+    const currentGrandSeries = findBookGrandSeries(book.id);
+
+    const seriesOptions = allSeries
+        .map((s) => `<option value="${s.id}" ${s.id === book.series_id ? "selected" : ""}>${escapeHtml(s.name)}</option>`)
+        .join("");
+
+    const grandSeriesOptions = allGrandSeries
+        .map((gs) => `<option value="${gs.id}" ${currentGrandSeries && gs.id === currentGrandSeries.id ? "selected" : ""}>${escapeHtml(gs.name)}</option>`)
+        .join("");
 
     editContent.innerHTML = `
         <h2>書籍情報編集</h2>
@@ -115,6 +126,29 @@ function renderBookEdit(id) {
                 <label>説明</label>
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
             </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">シリーズ設定</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>シリーズ</label>
+                        <select name="series_id">
+                            <option value="">なし</option>
+                            ${seriesOptions}
+                        </select>
+                    </div>
+                    <div class="edit-field">
+                        <label>シリーズ巻数</label>
+                        <input type="number" name="series_number" value="${book.series_number != null ? book.series_number : ''}" min="1" step="1">
+                    </div>
+                </div>
+                <div class="edit-field">
+                    <label>大シリーズ</label>
+                    <select name="grand_series_id">
+                        <option value="">なし</option>
+                        ${grandSeriesOptions}
+                    </select>
+                </div>
+            </div>
             <div class="edit-actions">
                 <a href="/" class="btn btn-md btn-ghost">戻る</a>
                 <button type="submit" class="btn btn-md btn-primary">保存</button>
@@ -128,7 +162,11 @@ async function saveBook(e, bookId) {
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
-        body[key] = val === "" ? null : val;
+        if (key === "series_id" || key === "grand_series_id" || key === "series_number") {
+            body[key] = val === "" ? null : parseInt(val, 10);
+        } else {
+            body[key] = val === "" ? null : val;
+        }
     }
     try {
         const res = await fetch(`/api/books/${bookId}`, {
