@@ -506,16 +506,6 @@ async function renderManualForm() {
         <form class="edit-form" id="manual-form" onsubmit="submitManualBook(event)">
             <input type="hidden" name="series_id" value="">
             <input type="hidden" name="grand_series_id" value="">
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>ISBN</label>
-                    <input type="text" name="isbn">
-                </div>
-                <div class="edit-field">
-                    <label>ISDN</label>
-                    <input type="text" name="isdn">
-                </div>
-            </div>
             <div class="edit-field">
                 <label>タイトル <span class="edit-required">*</span></label>
                 <input type="text" name="title" required>
@@ -526,11 +516,11 @@ async function renderManualForm() {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
-                    <label>出版社</label>
+                    <label>出版社 / サークル名</label>
                     <input type="text" name="publisher">
                 </div>
                 <div class="edit-field">
-                    <label>出版日</label>
+                    <label>出版日 / 発行日</label>
                     <input type="text" name="publish_date">
                 </div>
             </div>
@@ -540,7 +530,7 @@ async function renderManualForm() {
                     <input type="text" name="price">
                 </div>
                 <div class="edit-field">
-                    <label>ページ数</label>
+                    <label>ページ数 / 体裁</label>
                     <input type="text" name="extent">
                 </div>
             </div>
@@ -555,7 +545,7 @@ async function renderManualForm() {
                 </div>
             </div>
             <div class="edit-field">
-                <label>シリーズ名</label>
+                <label>シリーズ名(NDL)</label>
                 <input type="text" name="series_title">
             </div>
             <div class="edit-field">
@@ -570,19 +560,103 @@ async function renderManualForm() {
                 <label>別タイトル(よみ)</label>
                 <input type="text" name="alternative_transcription">
             </div>
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>JPNO</label>
-                    <input type="text" name="jpno">
+            <div class="edit-field">
+                <label>説明</label>
+                <textarea name="description" rows="6"></textarea>
+            </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">ISBN / NDL 固有</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ISBN</label>
+                        <input type="text" name="isbn">
+                    </div>
+                    <div class="edit-field">
+                        <label>JPNO</label>
+                        <input type="text" name="jpno">
+                    </div>
                 </div>
                 <div class="edit-field">
                     <label>NDL URL</label>
                     <input type="text" name="ndl_url">
                 </div>
             </div>
-            <div class="edit-field">
-                <label>説明</label>
-                <textarea name="description" rows="6"></textarea>
+            <div class="edit-section">
+                <h3 class="edit-section-title">ISDN 固有</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ISDN</label>
+                        <input type="text" name="isdn">
+                    </div>
+                    <div class="edit-field">
+                        <label>Cコード</label>
+                        <input type="text" name="isdn_c_code">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>区分</label>
+                        <input type="text" name="isdn_class">
+                    </div>
+                    <div class="edit-field">
+                        <label>形態</label>
+                        <input type="text" name="isdn_type">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>レーティング(性別)</label>
+                        <input type="text" name="isdn_rating_gender">
+                    </div>
+                    <div class="edit-field">
+                        <label>レーティング(年齢)</label>
+                        <input type="text" name="isdn_rating_age">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>地域</label>
+                        <input type="text" name="isdn_region">
+                    </div>
+                    <div class="edit-field">
+                        <label>ジャンルコード</label>
+                        <input type="text" name="isdn_genre_code">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ジャンル名</label>
+                        <input type="text" name="isdn_genre_name">
+                    </div>
+                    <div class="edit-field">
+                        <label>ジャンル補足</label>
+                        <input type="text" name="isdn_genre_user">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>販売対象</label>
+                        <input type="text" name="isdn_author">
+                    </div>
+                    <div class="edit-field">
+                        <label>書籍形態(Cコード)</label>
+                        <input type="text" name="isdn_shape">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>内容(Cコード)</label>
+                        <input type="text" name="isdn_contents">
+                    </div>
+                    <div class="edit-field">
+                        <label>バーコード2段目</label>
+                        <input type="text" name="isdn_barcode2">
+                    </div>
+                </div>
+                <div class="edit-field">
+                    <label>サンプル画像URL</label>
+                    <input type="text" name="isdn_sample_image_url">
+                </div>
             </div>
             <div class="edit-field">
                 <label>表紙画像</label>
@@ -660,11 +734,14 @@ async function renderManualForm() {
             .replace(/[\s\u3000\-－ー]/g, "");
     });
 
-    document.getElementById("manual-form").querySelector("input[name=isdn]").addEventListener("input", function () {
-        this.value = this.value
-            .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-            .replace(/[\s\u3000\-－ー]/g, "");
-    });
+    const isdnField = document.getElementById("manual-form").querySelector("input[name=isdn]");
+    if (isdnField) {
+        isdnField.addEventListener("input", function () {
+            this.value = this.value
+                .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                .replace(/[\s\u3000\-－ー]/g, "");
+        });
+    }
 
     document.getElementById("manual-cover-input").addEventListener("change", (e) => {
         const file = e.target.files[0];
