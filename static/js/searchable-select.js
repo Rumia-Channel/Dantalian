@@ -1,5 +1,7 @@
 function createSearchableSelect(container, opts) {
-    const {
+    if (opts.native) return createNativeSelect(container, opts);
+
+    let {
         options = [],
         value = null,
         placeholder = "選択...",
@@ -31,14 +33,17 @@ function createSearchableSelect(container, opts) {
     const arrow = document.createElement("span");
     arrow.className = "ss-arrow";
 
-    const clearBtn = document.createElement("span");
-    clearBtn.className = "ss-clear";
-    clearBtn.textContent = "\u00D7";
-    clearBtn.hidden = !selectedValue;
-
     control.appendChild(input);
     control.appendChild(arrow);
-    control.appendChild(clearBtn);
+
+    let clearBtn;
+    if (clearable) {
+        clearBtn = document.createElement("span");
+        clearBtn.className = "ss-clear";
+        clearBtn.textContent = "\u00D7";
+        clearBtn.hidden = !selectedValue;
+        control.appendChild(clearBtn);
+    }
 
     const dropdown = document.createElement("div");
     dropdown.className = "ss-dropdown hidden";
@@ -87,6 +92,7 @@ function createSearchableSelect(container, opts) {
         item.textContent = o.label;
         item.addEventListener("mousedown", (e) => {
             e.preventDefault();
+            e.stopPropagation();
             select(o.value, o.label);
         });
         return item;
@@ -94,15 +100,17 @@ function createSearchableSelect(container, opts) {
 
     function select(val, label) {
         selectedValue = val;
-        selectedLabel = label;
-        input.value = label;
-        clearBtn.hidden = !val && val !== 0;
-        close();
+        selectedLabel = label || "";
+        input.value = selectedLabel;
+        if (clearBtn) clearBtn.hidden = val == null;
+        isOpen = false;
+        dropdown.classList.add("hidden");
         if (onChange) onChange(val);
     }
 
     function open() {
         if (isOpen) return;
+        closeAllOpen();
         isOpen = true;
         input.value = "";
         render("");
@@ -110,10 +118,13 @@ function createSearchableSelect(container, opts) {
     }
 
     function close() {
+        if (!isOpen) return;
         isOpen = false;
         dropdown.classList.add("hidden");
         input.value = selectedLabel;
     }
+
+    wrapper._close = close;
 
     input.addEventListener("focus", () => {
         if (!isOpen) open();
@@ -121,10 +132,6 @@ function createSearchableSelect(container, opts) {
 
     input.addEventListener("input", () => {
         render(input.value);
-    });
-
-    input.addEventListener("blur", () => {
-        setTimeout(close, 150);
     });
 
     input.addEventListener("keydown", (e) => {
@@ -139,20 +146,26 @@ function createSearchableSelect(container, opts) {
 
     arrow.addEventListener("mousedown", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         if (isOpen) {
             close();
             input.blur();
         } else {
-            input.focus();
+            open();
         }
     });
 
     if (clearable) {
         clearBtn.addEventListener("mousedown", (e) => {
             e.preventDefault();
+            e.stopPropagation();
             select(null, "");
         });
     }
+
+    dropdown.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+    });
 
     return {
         wrapper,
@@ -166,7 +179,7 @@ function createSearchableSelect(container, opts) {
             }
         },
         updateOptions: (newOpts) => {
-            opts.options = newOpts;
+            options = newOpts;
             const o = newOpts.find((op) => op.value === selectedValue);
             if (o) {
                 selectedLabel = o.label;
@@ -180,16 +193,71 @@ function createSearchableSelect(container, opts) {
     };
 }
 
-document.addEventListener("click", (e) => {
+function createNativeSelect(container, opts) {
+    const {
+        options = [],
+        value = null,
+        onChange = null,
+        clearable = true,
+        placeholder = null,
+    } = opts;
+
+    const select = document.createElement("select");
+    select.className = "ss-native";
+
+    if (clearable && placeholder) {
+        const ph = document.createElement("option");
+        ph.value = "";
+        ph.textContent = placeholder;
+        select.appendChild(ph);
+    }
+
+    function buildOptions(opts) {
+        select.querySelectorAll("option[data-ss-opt]").forEach((el) => el.remove());
+        for (const o of opts) {
+            const opt = document.createElement("option");
+            opt.value = o.value;
+            opt.textContent = o.label;
+            opt.dataset.ssOpt = "1";
+            if (o.value == value) opt.selected = true;
+            select.appendChild(opt);
+        }
+    }
+
+    buildOptions(options);
+
+    select.addEventListener("change", () => {
+        const v = select.value === "" ? null : select.value;
+        if (onChange) onChange(v);
+    });
+
+    container.appendChild(select);
+
+    return {
+        wrapper: select,
+        getValue: () => {
+            const v = select.value;
+            return v === "" ? null : v;
+        },
+        setValue: (val) => {
+            select.value = val == null ? "" : val;
+        },
+        updateOptions: (newOpts) => {
+            buildOptions(newOpts);
+        },
+        destroy: () => select.remove(),
+    };
+}
+
+function closeAllOpen() {
+    document.querySelectorAll(".ss-dropdown:not(.hidden)").forEach((dd) => {
+        const ss = dd.closest(".ss");
+        if (ss && ss._close) ss._close();
+    });
+}
+
+document.addEventListener("mousedown", (e) => {
     if (!e.target.closest(".ss")) {
-        document.querySelectorAll(".ss-dropdown:not(.hidden)").forEach((dd) => {
-            dd.classList.add("hidden");
-            const ss = dd.closest(".ss");
-            if (ss) {
-                const inp = ss.querySelector(".ss-input");
-                const val = ss._ssValue;
-                if (inp && val !== undefined) inp.value = val;
-            }
-        });
+        closeAllOpen();
     }
 });

@@ -56,6 +56,24 @@ function findSeriesGrandSeries(seriesId) {
     return null;
 }
 
+function getBookIndirectGrandSeriesIds(bookId) {
+    const book = allBooks.find((b) => b.id === bookId);
+    if (!book || book.series_id == null) return new Set();
+    const ids = new Set();
+    for (const gs of allGrandSeries) {
+        if (gs.items.some((it) => it.item_type === "series" && it.item_id === book.series_id)) {
+            ids.add(gs.id);
+        }
+    }
+    return ids;
+}
+
+function isBookInGrandSeriesViaSeries(bookId) {
+    const book = allBooks.find((b) => b.id === bookId);
+    if (!book || book.series_id == null) return false;
+    return findSeriesGrandSeries(book.series_id) != null;
+}
+
 function showConfirm(opts) {
     if (typeof opts === "string") opts = { message: opts };
 

@@ -197,11 +197,13 @@ function renderBookEdit(id) {
         },
     });
 
-    const gsOpts = allGrandSeries.map((gs) => ({ value: gs.id, label: gs.name }));
+    const indirectGsIds = getBookIndirectGrandSeriesIds(book.id);
+
+    const gsOpts = allGrandSeries.filter((gs) => !indirectGsIds.has(gs.id)).map((gs) => ({ value: gs.id, label: gs.name }));
     createSearchableSelect(document.getElementById("edit-grand-series-select-container"), {
         options: gsOpts,
-        value: currentGrandSeries ? currentGrandSeries.id : null,
-        placeholder: "なし",
+        value: currentGrandSeries && !indirectGsIds.has(currentGrandSeries.id) ? currentGrandSeries.id : null,
+        placeholder: indirectGsIds.size > 0 ? "シリーズ経由で所属中" : "なし",
         onChange: (val) => {
             form.querySelector("input[name=grand_series_id]").value = val != null ? val : "";
         },

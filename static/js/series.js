@@ -143,35 +143,30 @@ function renderGrandSeriesManager() {
         const targetContainer = document.getElementById(`gs-add-target-${gs.id}`);
         if (!typeContainer || !targetContainer) return;
 
+        const targetOpts = allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }));
+        const targetSs = createSearchableSelect(targetContainer, {
+            options: targetOpts,
+            value: null,
+            placeholder: "選択...",
+            clearable: false,
+        });
+
         createSearchableSelect(typeContainer, {
             options: [
                 { value: "series", label: "シリーズ" },
                 { value: "book", label: "書籍" },
             ],
             value: "series",
-            placeholder: "種別",
-            clearable: false,
+            native: true,
             onChange: (val) => {
                 const type = val || "series";
                 const opts = type === "series"
                     ? allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }))
-                    : allBooks.map((b) => ({ value: `book:${b.id}`, label: b.title }));
-                const existing = targetContainer._ssInstance;
-                if (existing) {
-                    existing.updateOptions(opts);
-                    existing.setValue(null);
-                }
+                    : allBooks.filter((b) => !isBookInGrandSeriesViaSeries(b.id)).map((b) => ({ value: `book:${b.id}`, label: b.title }));
+                targetSs.updateOptions(opts);
+                targetSs.setValue(null);
             },
         });
-
-        const targetOpts = allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }));
-        const ss = createSearchableSelect(targetContainer, {
-            options: targetOpts,
-            value: null,
-            placeholder: "選択...",
-            clearable: false,
-        });
-        targetContainer._ssInstance = ss;
     });
 }
 

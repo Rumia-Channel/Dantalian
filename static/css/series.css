@@ -268,22 +268,11 @@
     border-top: 0.0625rem dashed var(--color-border);
 }
 
-.gs-add-item select {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.4rem;
-    border-radius: 0.25rem;
-    border: 0.0625rem solid var(--color-border-light);
-    background: var(--color-bg-surface);
-    color: var(--color-text-primary);
-    max-width: 8rem;
+.gs-add-item > :first-child {
+    flex-shrink: 0;
 }
 
-.gs-add-item select:nth-child(2) {
+.gs-add-item > :nth-child(2) {
     flex: 1;
-    max-width: none;
-}
-
-.gs-add-item select:focus {
-    outline: none;
-    border-color: var(--color-success);
+    min-width: 12rem;
 }

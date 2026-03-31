@@ -152,10 +152,12 @@ function showDetail(id) {
         onChange: (val) => assignSeries(book.id, val),
     });
 
+    const indirectGsIds = getBookIndirectGrandSeriesIds(book.id);
+
     createSearchableSelect(document.getElementById("detail-grand-series-select-container"), {
-        options: allGrandSeries.map((gs) => ({ value: gs.id, label: gs.name })),
-        value: currentGrandSeries ? currentGrandSeries.id : null,
-        placeholder: "なし",
+        options: allGrandSeries.filter((gs) => !indirectGsIds.has(gs.id)).map((gs) => ({ value: gs.id, label: gs.name })),
+        value: currentGrandSeries && !indirectGsIds.has(currentGrandSeries.id) ? currentGrandSeries.id : null,
+        placeholder: indirectGsIds.size > 0 ? "シリーズ経由で所属中" : "なし",
         onChange: (val) => assignGrandSeries(book.id, val),
     });
 
