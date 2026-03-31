@@ -101,6 +101,7 @@ function showDetail(id) {
     if (book.price) metaParts.push(`<div><span class="detail-meta-label">価格</span>${escapeHtml(book.price)}</div>`);
     if (book.extent) metaParts.push(`<div><span class="detail-meta-label">ページ数</span>${escapeHtml(book.extent)}</div>`);
     if (book.isbn) metaParts.push(`<div><span class="detail-meta-label">ISBN</span>${escapeHtml(book.isbn)}</div>`);
+    if (book.isdn) metaParts.push(`<div><span class="detail-meta-label">ISDN</span>${escapeHtml(book.isdn)}</div>`);
 
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")

@@ -58,18 +58,13 @@ function renderBookEdit(id) {
                 </div>
             </div>
             <div class="edit-header-info">
-                <div class="edit-isbn">${escapeHtml(book.isbn)}</div>
+                ${book.isbn ? `<div class="edit-isbn">${escapeHtml(book.isbn)}</div>` : ''}
+                ${book.isdn ? `<div class="edit-isbn">ISDN: ${escapeHtml(book.isdn)}</div>` : ''}
             </div>
         </div>
         <form class="edit-form" id="edit-form">
             <input type="hidden" name="series_id" value="${book.series_id != null ? book.series_id : ''}">
             <input type="hidden" name="grand_series_id" value="${currentGrandSeries ? currentGrandSeries.id : ''}">
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>ISBN <span class="edit-required">*</span></label>
-                    <input type="text" name="isbn" value="${escapeAttr(book.isbn)}" required>
-                </div>
-            </div>
             <div class="edit-field">
                 <label>タイトル <span class="edit-required">*</span></label>
                 <input type="text" name="title" value="${escapeAttr(book.title)}" required>
@@ -80,11 +75,11 @@ function renderBookEdit(id) {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
-                    <label>出版社</label>
+                    <label>出版社 / サークル名</label>
                     <input type="text" name="publisher" value="${escapeAttr(book.publisher || '')}">
                 </div>
                 <div class="edit-field">
-                    <label>出版日</label>
+                    <label>出版日 / 発行日</label>
                     <input type="text" name="publish_date" value="${escapeAttr(book.publish_date || '')}">
                 </div>
             </div>
@@ -94,7 +89,7 @@ function renderBookEdit(id) {
                     <input type="text" name="price" value="${escapeAttr(book.price || '')}">
                 </div>
                 <div class="edit-field">
-                    <label>ページ数</label>
+                    <label>ページ数 / 体裁</label>
                     <input type="text" name="extent" value="${escapeAttr(book.extent || '')}">
                 </div>
             </div>
@@ -124,19 +119,103 @@ function renderBookEdit(id) {
                 <label>別タイトル(よみ)</label>
                 <input type="text" name="alternative_transcription" value="${escapeAttr(book.alternative_transcription || '')}">
             </div>
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>JPNO</label>
-                    <input type="text" name="jpno" value="${escapeAttr(book.jpno || '')}">
+            <div class="edit-field">
+                <label>説明</label>
+                <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
+            </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">ISBN / NDL 固有</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ISBN</label>
+                        <input type="text" name="isbn" value="${escapeAttr(book.isbn || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>JPNO</label>
+                        <input type="text" name="jpno" value="${escapeAttr(book.jpno || '')}">
+                    </div>
                 </div>
                 <div class="edit-field">
                     <label>NDL URL</label>
                     <input type="text" name="ndl_url" value="${escapeAttr(book.ndl_url || '')}">
                 </div>
             </div>
-            <div class="edit-field">
-                <label>説明</label>
-                <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
+            <div class="edit-section">
+                <h3 class="edit-section-title">ISDN 固有</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ISDN</label>
+                        <input type="text" name="isdn" value="${escapeAttr(book.isdn || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>Cコード</label>
+                        <input type="text" name="isdn_c_code" value="${escapeAttr(book.isdn_c_code || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>区分</label>
+                        <input type="text" name="isdn_class" value="${escapeAttr(book.isdn_class || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>形態</label>
+                        <input type="text" name="isdn_type" value="${escapeAttr(book.isdn_type || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>レーティング(性別)</label>
+                        <input type="text" name="isdn_rating_gender" value="${escapeAttr(book.isdn_rating_gender || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>レーティング(年齢)</label>
+                        <input type="text" name="isdn_rating_age" value="${escapeAttr(book.isdn_rating_age || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>地域</label>
+                        <input type="text" name="isdn_region" value="${escapeAttr(book.isdn_region || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>ジャンルコード</label>
+                        <input type="text" name="isdn_genre_code" value="${escapeAttr(book.isdn_genre_code || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ジャンル名</label>
+                        <input type="text" name="isdn_genre_name" value="${escapeAttr(book.isdn_genre_name || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>ジャンル補足</label>
+                        <input type="text" name="isdn_genre_user" value="${escapeAttr(book.isdn_genre_user || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>販売対象</label>
+                        <input type="text" name="isdn_author" value="${escapeAttr(book.isdn_author || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>書籍形態(Cコード)</label>
+                        <input type="text" name="isdn_shape" value="${escapeAttr(book.isdn_shape || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>内容(Cコード)</label>
+                        <input type="text" name="isdn_contents" value="${escapeAttr(book.isdn_contents || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>バーコード2段目</label>
+                        <input type="text" name="isdn_barcode2" value="${escapeAttr(book.isdn_barcode2 || '')}">
+                    </div>
+                </div>
+                <div class="edit-field">
+                    <label>サンプル画像URL</label>
+                    <input type="text" name="isdn_sample_image_url" value="${escapeAttr(book.isdn_sample_image_url || '')}">
+                </div>
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">作者</h3>
@@ -278,6 +357,8 @@ async function saveBook(e, bookId) {
     for (const [key, val] of fd.entries()) {
         if (key === "series_id" || key === "grand_series_id" || key === "series_number") {
             body[key] = val === "" ? null : parseInt(val, 10);
+        } else if (key === "isbn" || key === "isdn") {
+            body[key] = val === "" ? null : val;
         } else {
             body[key] = val === "" ? null : val;
         }

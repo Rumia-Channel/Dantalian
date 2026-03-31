@@ -26,6 +26,7 @@
 
         <div class="register-tabs">
             <button class="register-tab active" data-tab="isbn">ISBN</button>
+            <button class="register-tab" data-tab="isdn">ISDN</button>
             <button class="register-tab" data-tab="manual">手動</button>
         </div>
 
@@ -54,6 +55,34 @@
                 </div>
                 <ul class="bulk-queue" id="bulk-queue"></ul>
                 <div class="bulk-empty" id="bulk-empty">キューは空です</div>
+            </section>
+        </section>
+
+        <section class="register" id="isdn-panel" hidden>
+            <h2>ISDNで登録</h2>
+            <form id="isdn-form">
+                <input type="text" id="isdn-input" placeholder="ISDN (13桁)" pattern="[0-9\-]+" required>
+                <button type="submit" id="isdn-btn" class="btn btn-primary">登録</button>
+            </form>
+            <p id="isdn-status"></p>
+
+            <div class="register-bulk-toggle">
+                <button type="button" class="btn btn-ghost btn-sm" id="isdn-bulk-toggle-btn">一括登録を開く</button>
+            </div>
+
+            <section class="register-bulk-section" id="isdn-bulk-section" hidden>
+                <p class="bulk-hint">バーコードリーダーでISDNを読み取ると自動的にキューに追加されます。</p>
+                <form id="isdn-bulk-form" class="bulk-form">
+                    <input type="text" id="isdn-bulk-input" placeholder="ISDNを読み取る..." autocomplete="off">
+                    <button type="button" id="isdn-bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
+                </form>
+                <div class="bulk-controls">
+                    <button type="button" id="isdn-bulk-start-btn" class="btn btn-primary btn-sm" disabled>開始</button>
+                    <button type="button" id="isdn-bulk-stop-btn" class="btn btn-ghost btn-sm" hidden>停止</button>
+                    <span class="bulk-progress" id="isdn-bulk-progress"></span>
+                </div>
+                <ul class="bulk-queue" id="isdn-bulk-queue"></ul>
+                <div class="bulk-empty" id="isdn-bulk-empty">キューは空です</div>
             </section>
         </section>
 

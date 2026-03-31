@@ -20,7 +20,8 @@ pub struct NewAuthor {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Book {
     pub id: i64,
-    pub isbn: String,
+    pub isbn: Option<String>,
+    pub isdn: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -39,6 +40,22 @@ pub struct Book {
     pub ndl_url: Option<String>,
     pub series_id: Option<i64>,
     pub series_number: Option<i64>,
+    pub isdn_region: Option<String>,
+    pub isdn_class: Option<String>,
+    pub isdn_type: Option<String>,
+    pub isdn_rating_gender: Option<String>,
+    pub isdn_rating_age: Option<String>,
+    pub isdn_genre_code: Option<String>,
+    pub isdn_genre_name: Option<String>,
+    pub isdn_genre_user: Option<String>,
+    pub isdn_c_code: Option<String>,
+    pub isdn_author: Option<String>,
+    pub isdn_shape: Option<String>,
+    pub isdn_contents: Option<String>,
+    pub isdn_barcode2: Option<String>,
+    pub isdn_sample_image_url: Option<String>,
+    pub isdn_useroption: Option<String>,
+    pub isdn_external_links: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -59,7 +76,8 @@ pub struct BookWithAuthors {
 
 #[derive(Debug, Deserialize)]
 pub struct NewBook {
-    pub isbn: String,
+    pub isbn: Option<String>,
+    pub isdn: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -77,6 +95,22 @@ pub struct NewBook {
     pub jpno: Option<String>,
     pub ndl_url: Option<String>,
     pub authors: Vec<NewAuthor>,
+    pub isdn_region: Option<String>,
+    pub isdn_class: Option<String>,
+    pub isdn_type: Option<String>,
+    pub isdn_rating_gender: Option<String>,
+    pub isdn_rating_age: Option<String>,
+    pub isdn_genre_code: Option<String>,
+    pub isdn_genre_name: Option<String>,
+    pub isdn_genre_user: Option<String>,
+    pub isdn_c_code: Option<String>,
+    pub isdn_author: Option<String>,
+    pub isdn_shape: Option<String>,
+    pub isdn_contents: Option<String>,
+    pub isdn_barcode2: Option<String>,
+    pub isdn_sample_image_url: Option<String>,
+    pub isdn_useroption: Option<String>,
+    pub isdn_external_links: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -135,7 +169,8 @@ impl Db {
             );
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                isbn TEXT NOT NULL UNIQUE,
+                isbn TEXT UNIQUE,
+                isdn TEXT UNIQUE,
                 title TEXT NOT NULL,
                 publisher TEXT,
                 publish_date TEXT,
@@ -153,7 +188,23 @@ impl Db {
                 jpno TEXT,
                 ndl_url TEXT,
                 series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
-                series_number INTEGER
+                series_number INTEGER,
+                isdn_region TEXT,
+                isdn_class TEXT,
+                isdn_type TEXT,
+                isdn_rating_gender TEXT,
+                isdn_rating_age TEXT,
+                isdn_genre_code TEXT,
+                isdn_genre_name TEXT,
+                isdn_genre_user TEXT,
+                isdn_c_code TEXT,
+                isdn_author TEXT,
+                isdn_shape TEXT,
+                isdn_contents TEXT,
+                isdn_barcode2 TEXT,
+                isdn_sample_image_url TEXT,
+                isdn_useroption TEXT,
+                isdn_external_links TEXT
             );
             CREATE TABLE IF NOT EXISTS book_authors (
                 book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -168,6 +219,21 @@ impl Db {
         .ok();
         conn.execute_batch("ALTER TABLE books ADD COLUMN series_number INTEGER;")
             .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN isdn TEXT;")
+            .ok();
+        conn.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS idx_books_isdn ON books(isdn) WHERE isdn IS NOT NULL;")
+            .ok();
+        let isdn_cols = [
+            "isdn_region TEXT", "isdn_class TEXT", "isdn_type TEXT",
+            "isdn_rating_gender TEXT", "isdn_rating_age TEXT",
+            "isdn_genre_code TEXT", "isdn_genre_name TEXT", "isdn_genre_user TEXT",
+            "isdn_c_code TEXT", "isdn_author TEXT", "isdn_shape TEXT", "isdn_contents TEXT",
+            "isdn_barcode2 TEXT", "isdn_sample_image_url TEXT",
+            "isdn_useroption TEXT", "isdn_external_links TEXT",
+        ];
+        for col in &isdn_cols {
+            conn.execute_batch(&format!("ALTER TABLE books ADD COLUMN {};", col)).ok();
+        }
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -175,24 +241,41 @@ impl Db {
         Ok(Book {
             id: row.get(0)?,
             isbn: row.get(1)?,
-            title: row.get(2)?,
-            publisher: row.get(3)?,
-            publish_date: row.get(4)?,
-            cover_url: row.get(5)?,
-            description: row.get(6)?,
-            title_transcription: row.get(7)?,
-            series_title: row.get(8)?,
-            series_title_transcription: row.get(9)?,
-            alternative: row.get(10)?,
-            alternative_transcription: row.get(11)?,
-            volume: row.get(12)?,
-            volume_transcription: row.get(13)?,
-            price: row.get(14)?,
-            extent: row.get(15)?,
-            jpno: row.get(16)?,
-            ndl_url: row.get(17)?,
-            series_id: row.get(18)?,
-            series_number: row.get(19)?,
+            isdn: row.get(2)?,
+            title: row.get(3)?,
+            publisher: row.get(4)?,
+            publish_date: row.get(5)?,
+            cover_url: row.get(6)?,
+            description: row.get(7)?,
+            title_transcription: row.get(8)?,
+            series_title: row.get(9)?,
+            series_title_transcription: row.get(10)?,
+            alternative: row.get(11)?,
+            alternative_transcription: row.get(12)?,
+            volume: row.get(13)?,
+            volume_transcription: row.get(14)?,
+            price: row.get(15)?,
+            extent: row.get(16)?,
+            jpno: row.get(17)?,
+            ndl_url: row.get(18)?,
+            series_id: row.get(19)?,
+            series_number: row.get(20)?,
+            isdn_region: row.get(21)?,
+            isdn_class: row.get(22)?,
+            isdn_type: row.get(23)?,
+            isdn_rating_gender: row.get(24)?,
+            isdn_rating_age: row.get(25)?,
+            isdn_genre_code: row.get(26)?,
+            isdn_genre_name: row.get(27)?,
+            isdn_genre_user: row.get(28)?,
+            isdn_c_code: row.get(29)?,
+            isdn_author: row.get(30)?,
+            isdn_shape: row.get(31)?,
+            isdn_contents: row.get(32)?,
+            isdn_barcode2: row.get(33)?,
+            isdn_sample_image_url: row.get(34)?,
+            isdn_useroption: row.get(35)?,
+            isdn_external_links: row.get(36)?,
         })
     }
 
@@ -208,14 +291,15 @@ impl Db {
     pub fn insert_book(&self, book: &NewBook) -> Result<Book, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT OR IGNORE INTO books (isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
-            params![book.isbn, book.title, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.series_title, book.series_title_transcription, book.alternative, book.alternative_transcription, book.volume, book.volume_transcription, book.price, book.extent, book.jpno, book.ndl_url],
+            "INSERT OR IGNORE INTO books (isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36)",
+            params![book.isbn, book.isdn, book.title, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.series_title, book.series_title_transcription, book.alternative, book.alternative_transcription, book.volume, book.volume_transcription, book.price, book.extent, book.jpno, book.ndl_url, book.isdn_region, book.isdn_class, book.isdn_type, book.isdn_rating_gender, book.isdn_rating_age, book.isdn_genre_code, book.isdn_genre_name, book.isdn_genre_user, book.isdn_c_code, book.isdn_author, book.isdn_shape, book.isdn_contents, book.isdn_barcode2, book.isdn_sample_image_url, book.isdn_useroption, book.isdn_external_links],
         )?;
         let id = conn.last_insert_rowid();
         Ok(Book {
             id,
             isbn: book.isbn.clone(),
+            isdn: book.isdn.clone(),
             title: book.title.clone(),
             publisher: book.publisher.clone(),
             publish_date: book.publish_date.clone(),
@@ -234,6 +318,22 @@ impl Db {
             ndl_url: book.ndl_url.clone(),
             series_id: None,
             series_number: None,
+            isdn_region: book.isdn_region.clone(),
+            isdn_class: book.isdn_class.clone(),
+            isdn_type: book.isdn_type.clone(),
+            isdn_rating_gender: book.isdn_rating_gender.clone(),
+            isdn_rating_age: book.isdn_rating_age.clone(),
+            isdn_genre_code: book.isdn_genre_code.clone(),
+            isdn_genre_name: book.isdn_genre_name.clone(),
+            isdn_genre_user: book.isdn_genre_user.clone(),
+            isdn_c_code: book.isdn_c_code.clone(),
+            isdn_author: book.isdn_author.clone(),
+            isdn_shape: book.isdn_shape.clone(),
+            isdn_contents: book.isdn_contents.clone(),
+            isdn_barcode2: book.isdn_barcode2.clone(),
+            isdn_sample_image_url: book.isdn_sample_image_url.clone(),
+            isdn_useroption: book.isdn_useroption.clone(),
+            isdn_external_links: book.isdn_external_links.clone(),
         })
     }
 
@@ -331,7 +431,7 @@ impl Db {
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books ORDER BY id DESC",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
@@ -340,9 +440,21 @@ impl Db {
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books WHERE isbn = ?1",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE isbn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn find_by_isdn(&self, isdn: &str) -> Result<Option<Book>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE isdn = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![isdn], Self::row_to_book)?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
@@ -352,7 +464,7 @@ impl Db {
     pub fn find_by_id(&self, id: i64) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number FROM books WHERE id = ?1",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::row_to_book)?;
         match rows.next() {
@@ -383,7 +495,8 @@ impl Db {
     pub fn update_book(
         &self,
         id: i64,
-        isbn: &str,
+        isbn: Option<&str>,
+        isdn: Option<&str>,
         title: &str,
         publisher: Option<&str>,
         publish_date: Option<&str>,
@@ -401,34 +514,45 @@ impl Db {
         ndl_url: Option<&str>,
         series_id: Option<i64>,
         series_number: Option<i64>,
+        isdn_region: Option<&str>,
+        isdn_class: Option<&str>,
+        isdn_type: Option<&str>,
+        isdn_rating_gender: Option<&str>,
+        isdn_rating_age: Option<&str>,
+        isdn_genre_code: Option<&str>,
+        isdn_genre_name: Option<&str>,
+        isdn_genre_user: Option<&str>,
+        isdn_c_code: Option<&str>,
+        isdn_author: Option<&str>,
+        isdn_shape: Option<&str>,
+        isdn_contents: Option<&str>,
+        isdn_barcode2: Option<&str>,
+        isdn_sample_image_url: Option<&str>,
+        isdn_useroption: Option<&str>,
+        isdn_external_links: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute(
-            "UPDATE books SET isbn=?1, title=?2, publisher=?3, publish_date=?4, description=?5,
-             title_transcription=?6, series_title=?7, series_title_transcription=?8,
-             alternative=?9, alternative_transcription=?10, volume=?11, volume_transcription=?12,
-             price=?13, extent=?14, jpno=?15, ndl_url=?16,
-             series_id=?17, series_number=?18
-             WHERE id=?19",
+            "UPDATE books SET isbn=?1, isdn=?2, title=?3, publisher=?4, publish_date=?5, description=?6,
+             title_transcription=?7, series_title=?8, series_title_transcription=?9,
+             alternative=?10, alternative_transcription=?11, volume=?12, volume_transcription=?13,
+             price=?14, extent=?15, jpno=?16, ndl_url=?17,
+             series_id=?18, series_number=?19,
+             isdn_region=?20, isdn_class=?21, isdn_type=?22, isdn_rating_gender=?23, isdn_rating_age=?24,
+             isdn_genre_code=?25, isdn_genre_name=?26, isdn_genre_user=?27, isdn_c_code=?28,
+             isdn_author=?29, isdn_shape=?30, isdn_contents=?31, isdn_barcode2=?32,
+             isdn_sample_image_url=?33, isdn_useroption=?34, isdn_external_links=?35
+             WHERE id=?36",
             params![
-                isbn,
-                title,
-                publisher,
-                publish_date,
-                description,
-                title_transcription,
-                series_title,
-                series_title_transcription,
-                alternative,
-                alternative_transcription,
-                volume,
-                volume_transcription,
-                price,
-                extent,
-                jpno,
-                ndl_url,
-                series_id,
-                series_number,
+                isbn, isdn, title, publisher, publish_date, description,
+                title_transcription, series_title, series_title_transcription,
+                alternative, alternative_transcription, volume, volume_transcription,
+                price, extent, jpno, ndl_url,
+                series_id, series_number,
+                isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age,
+                isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code,
+                isdn_author, isdn_shape, isdn_contents, isdn_barcode2,
+                isdn_sample_image_url, isdn_useroption, isdn_external_links,
                 id,
             ],
         )?;

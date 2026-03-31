@@ -120,8 +120,67 @@ pub async fn register(
 }
 
 #[derive(Deserialize)]
+pub struct IsdnRegisterRequest {
+    pub isdn: String,
+}
+
+pub async fn isdn_register(
+    State(state): State<AppState>,
+    Json(req): Json<IsdnRegisterRequest>,
+) -> Result<(StatusCode, Json<RegisterResponse>), ApiError> {
+    let isdn: String = req.isdn.chars().filter(|c| c.is_ascii_digit()).collect();
+    if isdn.len() != 13 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "ISDN must be 13 digits"})),
+        ));
+    }
+
+    if let Ok(Some(existing)) = state.db.find_by_isdn(&isdn) {
+        let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
+        return Ok((
+            StatusCode::OK,
+            Json(RegisterResponse {
+                book: BookWithAuthors { book: existing, authors },
+                source: "cache".to_string(),
+            }),
+        ));
+    }
+
+    let new_book = external::lookup_isdn(&state.client, &isdn)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e}))))?;
+
+    let Some(new_book) = new_book else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Book not found for this ISDN"})),
+        ));
+    };
+
+    let book = state
+        .db
+        .insert_book(&new_book)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(RegisterResponse {
+            book: BookWithAuthors { book, authors: Vec::new() },
+            source: "isdn".to_string(),
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
 pub struct ManualRegisterRequest {
-    pub isbn: String,
+    pub isbn: Option<String>,
+    pub isdn: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -141,17 +200,34 @@ pub struct ManualRegisterRequest {
     pub series_number: Option<i64>,
     pub grand_series_id: Option<Option<i64>>,
     pub author_ids: Option<Vec<i64>>,
+    pub isdn_region: Option<String>,
+    pub isdn_class: Option<String>,
+    pub isdn_type: Option<String>,
+    pub isdn_rating_gender: Option<String>,
+    pub isdn_rating_age: Option<String>,
+    pub isdn_genre_code: Option<String>,
+    pub isdn_genre_name: Option<String>,
+    pub isdn_genre_user: Option<String>,
+    pub isdn_c_code: Option<String>,
+    pub isdn_author: Option<String>,
+    pub isdn_shape: Option<String>,
+    pub isdn_contents: Option<String>,
+    pub isdn_barcode2: Option<String>,
+    pub isdn_sample_image_url: Option<String>,
+    pub isdn_useroption: Option<String>,
+    pub isdn_external_links: Option<String>,
 }
 
 pub async fn manual_register(
     State(state): State<AppState>,
     Json(req): Json<ManualRegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), ApiError> {
-    let isbn = req.isbn.trim().replace(['-', ' '], "");
-    if isbn.is_empty() {
+    let isbn = req.isbn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    let isdn = req.isdn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    if isbn.is_none() && isdn.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "ISBN is required"})),
+            Json(serde_json::json!({"error": "ISBN or ISDN is required"})),
         ));
     }
     if req.title.trim().is_empty() {
@@ -161,19 +237,34 @@ pub async fn manual_register(
         ));
     }
 
-    if let Ok(Some(existing)) = state.db.find_by_isbn(&isbn) {
-        let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
-        return Ok((
-            StatusCode::OK,
-            Json(RegisterResponse {
-                book: BookWithAuthors { book: existing, authors },
-                source: "cache".to_string(),
-            }),
-        ));
+    if let Some(ref isdn_val) = isdn {
+        if let Ok(Some(existing)) = state.db.find_by_isdn(isdn_val) {
+            let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
+            return Ok((
+                StatusCode::OK,
+                Json(RegisterResponse {
+                    book: BookWithAuthors { book: existing, authors },
+                    source: "cache".to_string(),
+                }),
+            ));
+        }
+    }
+    if let Some(ref isbn_val) = isbn {
+        if let Ok(Some(existing)) = state.db.find_by_isbn(isbn_val) {
+            let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
+            return Ok((
+                StatusCode::OK,
+                Json(RegisterResponse {
+                    book: BookWithAuthors { book: existing, authors },
+                    source: "cache".to_string(),
+                }),
+            ));
+        }
     }
 
     let new_book = NewBook {
         isbn,
+        isdn,
         title: req.title.trim().to_string(),
         publisher: req.publisher.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         publish_date: req.publish_date.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
@@ -191,6 +282,22 @@ pub async fn manual_register(
         jpno: req.jpno.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         ndl_url: req.ndl_url.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         authors: Vec::new(),
+        isdn_region: req.isdn_region.filter(|s| !s.is_empty()),
+        isdn_class: req.isdn_class.filter(|s| !s.is_empty()),
+        isdn_type: req.isdn_type.filter(|s| !s.is_empty()),
+        isdn_rating_gender: req.isdn_rating_gender.filter(|s| !s.is_empty()),
+        isdn_rating_age: req.isdn_rating_age.filter(|s| !s.is_empty()),
+        isdn_genre_code: req.isdn_genre_code.filter(|s| !s.is_empty()),
+        isdn_genre_name: req.isdn_genre_name.filter(|s| !s.is_empty()),
+        isdn_genre_user: req.isdn_genre_user.filter(|s| !s.is_empty()),
+        isdn_c_code: req.isdn_c_code.filter(|s| !s.is_empty()),
+        isdn_author: req.isdn_author.filter(|s| !s.is_empty()),
+        isdn_shape: req.isdn_shape.filter(|s| !s.is_empty()),
+        isdn_contents: req.isdn_contents.filter(|s| !s.is_empty()),
+        isdn_barcode2: req.isdn_barcode2.filter(|s| !s.is_empty()),
+        isdn_sample_image_url: req.isdn_sample_image_url.filter(|s| !s.is_empty()),
+        isdn_useroption: req.isdn_useroption.filter(|s| !s.is_empty()),
+        isdn_external_links: req.isdn_external_links.filter(|s| !s.is_empty()),
     };
 
     let mut book = state.db.insert_book(&new_book).map_err(|e| {
@@ -309,7 +416,8 @@ pub async fn get_author(
 
 #[derive(Deserialize)]
 pub struct UpdateBookRequest {
-    pub isbn: String,
+    pub isbn: Option<String>,
+    pub isdn: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -328,6 +436,22 @@ pub struct UpdateBookRequest {
     pub series_id: Option<Option<i64>>,
     pub series_number: Option<i64>,
     pub grand_series_id: Option<Option<i64>>,
+    pub isdn_region: Option<String>,
+    pub isdn_class: Option<String>,
+    pub isdn_type: Option<String>,
+    pub isdn_rating_gender: Option<String>,
+    pub isdn_rating_age: Option<String>,
+    pub isdn_genre_code: Option<String>,
+    pub isdn_genre_name: Option<String>,
+    pub isdn_genre_user: Option<String>,
+    pub isdn_c_code: Option<String>,
+    pub isdn_author: Option<String>,
+    pub isdn_shape: Option<String>,
+    pub isdn_contents: Option<String>,
+    pub isdn_barcode2: Option<String>,
+    pub isdn_sample_image_url: Option<String>,
+    pub isdn_useroption: Option<String>,
+    pub isdn_external_links: Option<String>,
 }
 
 pub async fn update_book(
@@ -335,11 +459,12 @@ pub async fn update_book(
     Path(id): Path<i64>,
     Json(req): Json<UpdateBookRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let isbn = req.isbn.trim().replace(['-', ' '], "");
-    if isbn.is_empty() {
+    let isbn = req.isbn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    let isdn = req.isdn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    if isbn.is_none() && isdn.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "ISBN is required"})),
+            Json(serde_json::json!({"error": "ISBN or ISDN is required"})),
         ));
     }
     if req.title.trim().is_empty() {
@@ -364,7 +489,8 @@ pub async fn update_book(
         .db
         .update_book(
             id,
-            &isbn,
+            isbn.as_deref(),
+            isdn.as_deref(),
             req.title.trim(),
             req.publisher.as_deref(),
             req.publish_date.as_deref(),
@@ -382,6 +508,22 @@ pub async fn update_book(
             req.ndl_url.as_deref(),
             series_id,
             req.series_number,
+            req.isdn_region.as_deref(),
+            req.isdn_class.as_deref(),
+            req.isdn_type.as_deref(),
+            req.isdn_rating_gender.as_deref(),
+            req.isdn_rating_age.as_deref(),
+            req.isdn_genre_code.as_deref(),
+            req.isdn_genre_name.as_deref(),
+            req.isdn_genre_user.as_deref(),
+            req.isdn_c_code.as_deref(),
+            req.isdn_author.as_deref(),
+            req.isdn_shape.as_deref(),
+            req.isdn_contents.as_deref(),
+            req.isdn_barcode2.as_deref(),
+            req.isdn_sample_image_url.as_deref(),
+            req.isdn_useroption.as_deref(),
+            req.isdn_external_links.as_deref(),
         )
         .map_err(|e| {
             (
