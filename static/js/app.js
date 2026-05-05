@@ -7,6 +7,5 @@ const detailContent = document.getElementById("detail-content");
     await loadSeries();
     await loadGrandSeries();
     await loadBooks();
-    bookCount.textContent = `(${allBooks.length}冊)`;
     renderBooks();
 })();

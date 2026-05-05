@@ -18,6 +18,39 @@
     margin: 0;
 }
 
+.book-search {
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+.book-search input {
+    width: 100%;
+    padding-right: 2.5rem;
+}
+
+.book-search-clear {
+    position: absolute;
+    top: 50%;
+    right: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.book-search-clear:hover {
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+}
+
+.book-search-clear.hidden {
+    display: none;
+}
+
 .view-tabs {
     display: flex;
     gap: 0;

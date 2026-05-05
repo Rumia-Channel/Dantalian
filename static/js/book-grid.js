@@ -1,6 +1,9 @@
 let currentView = "author";
 let currentSort = localStorage.getItem("tsukuyomi_sort") || "id";
 const authorBookGrid = document.getElementById("book-grid");
+const bookSearchInput = document.getElementById("book-search-input");
+const bookSearchClear = document.getElementById("book-search-clear");
+let currentSearchQuery = localStorage.getItem("tsukuyomi_book_search") || "";
 
 function loadCollapsedAuthorGroups() {
     try {
@@ -37,6 +40,25 @@ document.getElementById("sort-buttons").addEventListener("click", (e) => {
     renderBooks();
 });
 
+bookSearchInput.value = currentSearchQuery;
+bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
+
+bookSearchInput.addEventListener("input", () => {
+    currentSearchQuery = bookSearchInput.value.trim();
+    localStorage.setItem("tsukuyomi_book_search", currentSearchQuery);
+    bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
+    renderBooks();
+});
+
+bookSearchClear.addEventListener("click", () => {
+    bookSearchInput.value = "";
+    currentSearchQuery = "";
+    localStorage.removeItem("tsukuyomi_book_search");
+    bookSearchClear.classList.add("hidden");
+    renderBooks();
+    bookSearchInput.focus();
+});
+
 authorBookGrid.addEventListener("click", (e) => {
     const btn = e.target.closest(".author-group-header");
     if (!btn || !authorBookGrid.contains(btn)) return;
@@ -64,6 +86,49 @@ function getPrimaryAuthor(book) {
     return book.authors.reduce((best, a) =>
         (a.sort_order < best.sort_order) ? a : best
     );
+}
+
+function normalizeSearchText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[ぁ-ゖ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60))
+        .replace(/\s+/g, "");
+}
+
+function getBookSearchText(book) {
+    const series = book.series_id != null ? allSeries.find((s) => s.id === book.series_id) : null;
+    const grandSeriesNames = allGrandSeries
+        .filter((gs) => {
+            if (gs.items.some((it) => it.item_type === "book" && it.item_id === book.id)) return true;
+            return book.series_id != null && gs.items.some((it) => it.item_type === "series" && it.item_id === book.series_id);
+        })
+        .map((gs) => gs.name);
+    return [
+        book.title,
+        book.title_transcription,
+        book.alternative,
+        book.alternative_transcription,
+        book.volume,
+        book.volume_transcription,
+        book.publisher,
+        book.publish_date,
+        book.isbn,
+        book.isdn,
+        book.series_title,
+        book.series_title_transcription,
+        book.jpno,
+        book.ndl_url,
+        series?.name,
+        ...grandSeriesNames,
+        ...(book.authors || []).flatMap((a) => [a.name, a.transcription, a.ndl_id]),
+    ].map(normalizeSearchText).join(" ");
+}
+
+function getFilteredBooks() {
+    const query = normalizeSearchText(currentSearchQuery);
+    if (!query) return allBooks;
+    return allBooks.filter((book) => getBookSearchText(book).includes(query));
 }
 
 function getGrandSeriesBookIds(gs) {
@@ -293,10 +358,10 @@ function buildGridHtml(books) {
     return html;
 }
 
-function renderBooksByAuthor() {
+function renderBooksByAuthor(books) {
     const authorMap = new Map();
 
-    for (const book of allBooks) {
+    for (const book of books) {
         const primary = getPrimaryAuthor(book);
         if (!primary) {
             if (!authorMap.has("__none__")) authorMap.set("__none__", { author: null, books: [] });
@@ -319,7 +384,7 @@ function renderBooksByAuthor() {
 
     for (const [key, { author, books }] of entries) {
         const groupKey = String(key);
-        const isCollapsed = collapsedAuthorGroups.has(groupKey);
+        const isCollapsed = currentSearchQuery.length === 0 && collapsedAuthorGroups.has(groupKey);
         const headerHtml = author
             ? `<button type="button" class="author-group-header" aria-expanded="${!isCollapsed}">
                     <span class="author-group-name">${escapeHtml(author.name)}</span>
@@ -341,16 +406,28 @@ function renderBooksByAuthor() {
 function renderBooks() {
     if (allBooks.length === 0) {
         bookGrid.innerHTML = '<p class="empty-state">ISBNで書籍を登録してください</p>';
+        bookCount.textContent = "(0冊)";
+        return;
+    }
+
+    const books = getFilteredBooks();
+    bookCount.textContent = currentSearchQuery
+        ? `(${books.length} / ${allBooks.length}冊)`
+        : `(${allBooks.length}冊)`;
+
+    if (books.length === 0) {
+        bookGrid.className = "";
+        bookGrid.innerHTML = '<p class="empty-state">該当する書籍がありません</p>';
         return;
     }
 
     if (currentView === "author") {
         bookGrid.className = "book-grid-author";
-        bookGrid.innerHTML = renderBooksByAuthor();
+        bookGrid.innerHTML = renderBooksByAuthor(books);
     } else {
         bookGrid.className = "";
         bookGrid.id = "book-grid";
-        bookGrid.innerHTML = buildGridHtml(allBooks);
+        bookGrid.innerHTML = buildGridHtml(books);
     }
 }
 
