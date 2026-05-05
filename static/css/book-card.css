@@ -44,6 +44,7 @@
     position: absolute;
     top: 50%;
     right: 0.5rem;
+    transform: translateY(-50%);
     width: 1.75rem;
     height: 1.75rem;
     border: none;
