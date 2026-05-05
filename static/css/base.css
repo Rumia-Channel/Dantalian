@@ -50,17 +50,23 @@
 
 .material-icons,
 .material-icons-outlined {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 1.25em;
     line-height: 1;
+    width: 1em;
+    height: 1em;
     letter-spacing: normal;
     text-transform: none;
     white-space: nowrap;
     word-wrap: normal;
     direction: ltr;
+    vertical-align: middle;
     font-feature-settings: "liga";
     -webkit-font-feature-settings: "liga";
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
 .material-icons {
