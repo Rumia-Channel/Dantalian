@@ -1,5 +1,21 @@
 let currentView = "author";
 let currentSort = localStorage.getItem("tsukuyomi_sort") || "id";
+const authorBookGrid = document.getElementById("book-grid");
+
+function loadCollapsedAuthorGroups() {
+    try {
+        const saved = JSON.parse(localStorage.getItem("tsukuyomi_collapsed_author_groups") || "[]");
+        return Array.isArray(saved) ? saved : [];
+    } catch {
+        return [];
+    }
+}
+
+const collapsedAuthorGroups = new Set(loadCollapsedAuthorGroups());
+
+function saveCollapsedAuthorGroups() {
+    localStorage.setItem("tsukuyomi_collapsed_author_groups", JSON.stringify([...collapsedAuthorGroups]));
+}
 
 document.querySelectorAll(".view-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -19,6 +35,28 @@ document.getElementById("sort-buttons").addEventListener("click", (e) => {
         b.classList.toggle("active", b.dataset.sort === currentSort);
     });
     renderBooks();
+});
+
+authorBookGrid.addEventListener("click", (e) => {
+    const btn = e.target.closest(".author-group-header");
+    if (!btn || !authorBookGrid.contains(btn)) return;
+
+    const group = btn.closest(".author-group");
+    const groupKey = group?.dataset.authorGroup;
+    if (!group || !groupKey) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const isCollapsed = group.classList.toggle("author-group--collapsed");
+    btn.setAttribute("aria-expanded", String(!isCollapsed));
+
+    if (isCollapsed) {
+        collapsedAuthorGroups.add(groupKey);
+    } else {
+        collapsedAuthorGroups.delete(groupKey);
+    }
+    saveCollapsedAuthorGroups();
 });
 
 function getPrimaryAuthor(book) {
@@ -279,18 +317,20 @@ function renderBooksByAuthor() {
 
     let html = "";
 
-    for (const [, { author, books }] of entries) {
+    for (const [key, { author, books }] of entries) {
+        const groupKey = String(key);
+        const isCollapsed = collapsedAuthorGroups.has(groupKey);
         const headerHtml = author
-            ? `<a href="/authors/?edit=${author.id}" class="author-group-header">
+            ? `<button type="button" class="author-group-header" aria-expanded="${!isCollapsed}">
                     <span class="author-group-name">${escapeHtml(author.name)}</span>
                     <span class="author-group-count">${books.length}冊</span>
-                </a>`
-            : `<div class="author-group-header author-group-header--none">
+                </button>`
+            : `<button type="button" class="author-group-header author-group-header--none" aria-expanded="${!isCollapsed}">
                     <span class="author-group-name">作者未設定</span>
                     <span class="author-group-count">${books.length}冊</span>
-                </div>`;
+                </button>`;
 
-        html += `<div class="author-group">${headerHtml}<div class="author-group-grid">`;
+        html += `<div class="author-group${isCollapsed ? " author-group--collapsed" : ""}" data-author-group="${escapeHtml(groupKey)}">${headerHtml}<div class="author-group-grid">`;
         html += buildGridHtml(books);
         html += `</div></div>`;
     }

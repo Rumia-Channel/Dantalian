@@ -28,7 +28,7 @@ function renderAuthorList() {
         <h2>著者一覧 <span style="font-size:0.8rem;color:#888;">(${authors.length}件)</span></h2>
         <div class="author-create">
             <input type="text" id="new-author-name" placeholder="著者名">
-            <input type="text" id="new-author-transcription" placeholder="よみ（任意）">
+            <input type="text" id="new-author-transcription" placeholder="ヨミガナ（任意）">
             <input type="text" id="new-author-ndl-id" placeholder="NDL ID（任意）">
             <button onclick="createAuthor()" class="btn btn-primary">追加</button>
         </div>
@@ -70,7 +70,7 @@ function renderAuthorEdit(id) {
                 <input type="text" name="name" value="${escapeAttr(author.name)}" required>
             </div>
             <div class="edit-field">
-                <label>よみ</label>
+                <label>ヨミガナ</label>
                 <input type="text" name="transcription" value="${escapeAttr(author.transcription || '')}">
             </div>
             <div class="edit-field">

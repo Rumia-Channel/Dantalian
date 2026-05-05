@@ -1,4 +1,5 @@
 /target
 /.cocoindex_code
+/.tmp
 *.db
 .env

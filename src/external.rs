@@ -32,6 +32,59 @@ fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
     Some(format!("{}{}", s, check_char))
 }
 
+fn isbn10_to_isbn13(isbn10: &str) -> Option<String> {
+    let clean = isbn10.trim().replace(['-', ' '], "").to_uppercase();
+    if clean.len() != 10 {
+        return None;
+    }
+    let body = &clean[..9];
+    if !body.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let mut digits = format!("978{}", body);
+    let sum: u32 = digits
+        .chars()
+        .enumerate()
+        .map(|(i, c)| c.to_digit(10).unwrap() * if i % 2 == 0 { 1 } else { 3 })
+        .sum();
+    let check = (10 - (sum % 10)) % 10;
+    digits.push(char::from_digit(check, 10)?);
+    Some(digits)
+}
+
+fn isbn_lookup_variants(isbn: &str) -> Vec<String> {
+    let clean = isbn.trim().replace(['-', ' '], "").to_uppercase();
+    let mut variants = vec![clean.clone()];
+    let converted = match clean.len() {
+        10 => isbn10_to_isbn13(&clean),
+        13 => isbn13_to_isbn10(&clean),
+        _ => None,
+    };
+    if let Some(other) = converted {
+        if !variants.contains(&other) {
+            variants.push(other);
+        }
+    }
+    variants
+}
+
+fn author_name_variants(name: &str) -> Vec<String> {
+    let clean = name.trim();
+    let mut variants = vec![clean.to_string()];
+    let no_space = clean.replace([' ', '　'], "");
+    if !no_space.is_empty() && !variants.contains(&no_space) {
+        variants.push(no_space);
+    }
+    let parts: Vec<&str> = clean.split_whitespace().collect();
+    if parts.len() == 2 {
+        let comma_name = format!("{}, {}", parts[0], parts[1]);
+        if !variants.contains(&comma_name) {
+            variants.push(comma_name);
+        }
+    }
+    variants
+}
+
 fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
     client
         .get(url)
@@ -63,45 +116,37 @@ pub async fn lookup_isbn(
     isbn: &str,
     images_dir: &str,
 ) -> Result<Option<NewBook>, String> {
-    let mut ndl = lookup_ndl(client, isbn).await?;
-    let used_isbn = if ndl.is_none() && isbn.len() == 13 {
-        if let Some(isbn10) = isbn13_to_isbn10(isbn) {
-            debug!(isbn13 = %isbn, isbn10 = %isbn10, "NDL not found with ISBN-13, retrying with ISBN-10");
-            ndl = lookup_ndl(client, &isbn10).await?;
-            if ndl.is_some() { Some(isbn10) } else { None }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    let Some(ndl) = ndl else {
+    let isbn_variants = isbn_lookup_variants(isbn);
+    let Some(mut ndl) = lookup_ndl(client, &isbn_variants).await? else {
         return Ok(None);
     };
-
-    let effective_isbn = used_isbn.as_deref().unwrap_or(isbn);
+    enrich_author_ndl_ids(client, &mut ndl.authors).await;
 
     let (cover_url, amazon_description) = {
         let delays: &[u64] = &[3, 5, 10];
-        let mut result = lookup_amazon_cover(client, effective_isbn, images_dir)
-            .await
-            .ok();
-        if result.as_ref().is_none_or(|(c, _)| c.is_none()) && effective_isbn.len() == 13 {
-            if let Some(isbn10) = isbn13_to_isbn10(effective_isbn) {
-                debug!(isbn13 = %effective_isbn, isbn10 = %isbn10, "Amazon cover not found with ISBN-13, retrying with ISBN-10");
-                result = lookup_amazon_cover(client, &isbn10, images_dir).await.ok();
+        let mut result = None;
+        for lookup_isbn in &isbn_variants {
+            result = lookup_amazon_cover(client, lookup_isbn, images_dir)
+                .await
+                .ok();
+            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+                break;
             }
         }
         for &delay in delays {
             if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
                 break;
             }
-            warn!(isbn = %effective_isbn, "Amazon cover fetch failed, retrying in {}s", delay);
+            warn!(isbn = %isbn, "Amazon cover fetch failed, retrying in {}s", delay);
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            result = lookup_amazon_cover(client, effective_isbn, images_dir)
-                .await
-                .ok();
+            for lookup_isbn in &isbn_variants {
+                result = lookup_amazon_cover(client, lookup_isbn, images_dir)
+                    .await
+                    .ok();
+                if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+                    break;
+                }
+            }
         }
         result.unwrap_or((None, None))
     };
@@ -394,25 +439,92 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
     }
 }
 
-async fn lookup_ndl(client: &Client, isbn: &str) -> Result<Option<NdlBookInfo>, String> {
-    let raw_query = format!("isbn=\"{}\"", isbn);
-    let query = urlencoding::encode(&raw_query);
-    let url = format!(
-        "https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl&onlyBib=true&maximumRecords=1&startRecord=1&recordPacking=xml&query={}",
-        query
-    );
-    let body = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("NDL request failed: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("NDL read failed: {}", e))?;
-    parse_ndl_sru(&body)
+async fn lookup_ndl(
+    client: &Client,
+    isbn_variants: &[String],
+) -> Result<Option<NdlBookInfo>, String> {
+    let mut candidates = Vec::new();
+
+    for isbn in isbn_variants {
+        let raw_query = format!("isbn=\"{}\"", isbn);
+        let query = urlencoding::encode(&raw_query);
+        let url = format!(
+            "https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl&onlyBib=true&maximumRecords=10&startRecord=1&recordPacking=xml&query={}",
+            query
+        );
+        debug!(%isbn, "NDL search: {}", url);
+        let body = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("NDL request failed: {}", e))?
+            .text()
+            .await
+            .map_err(|e| format!("NDL read failed: {}", e))?;
+        candidates.extend(parse_ndl_sru_candidates(&body)?);
+    }
+
+    candidates.sort_by_key(ndl_score);
+    Ok(candidates.pop())
 }
 
-fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
+fn ndl_score(info: &NdlBookInfo) -> i32 {
+    let author_id_count = info.authors.iter().filter(|a| a.ndl_id.is_some()).count() as i32;
+    let ndl_bib_record = info
+        .ndl_url
+        .as_deref()
+        .is_some_and(|url| url.contains("R100000002")) as i32;
+    let filled_fields = [
+        info.publisher.as_ref(),
+        info.publish_date.as_ref(),
+        info.description.as_ref(),
+        info.title_transcription.as_ref(),
+        info.series_title.as_ref(),
+        info.series_title_transcription.as_ref(),
+        info.alternative.as_ref(),
+        info.price.as_ref(),
+        info.extent.as_ref(),
+        info.jpno.as_ref(),
+        info.ndl_url.as_ref(),
+    ]
+    .iter()
+    .filter(|v| v.is_some())
+    .count() as i32;
+
+    author_id_count * 100 + ndl_bib_record * 50 + filled_fields
+}
+
+fn parse_ndl_sru_candidates(xml: &str) -> Result<Vec<NdlBookInfo>, String> {
+    let mut candidates = Vec::new();
+    let mut offset = 0;
+
+    while let Some(start_rel) = xml[offset..].find("<recordData") {
+        let start = offset + start_rel;
+        let Some(open_end_rel) = xml[start..].find('>') else {
+            break;
+        };
+        let content_start = start + open_end_rel + 1;
+        let Some(end_rel) = xml[content_start..].find("</recordData>") else {
+            break;
+        };
+        let end = content_start + end_rel + "</recordData>".len();
+        let chunk = &xml[start..end];
+        if let Some(info) = parse_ndl_sru_record(chunk)? {
+            candidates.push(info);
+        }
+        offset = end;
+    }
+
+    if candidates.is_empty() {
+        if let Some(info) = parse_ndl_sru_record(xml)? {
+            candidates.push(info);
+        }
+    }
+
+    Ok(candidates)
+}
+
+fn parse_ndl_sru_record(xml: &str) -> Result<Option<NdlBookInfo>, String> {
     let mut reader = quick_xml::Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
@@ -691,6 +803,64 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
         ndl_url,
         authors,
     }))
+}
+
+async fn enrich_author_ndl_ids(client: &Client, authors: &mut [NewAuthor]) {
+    for author in authors {
+        if author.ndl_id.is_some() {
+            continue;
+        }
+        match lookup_ndl_author_id(client, &author.name).await {
+            Ok(Some(id)) => author.ndl_id = Some(id),
+            Ok(None) => {}
+            Err(e) => warn!(author = %author.name, "NDL authority lookup failed: {}", e),
+        }
+    }
+}
+
+async fn lookup_ndl_author_id(client: &Client, name: &str) -> Result<Option<String>, String> {
+    let variants = author_name_variants(name);
+    if variants.is_empty() {
+        return Ok(None);
+    }
+
+    let union_patterns = variants
+        .iter()
+        .map(|v| {
+            let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
+            format!(
+                r#"{{ ?auth foaf:primaryTopic ?entity . ?entity foaf:name "{escaped}" . }}
+  UNION {{ ?auth foaf:primaryTopic ?entity ; rdfs:label "{escaped}" . }}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n  UNION ");
+    let query = format!(
+        r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?entity WHERE {{
+  {}
+}}
+LIMIT 1"#,
+        union_patterns
+    );
+    let url = format!(
+        "https://id.ndl.go.jp/auth/ndla?output=json&query={}",
+        urlencoding::encode(&query)
+    );
+    let value: serde_json::Value = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("NDL authority request failed: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("NDL authority response parse failed: {}", e))?;
+
+    let entity = value
+        .pointer("/results/bindings/0/entity/value")
+        .and_then(|v| v.as_str());
+    Ok(entity.and_then(|uri| uri.rsplit('/').next().map(|id| id.to_string())))
 }
 
 struct IsdnBookInfo {
