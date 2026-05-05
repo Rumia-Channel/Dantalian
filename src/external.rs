@@ -5,8 +5,13 @@ use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
 
 fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
-    let digits: Vec<u8> = isbn13.chars().filter_map(|c| c.to_digit(10).map(|d| d as u8)).collect();
-    if digits.len() != 13 || (digits[0] != 9 || digits[1] != 7 || (digits[2] != 8 && digits[2] != 9)) {
+    let digits: Vec<u8> = isbn13
+        .chars()
+        .filter_map(|c| c.to_digit(10).map(|d| d as u8))
+        .collect();
+    if digits.len() != 13
+        || (digits[0] != 9 || digits[1] != 7 || (digits[2] != 8 && digits[2] != 9))
+    {
         return None;
     }
     let body = &digits[3..12];
@@ -15,13 +20,21 @@ fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
         sum += (d as u32) * ((i + 1) as u32);
     }
     let check = (11 - (sum % 11)) % 11;
-    let check_char = if check == 10 { 'X' } else { char::from_digit(check as u32, 10)? };
-    let s: String = body.iter().map(|d| char::from_digit(*d as u32, 10).unwrap()).collect();
+    let check_char = if check == 10 {
+        'X'
+    } else {
+        char::from_digit(check as u32, 10)?
+    };
+    let s: String = body
+        .iter()
+        .map(|d| char::from_digit(*d as u32, 10).unwrap())
+        .collect();
     Some(format!("{}{}", s, check_char))
 }
 
 fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
-    client.get(url)
+    client
+        .get(url)
         .header("User-Agent", ua_generator::ua::spoof_ua())
         .header("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
 }
@@ -45,15 +58,23 @@ struct NdlBookInfo {
     authors: Vec<NewAuthor>,
 }
 
-pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Result<Option<NewBook>, String> {
+pub async fn lookup_isbn(
+    client: &Client,
+    isbn: &str,
+    images_dir: &str,
+) -> Result<Option<NewBook>, String> {
     let mut ndl = lookup_ndl(client, isbn).await?;
     let used_isbn = if ndl.is_none() && isbn.len() == 13 {
         if let Some(isbn10) = isbn13_to_isbn10(isbn) {
             debug!(isbn13 = %isbn, isbn10 = %isbn10, "NDL not found with ISBN-13, retrying with ISBN-10");
             ndl = lookup_ndl(client, &isbn10).await?;
             if ndl.is_some() { Some(isbn10) } else { None }
-        } else { None }
-    } else { None };
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let Some(ndl) = ndl else {
         return Ok(None);
@@ -63,7 +84,9 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
 
     let (cover_url, amazon_description) = {
         let delays: &[u64] = &[3, 5, 10];
-        let mut result = lookup_amazon_cover(client, effective_isbn, images_dir).await.ok();
+        let mut result = lookup_amazon_cover(client, effective_isbn, images_dir)
+            .await
+            .ok();
         if result.as_ref().is_none_or(|(c, _)| c.is_none()) && effective_isbn.len() == 13 {
             if let Some(isbn10) = isbn13_to_isbn10(effective_isbn) {
                 debug!(isbn13 = %effective_isbn, isbn10 = %isbn10, "Amazon cover not found with ISBN-13, retrying with ISBN-10");
@@ -76,7 +99,9 @@ pub async fn lookup_isbn(client: &Client, isbn: &str, images_dir: &str) -> Resul
             }
             warn!(isbn = %effective_isbn, "Amazon cover fetch failed, retrying in {}s", delay);
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            result = lookup_amazon_cover(client, effective_isbn, images_dir).await.ok();
+            result = lookup_amazon_cover(client, effective_isbn, images_dir)
+                .await
+                .ok();
         }
         result.unwrap_or((None, None))
     };
@@ -148,12 +173,15 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
         .map_err(|e| format!("Cover read failed: {}", e))?;
 
     let hash = Sha3_256::digest(&bytes);
-    let filename = format!("{}.{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash), ext);
+    let filename = format!(
+        "{}.{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash),
+        ext
+    );
     let filepath = std::path::Path::new(images_dir).join(&filename);
 
     if !filepath.exists() {
-        std::fs::write(&filepath, &bytes)
-            .map_err(|e| format!("Failed to save cover: {}", e))?;
+        std::fs::write(&filepath, &bytes).map_err(|e| format!("Failed to save cover: {}", e))?;
         debug!(%url, %filename, "Cover saved");
     } else {
         debug!(%url, %filename, "Cover already exists");
@@ -162,7 +190,11 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     Ok(filename)
 }
 
-async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> Result<(Option<String>, Option<String>), String> {
+async fn lookup_amazon_cover(
+    client: &Client,
+    isbn: &str,
+    images_dir: &str,
+) -> Result<(Option<String>, Option<String>), String> {
     let search_url = format!("https://www.amazon.co.jp/s?k={}", isbn);
     debug!(isbn = %isbn, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
@@ -238,11 +270,9 @@ async fn lookup_amazon_cover(client: &Client, isbn: &str, images_dir: &str) -> R
         detail_body
     };
 
-    let amazon_info = tokio::task::spawn_blocking({
-        move || parse_amazon_detail(&detail_body)
-    })
-    .await
-    .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
+    let amazon_info = tokio::task::spawn_blocking(move || parse_amazon_detail(&detail_body))
+        .await
+        .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
 
     match &amazon_info.cover_url {
         Some(url) => debug!(isbn = %isbn, "Amazon cover found: {}", url),
@@ -284,7 +314,9 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
         .filter_map(|a| a.value().attr("href"))
         .collect();
 
-    let paper = all_hrefs.iter().find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"));
+    let paper = all_hrefs
+        .iter()
+        .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"));
     if let Some(href) = paper {
         return Ok(Some(href.to_string()));
     }
@@ -320,31 +352,46 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
     };
 
     let cover_url = cover_url.or_else(|| {
-        scraper::Selector::parse(r#"img#imgBlkFront"#).ok().and_then(|selector| {
-            document.select(&selector).next().and_then(|el| {
-                el.value().attr("src").map(|s| s.to_string())
+        scraper::Selector::parse(r#"img#imgBlkFront"#)
+            .ok()
+            .and_then(|selector| {
+                document
+                    .select(&selector)
+                    .next()
+                    .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
             })
-        })
     });
 
-    let description = scraper::Selector::parse(r#"div#bookDescription_feature_div div.a-expander-content span"#)
-        .ok()
-        .and_then(|selector| {
-            document.select(&selector).next().map(|el| {
-                let html = el.inner_html();
-                let text = html
-                    .replace("<br>", "\n")
-                    .replace("<br/>", "\n")
-                    .replace("<br />", "\n")
-                    .replace("<BR>", "\n")
-                    .replace("<BR/>", "\n")
-                    .replace("<BR />", "\n");
-                let trimmed = text.trim().to_string();
-                if trimmed.is_empty() { None } else { Some(trimmed) }
-            }).flatten()
-        });
+    let description =
+        scraper::Selector::parse(r#"div#bookDescription_feature_div div.a-expander-content span"#)
+            .ok()
+            .and_then(|selector| {
+                document
+                    .select(&selector)
+                    .next()
+                    .map(|el| {
+                        let html = el.inner_html();
+                        let text = html
+                            .replace("<br>", "\n")
+                            .replace("<br/>", "\n")
+                            .replace("<br />", "\n")
+                            .replace("<BR>", "\n")
+                            .replace("<BR/>", "\n")
+                            .replace("<BR />", "\n");
+                        let trimmed = text.trim().to_string();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed)
+                        }
+                    })
+                    .flatten()
+            });
 
-    AmazonInfo { cover_url, description }
+    AmazonInfo {
+        cover_url,
+        description,
+    }
 }
 
 async fn lookup_ndl(client: &Client, isbn: &str) -> Result<Option<NdlBookInfo>, String> {
@@ -402,7 +449,9 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
-                let prefix = e.name().prefix()
+                let prefix = e
+                    .name()
+                    .prefix()
                     .map(|p| String::from_utf8_lossy(p.as_ref()).to_string());
 
                 if tag == "recordData" {
@@ -448,7 +497,9 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
             Ok(Event::Empty(_)) => {}
             Ok(Event::End(ref e)) => {
                 let tag = String::from_utf8_lossy(e.name().local_name().as_ref()).to_string();
-                let prefix = e.name().prefix()
+                let prefix = e
+                    .name()
+                    .prefix()
                     .map(|p| String::from_utf8_lossy(p.as_ref()).to_string());
 
                 if in_record_data && tag == "recordData" {
@@ -462,7 +513,10 @@ fn parse_ndl_sru(xml: &str) -> Result<Option<NdlBookInfo>, String> {
                         path.pop();
                     }
 
-                    if tag == "creator" && prefix.as_deref() == Some("dcterms") && in_dcterms_creator {
+                    if tag == "creator"
+                        && prefix.as_deref() == Some("dcterms")
+                        && in_dcterms_creator
+                    {
                         in_dcterms_creator = false;
                         if let Some(name) = cur_author_name.take() {
                             authors.push(NewAuthor {
@@ -674,7 +728,8 @@ async fn parse_isdn_xml(xml: &str) -> Result<Option<IsdnBookInfo>, String> {
 
             fn text_val(el: &scraper::ElementRef, tag: &str) -> Option<String> {
                 let sel = scraper::Selector::parse(tag).unwrap();
-                el.select(&sel).next()
+                el.select(&sel)
+                    .next()
                     .map(|e| e.text().collect::<String>())
                     .filter(|s| !s.is_empty())
             }
@@ -709,7 +764,9 @@ async fn parse_isdn_xml(xml: &str) -> Result<Option<IsdnBookInfo>, String> {
             let capacity = text_val(&item, "product-capacity");
             let capacity_unit = text_val(&item, "product-capacity-unit");
             let extent = match (style, size, capacity, capacity_unit) {
-                (Some(s), Some(sz), Some(c), Some(cu)) => Some(format!("{}, {}, {}{}", s, sz, c, cu)),
+                (Some(s), Some(sz), Some(c), Some(cu)) => {
+                    Some(format!("{}, {}, {}{}", s, sz, c, cu))
+                }
                 (Some(s), Some(sz), None, None) => Some(format!("{}, {}", s, sz)),
                 (Some(s), None, None, None) => Some(s),
                 (None, Some(sz), None, None) => Some(sz),
@@ -735,26 +792,56 @@ async fn parse_isdn_xml(xml: &str) -> Result<Option<IsdnBookInfo>, String> {
 
             let useroption = {
                 let sel = scraper::Selector::parse("useroption").unwrap();
-                let items: Vec<(String, String)> = item.select(&sel).filter_map(|uo| {
-                    let prop_sel = scraper::Selector::parse("property").unwrap();
-                    let val_sel = scraper::Selector::parse("value").unwrap();
-                    let prop = uo.select(&prop_sel).next().map(|e| e.text().collect::<String>()).filter(|s| !s.is_empty())?;
-                    let val = uo.select(&val_sel).next().map(|e| e.text().collect::<String>()).filter(|s| !s.is_empty())?;
-                    Some((prop, val))
-                }).collect();
-                if items.is_empty() { None } else { Some(serde_json::to_string(&items).unwrap()) }
+                let items: Vec<(String, String)> = item
+                    .select(&sel)
+                    .filter_map(|uo| {
+                        let prop_sel = scraper::Selector::parse("property").unwrap();
+                        let val_sel = scraper::Selector::parse("value").unwrap();
+                        let prop = uo
+                            .select(&prop_sel)
+                            .next()
+                            .map(|e| e.text().collect::<String>())
+                            .filter(|s| !s.is_empty())?;
+                        let val = uo
+                            .select(&val_sel)
+                            .next()
+                            .map(|e| e.text().collect::<String>())
+                            .filter(|s| !s.is_empty())?;
+                        Some((prop, val))
+                    })
+                    .collect();
+                if items.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&items).unwrap())
+                }
             };
 
             let external_links = {
                 let sel = scraper::Selector::parse("external-link").unwrap();
-                let links: Vec<(String, String)> = item.select(&sel).filter_map(|link| {
-                    let title_sel = scraper::Selector::parse("title").unwrap();
-                    let uri_sel = scraper::Selector::parse("uri").unwrap();
-                    let t = link.select(&title_sel).next().map(|e| e.text().collect::<String>()).filter(|s| !s.is_empty())?;
-                    let u = link.select(&uri_sel).next().map(|e| e.text().collect::<String>()).filter(|s| !s.is_empty())?;
-                    Some((t, u))
-                }).collect();
-                if links.is_empty() { None } else { Some(serde_json::to_string(&links).unwrap()) }
+                let links: Vec<(String, String)> = item
+                    .select(&sel)
+                    .filter_map(|link| {
+                        let title_sel = scraper::Selector::parse("title").unwrap();
+                        let uri_sel = scraper::Selector::parse("uri").unwrap();
+                        let t = link
+                            .select(&title_sel)
+                            .next()
+                            .map(|e| e.text().collect::<String>())
+                            .filter(|s| !s.is_empty())?;
+                        let u = link
+                            .select(&uri_sel)
+                            .next()
+                            .map(|e| e.text().collect::<String>())
+                            .filter(|s| !s.is_empty())?;
+                        Some((t, u))
+                    })
+                    .collect();
+                if links.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&links).unwrap())
+                }
             };
 
             Ok(Some(IsdnBookInfo {
@@ -815,7 +902,9 @@ pub async fn lookup_isdn(client: &Client, isdn: &str) -> Result<Option<NewBook>,
         .await
         .map_err(|e| format!("Failed to read ISDN response: {}", e))?;
 
-    let info = parse_isdn_xml(&xml).await?.ok_or("No item found in ISDN response")?;
+    let info = parse_isdn_xml(&xml)
+        .await?
+        .ok_or("No item found in ISDN response")?;
 
     let mut description = info.description;
     if description.is_none() {

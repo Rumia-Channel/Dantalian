@@ -29,24 +29,22 @@ pub async fn create(
             Json(serde_json::json!({"error": "Series name is required"})),
         ));
     }
-    let series = state
-        .db
-        .create_series(req.name.trim())
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    let series = state.db.create_series(req.name.trim()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
     Ok((StatusCode::CREATED, Json(series)))
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Series>>, StatusCode> {
-    state
-        .db
-        .list_series()
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let db = state.db.clone();
+    let series = tokio::task::spawn_blocking(move || db.list_series())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(series))
 }
 
 pub async fn rename(
@@ -60,15 +58,12 @@ pub async fn rename(
             Json(serde_json::json!({"error": "Series name is required"})),
         ));
     }
-    state
-        .db
-        .rename_series(id, req.name.trim())
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    state.db.rename_series(id, req.name.trim()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
     Ok(StatusCode::NO_CONTENT)
 }
 

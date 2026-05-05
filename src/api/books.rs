@@ -41,7 +41,10 @@ pub async fn register(
         return Ok((
             StatusCode::OK,
             Json(RegisterResponse {
-                book: BookWithAuthors { book: existing, authors },
+                book: BookWithAuthors {
+                    book: existing,
+                    authors,
+                },
                 source: "cache".to_string(),
             }),
         ));
@@ -49,7 +52,12 @@ pub async fn register(
 
     let new_book = external::lookup_isbn(&state.client, &isbn, &state.images_dir)
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": e})),
+            )
+        })?;
 
     let Some(new_book) = new_book else {
         return Err((
@@ -65,28 +73,24 @@ pub async fn register(
     }
     .to_string();
 
-    let book = state
-        .db
-        .insert_book(&new_book)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    let book = state.db.insert_book(&new_book).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
 
     let mut authors = Vec::new();
     for a in &new_book.authors {
-        let aid = state.db.insert_author(
-            a.ndl_id.as_deref(),
-            &a.name,
-            a.transcription.as_deref(),
-        ).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+        let aid = state
+            .db
+            .insert_author(a.ndl_id.as_deref(), &a.name, a.transcription.as_deref())
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+            })?;
         state.db.add_book_author(book.id, aid).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -141,7 +145,10 @@ pub async fn isdn_register(
         return Ok((
             StatusCode::OK,
             Json(RegisterResponse {
-                book: BookWithAuthors { book: existing, authors },
+                book: BookWithAuthors {
+                    book: existing,
+                    authors,
+                },
                 source: "cache".to_string(),
             }),
         ));
@@ -149,7 +156,12 @@ pub async fn isdn_register(
 
     let new_book = external::lookup_isdn(&state.client, &isdn)
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": e})),
+            )
+        })?;
 
     let Some(new_book) = new_book else {
         return Err((
@@ -158,20 +170,20 @@ pub async fn isdn_register(
         ));
     };
 
-    let book = state
-        .db
-        .insert_book(&new_book)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    let book = state.db.insert_book(&new_book).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
-            book: BookWithAuthors { book, authors: Vec::new() },
+            book: BookWithAuthors {
+                book,
+                authors: Vec::new(),
+            },
             source: "isdn".to_string(),
         }),
     ))
@@ -222,8 +234,14 @@ pub async fn manual_register(
     State(state): State<AppState>,
     Json(req): Json<ManualRegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), ApiError> {
-    let isbn = req.isbn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
-    let isdn = req.isdn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    let isbn = req
+        .isbn
+        .map(|s| s.trim().replace(['-', ' '], ""))
+        .filter(|s| !s.is_empty());
+    let isdn = req
+        .isdn
+        .map(|s| s.trim().replace(['-', ' '], ""))
+        .filter(|s| !s.is_empty());
     if isbn.is_none() && isdn.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -243,7 +261,10 @@ pub async fn manual_register(
             return Ok((
                 StatusCode::OK,
                 Json(RegisterResponse {
-                    book: BookWithAuthors { book: existing, authors },
+                    book: BookWithAuthors {
+                        book: existing,
+                        authors,
+                    },
                     source: "cache".to_string(),
                 }),
             ));
@@ -255,7 +276,10 @@ pub async fn manual_register(
             return Ok((
                 StatusCode::OK,
                 Json(RegisterResponse {
-                    book: BookWithAuthors { book: existing, authors },
+                    book: BookWithAuthors {
+                        book: existing,
+                        authors,
+                    },
                     source: "cache".to_string(),
                 }),
             ));
@@ -266,21 +290,63 @@ pub async fn manual_register(
         isbn,
         isdn,
         title: req.title.trim().to_string(),
-        publisher: req.publisher.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        publish_date: req.publish_date.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        publisher: req
+            .publisher
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        publish_date: req
+            .publish_date
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
         cover_url: None,
-        description: req.description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        title_transcription: req.title_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        series_title: req.series_title.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        series_title_transcription: req.series_title_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        alternative: req.alternative.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        alternative_transcription: req.alternative_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        volume: req.volume.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        volume_transcription: req.volume_transcription.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        price: req.price.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        extent: req.extent.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        jpno: req.jpno.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        ndl_url: req.ndl_url.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        description: req
+            .description
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        title_transcription: req
+            .title_transcription
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        series_title: req
+            .series_title
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        series_title_transcription: req
+            .series_title_transcription
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        alternative: req
+            .alternative
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        alternative_transcription: req
+            .alternative_transcription
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        volume: req
+            .volume
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        volume_transcription: req
+            .volume_transcription
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        price: req
+            .price
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        extent: req
+            .extent
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        jpno: req
+            .jpno
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        ndl_url: req
+            .ndl_url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
         authors: Vec::new(),
         isdn_region: req.isdn_region.filter(|s| !s.is_empty()),
         isdn_class: req.isdn_class.filter(|s| !s.is_empty()),
@@ -356,16 +422,19 @@ pub async fn manual_register(
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<BookWithAuthors>>, StatusCode> {
-    let books = state
-        .db
-        .list_books()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let mut result = Vec::new();
-    for book in books {
-        let authors = state.db.get_book_authors(book.id).unwrap_or_default();
-        result.push(BookWithAuthors { book, authors });
-    }
+    let db = state.db.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let books = db.list_books()?;
+        let mut result = Vec::new();
+        for book in books {
+            let authors = db.get_book_authors(book.id).unwrap_or_default();
+            result.push(BookWithAuthors { book, authors });
+        }
+        Ok::<_, rusqlite::Error>(result)
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(result))
 }
@@ -459,8 +528,14 @@ pub async fn update_book(
     Path(id): Path<i64>,
     Json(req): Json<UpdateBookRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let isbn = req.isbn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
-    let isdn = req.isdn.map(|s| s.trim().replace(['-', ' '], "")).filter(|s| !s.is_empty());
+    let isbn = req
+        .isbn
+        .map(|s| s.trim().replace(['-', ' '], ""))
+        .filter(|s| !s.is_empty());
+    let isdn = req
+        .isdn
+        .map(|s| s.trim().replace(['-', ' '], ""))
+        .filter(|s| !s.is_empty());
     if isbn.is_none() && isdn.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -554,7 +629,12 @@ pub async fn update_author(
     }
     state
         .db
-        .update_author(id, req.name.trim(), req.transcription.as_deref(), req.ndl_id.as_deref())
+        .update_author(
+            id,
+            req.name.trim(),
+            req.transcription.as_deref(),
+            req.ndl_id.as_deref(),
+        )
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -567,11 +647,12 @@ pub async fn update_author(
 pub async fn list_authors(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<crate::db::Author>>, StatusCode> {
-    state
-        .db
-        .list_authors()
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let db = state.db.clone();
+    let authors = tokio::task::spawn_blocking(move || db.list_authors())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(authors))
 }
 
 #[derive(Deserialize)]
@@ -593,7 +674,11 @@ pub async fn create_author(
     }
     let author = state
         .db
-        .create_author(req.name.trim(), req.transcription.as_deref(), req.ndl_id.as_deref())
+        .create_author(
+            req.name.trim(),
+            req.transcription.as_deref(),
+            req.ndl_id.as_deref(),
+        )
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -650,22 +735,40 @@ pub async fn upload_cover(
     let book = state
         .db
         .find_by_id(id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Book not found"}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Book not found"})),
+            )
+        })?;
 
     let mut data: Option<Vec<u8>> = None;
     let mut content_type: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await
-        .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })? {
         let name = field.name().unwrap_or("").to_string();
         if name == "cover" {
             let ct = field.content_type().unwrap_or("image/jpeg").to_string();
             let bytes = field
                 .bytes()
                 .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))))?
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": e.to_string()})),
+                    )
+                })?
                 .to_vec();
             if bytes.len() > 10 * 1024 * 1024 {
                 return Err((
@@ -678,10 +781,12 @@ pub async fn upload_cover(
         }
     }
 
-    let bytes = data.ok_or_else(|| (
-        StatusCode::BAD_REQUEST,
-        Json(serde_json::json!({"error": "No file uploaded"})),
-    ))?;
+    let bytes = data.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No file uploaded"})),
+        )
+    })?;
 
     let ct = content_type.unwrap_or("image/jpeg".to_string());
     let ext = match ct.as_str() {
@@ -699,19 +804,22 @@ pub async fn upload_cover(
     );
     let filepath = std::path::Path::new(state.images_dir.as_str()).join(&filename);
 
-    std::fs::write(&filepath, &bytes)
-        .map_err(|e| (
+    std::fs::write(&filepath, &bytes).map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
-        ))?;
+        )
+    })?;
 
     state
         .db
         .update_book_cover_url(id, Some(&filename))
-        .map_err(|e| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
 
     if let Some(old) = &book.cover_url {
         if old != &filename {
@@ -730,21 +838,30 @@ pub async fn delete_cover(
     let book = state
         .db
         .find_by_id(id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Book not found"}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Book not found"})),
+            )
+        })?;
 
     if let Some(old) = &book.cover_url {
         let old_path = std::path::Path::new(state.images_dir.as_str()).join(old);
         let _ = std::fs::remove_file(old_path);
     }
 
-    state
-        .db
-        .update_book_cover_url(id, None)
-        .map_err(|e| (
+    state.db.update_book_cover_url(id, None).map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
-        ))?;
+        )
+    })?;
 
     Ok(StatusCode::NO_CONTENT)
 }

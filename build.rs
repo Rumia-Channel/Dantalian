@@ -28,6 +28,7 @@ fn main() {
         "static/js/series.js",
         "static/js/book-grid.js",
         "static/js/detail.js",
+        "static/js/authors.js",
         "static/js/app.js",
     ];
 

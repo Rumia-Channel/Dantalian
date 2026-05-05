@@ -1,5 +1,6 @@
 mod api;
 mod db;
+mod db_models;
 mod external;
 
 use axum::{Router, response::Html};
@@ -12,8 +13,7 @@ use tracing_subscriber::EnvFilter;
 const ASSET_VERSION: &str = env!("ASSET_VERSION");
 
 fn serve_html(path: &str) -> Html<String> {
-    let html = std::fs::read_to_string(path)
-        .unwrap_or_else(|_| "Page not found".to_string());
+    let html = std::fs::read_to_string(path).unwrap_or_else(|_| "Page not found".to_string());
     Html(html.replace("ASSET_VERSION", ASSET_VERSION))
 }
 
@@ -50,8 +50,7 @@ async fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("tsukuyomi=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("tsukuyomi=info")),
         )
         .init();
 

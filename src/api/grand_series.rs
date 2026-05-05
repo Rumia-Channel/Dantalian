@@ -35,26 +35,24 @@ pub async fn create(
             Json(serde_json::json!({"error": "Name is required"})),
         ));
     }
-    let gs = state
-        .db
-        .create_grand_series(req.name.trim())
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    let gs = state.db.create_grand_series(req.name.trim()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
     Ok((StatusCode::CREATED, Json(gs)))
 }
 
 pub async fn list(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<GrandSeriesWithItems>>, StatusCode> {
-    state
-        .db
-        .list_grand_series()
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let db = state.db.clone();
+    let grand_series = tokio::task::spawn_blocking(move || db.list_grand_series())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(grand_series))
 }
 
 pub async fn rename(
