@@ -54,7 +54,9 @@
 
         <div id="detail-overlay" class="detail-overlay hidden" onclick="closeDetail(event)">
             <div class="detail-modal" onclick="event.stopPropagation()">
-                <button class="detail-close" onclick="closeDetail()">&times;</button>
+                <button class="detail-close" onclick="closeDetail()" aria-label="閉じる">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
                 <div id="detail-content"></div>
             </div>
         </div>
