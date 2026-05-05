@@ -34,6 +34,43 @@
     --color-overlay: rgba(0, 0, 0, 0.7);
 }
 
+@font-face {
+    font-family: "Material Icons";
+    font-style: normal;
+    font-weight: 400;
+    src: url("/fonts/MaterialIcons-Regular.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "Material Icons Outlined";
+    font-style: normal;
+    font-weight: 400;
+    src: url("/fonts/MaterialIconsOutlined-Regular.otf") format("opentype");
+}
+
+.material-icons,
+.material-icons-outlined {
+    display: inline-block;
+    font-size: 1.25em;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-feature-settings: "liga";
+    -webkit-font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+}
+
+.material-icons {
+    font-family: "Material Icons";
+}
+
+.material-icons-outlined {
+    font-family: "Material Icons Outlined";
+}
+
 * {
     margin: 0;
     padding: 0;

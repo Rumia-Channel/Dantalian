@@ -116,7 +116,9 @@ function renderGrandSeriesManager() {
             return `<div class="gs-item">
                 <span class="gs-item-type">${typeLabel}</span>
                 <span class="gs-item-name">${escapeHtml(it.name)}</span>
-                <button class="gs-item-remove" onclick="removeGrandSeriesItem(${gs.id}, '${it.item_type}', ${it.item_id})">×</button>
+                <button class="gs-item-remove" onclick="removeGrandSeriesItem(${gs.id}, '${it.item_type}', ${it.item_id})" aria-label="項目を削除">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
             </div>`;
         }).join("");
 

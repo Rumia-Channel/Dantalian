@@ -32,10 +32,16 @@ fn main() {
         "static/js/app.js",
     ];
 
+    let font_files = [
+        "static/fonts/MaterialIcons-Regular.ttf",
+        "static/fonts/MaterialIconsOutlined-Regular.otf",
+    ];
+
     for file in html_files
         .iter()
         .chain(css_files.iter())
         .chain(js_files.iter())
+        .chain(font_files.iter())
     {
         println!("cargo:rerun-if-changed={}", file);
     }
@@ -46,6 +52,7 @@ fn main() {
         .iter()
         .chain(css_files.iter())
         .chain(js_files.iter())
+        .chain(font_files.iter())
     {
         let path = Path::new(file);
         if path.exists() {
