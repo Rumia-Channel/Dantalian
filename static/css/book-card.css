@@ -144,6 +144,7 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     flex-shrink: 0;
+    transform: translateY(var(--material-icon-optical-y));
 }
 
 .author-group--collapsed .author-group-header::before {
