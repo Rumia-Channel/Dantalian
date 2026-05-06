@@ -70,6 +70,10 @@ pub struct BookWithAuthors {
     #[serde(flatten)]
     pub book: Book,
     pub authors: Vec<BookAuthor>,
+    #[serde(default)]
+    pub copies_count: i64,
+    #[serde(default)]
+    pub lent_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,4 +139,48 @@ pub struct GrandSeriesWithItems {
     pub id: i64,
     pub name: String,
     pub items: Vec<GrandSeriesItemInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Copy {
+    pub id: i64,
+    pub book_id: i64,
+    pub copy_type: String,
+    pub location: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Borrower {
+    pub id: i64,
+    pub name: String,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LendingRecord {
+    pub id: i64,
+    pub copy_id: i64,
+    pub borrower_id: i64,
+    pub borrower_name: Option<String>,
+    pub lent_date: String,
+    pub due_date: Option<String>,
+    pub returned_date: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewLendingRecord {
+    pub borrower_id: i64,
+    pub due_date: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CopyWithStatus {
+    #[serde(flatten)]
+    pub copy: Copy,
+    pub lent_to: Option<String>,
+    pub lent_date: Option<String>,
+    pub due_date: Option<String>,
 }

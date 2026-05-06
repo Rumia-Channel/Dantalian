@@ -1,4 +1,6 @@
 pub mod books;
+pub mod borrowers;
+pub mod copies;
 pub mod grand_series;
 pub mod series;
 
@@ -40,4 +42,15 @@ pub fn routes() -> axum::Router<crate::AppState> {
             "/grand-series/{id}/items/{item_type}/{item_id}",
             delete(grand_series::remove_item),
         )
+        .route("/books/{id}/copies", get(copies::list_copies))
+        .route("/books/{id}/copies", post(copies::create_copy))
+        .route("/copies/{id}", put(copies::update_copy))
+        .route("/copies/{id}", delete(copies::delete_copy))
+        .route("/copies/{id}/lend", post(copies::lend_copy))
+        .route("/copies/{id}/return", post(copies::return_copy))
+        .route("/copies/{id}/history", get(copies::get_lending_history))
+        .route("/borrowers", get(borrowers::list))
+        .route("/borrowers", post(borrowers::create))
+        .route("/borrowers/{id}", put(borrowers::update))
+        .route("/borrowers/{id}", delete(borrowers::delete))
 }

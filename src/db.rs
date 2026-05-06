@@ -74,6 +74,27 @@ impl Db {
                 author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (book_id, author_id)
+            );
+            CREATE TABLE IF NOT EXISTS copies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                copy_type TEXT NOT NULL DEFAULT 'physical' CHECK(copy_type IN ('physical', 'ebook')),
+                location TEXT,
+                notes TEXT
+            );
+            CREATE TABLE IF NOT EXISTS borrowers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE IF NOT EXISTS lending_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                copy_id INTEGER NOT NULL REFERENCES copies(id) ON DELETE CASCADE,
+                borrower_id INTEGER NOT NULL REFERENCES borrowers(id),
+                lent_date TEXT NOT NULL,
+                due_date TEXT,
+                returned_date TEXT,
+                notes TEXT
             );",
         )?;
         conn.execute_batch(
@@ -673,5 +694,198 @@ impl Db {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
         }
+    }
+
+    pub fn insert_copy(
+        &self,
+        book_id: i64,
+        copy_type: &str,
+        location: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<Copy, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO copies (book_id, copy_type, location, notes) VALUES (?1, ?2, ?3, ?4)",
+            params![book_id, copy_type, location, notes],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Copy {
+            id,
+            book_id,
+            copy_type: copy_type.to_string(),
+            location: location.map(|s| s.to_string()),
+            notes: notes.map(|s| s.to_string()),
+        })
+    }
+
+    pub fn list_copies(&self, book_id: i64) -> Result<Vec<CopyWithStatus>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT c.id, c.book_id, c.copy_type, c.location, c.notes,
+                    b.name AS lent_to, lh.lent_date, lh.due_date
+             FROM copies c
+             LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL
+             LEFT JOIN borrowers b ON b.id = lh.borrower_id
+             WHERE c.book_id = ?1
+             ORDER BY c.id",
+        )?;
+        let rows = stmt.query_map(params![book_id], |row| {
+            Ok(CopyWithStatus {
+                copy: Copy {
+                    id: row.get(0)?,
+                    book_id: row.get(1)?,
+                    copy_type: row.get(2)?,
+                    location: row.get(3)?,
+                    notes: row.get(4)?,
+                },
+                lent_to: row.get(5)?,
+                lent_date: row.get(6)?,
+                due_date: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_copy(
+        &self,
+        id: i64,
+        copy_type: Option<&str>,
+        location: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE copies SET copy_type = COALESCE(?1, copy_type), location = ?2, notes = ?3 WHERE id = ?4",
+            params![copy_type, location, notes, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_copy(&self, id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute("DELETE FROM copies WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
+
+    pub fn get_book_copy_counts(&self, book_id: i64) -> Result<(i64, i64), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*), COALESCE(SUM(CASE WHEN lh.returned_date IS NULL AND lh.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+             FROM copies c
+             LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL
+             WHERE c.book_id = ?1",
+        )?;
+        stmt.query_row(params![book_id], |row| Ok((row.get(0)?, row.get(1)?)))
+    }
+
+    pub fn insert_borrower(
+        &self,
+        name: &str,
+        notes: Option<&str>,
+    ) -> Result<Borrower, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO borrowers (name, notes) VALUES (?1, ?2)",
+            params![name, notes],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Borrower {
+            id,
+            name: name.to_string(),
+            notes: notes.map(|s| s.to_string()),
+        })
+    }
+
+    pub fn list_borrowers(&self) -> Result<Vec<Borrower>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name, notes FROM borrowers ORDER BY name")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Borrower {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                notes: row.get(2)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_borrower(
+        &self,
+        id: i64,
+        name: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE borrowers SET name = COALESCE(?1, name), notes = ?2 WHERE id = ?3",
+            params![name, notes, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_borrower(&self, id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute("DELETE FROM borrowers WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
+
+    pub fn lend_copy(
+        &self,
+        copy_id: i64,
+        borrower_id: i64,
+        lent_date: &str,
+        due_date: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let existing = conn.query_row(
+            "SELECT COUNT(*) FROM lending_history WHERE copy_id = ?1 AND returned_date IS NULL",
+            params![copy_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if existing > 0 {
+            return Err(rusqlite::Error::from(rusqlite::types::FromSqlError::InvalidType));
+        }
+        conn.execute(
+            "INSERT INTO lending_history (copy_id, borrower_id, lent_date, due_date, notes) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![copy_id, borrower_id, lent_date, due_date, notes],
+        )?;
+        Ok(())
+    }
+
+    pub fn return_copy(&self, copy_id: i64, returned_date: &str) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE lending_history SET returned_date = ?1 WHERE copy_id = ?2 AND returned_date IS NULL",
+            params![returned_date, copy_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn get_lending_history(
+        &self,
+        copy_id: i64,
+    ) -> Result<Vec<LendingRecord>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT lh.id, lh.copy_id, lh.borrower_id, b.name, lh.lent_date, lh.due_date, lh.returned_date, lh.notes
+             FROM lending_history lh
+             LEFT JOIN borrowers b ON b.id = lh.borrower_id
+             WHERE lh.copy_id = ?1
+             ORDER BY lh.id DESC",
+        )?;
+        let rows = stmt.query_map(params![copy_id], |row| {
+            Ok(LendingRecord {
+                id: row.get(0)?,
+                copy_id: row.get(1)?,
+                borrower_id: row.get(2)?,
+                borrower_name: row.get(3)?,
+                lent_date: row.get(4)?,
+                due_date: row.get(5)?,
+                returned_date: row.get(6)?,
+                notes: row.get(7)?,
+            })
+        })?;
+        rows.collect()
     }
 }

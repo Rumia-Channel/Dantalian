@@ -44,6 +44,8 @@ pub async fn register(
                 book: BookWithAuthors {
                     book: existing,
                     authors,
+                    copies_count: 0,
+                    lent_count: 0,
                 },
                 source: "cache".to_string(),
             }),
@@ -117,7 +119,7 @@ pub async fn register(
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
-            book: BookWithAuthors { book, authors },
+            book: BookWithAuthors { book, authors, copies_count: 0, lent_count: 0 },
             source,
         }),
     ))
@@ -148,6 +150,8 @@ pub async fn isdn_register(
                 book: BookWithAuthors {
                     book: existing,
                     authors,
+                    copies_count: 0,
+                    lent_count: 0,
                 },
                 source: "cache".to_string(),
             }),
@@ -183,6 +187,8 @@ pub async fn isdn_register(
             book: BookWithAuthors {
                 book,
                 authors: Vec::new(),
+                copies_count: 0,
+                lent_count: 0,
             },
             source: "isdn".to_string(),
         }),
@@ -264,6 +270,8 @@ pub async fn manual_register(
                     book: BookWithAuthors {
                         book: existing,
                         authors,
+                        copies_count: 0,
+                        lent_count: 0,
                     },
                     source: "cache".to_string(),
                 }),
@@ -279,6 +287,8 @@ pub async fn manual_register(
                     book: BookWithAuthors {
                         book: existing,
                         authors,
+                        copies_count: 0,
+                        lent_count: 0,
                     },
                     source: "cache".to_string(),
                 }),
@@ -415,7 +425,7 @@ pub async fn manual_register(
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
-            book: BookWithAuthors { book, authors },
+            book: BookWithAuthors { book, authors, copies_count: 0, lent_count: 0 },
             source: "manual".to_string(),
         }),
     ))
@@ -428,7 +438,8 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<BookWithAuth
         let mut result = Vec::new();
         for book in books {
             let authors = db.get_book_authors(book.id).unwrap_or_default();
-            result.push(BookWithAuthors { book, authors });
+            let (copies_count, lent_count) = db.get_book_copy_counts(book.id).unwrap_or((0, 0));
+            result.push(BookWithAuthors { book, authors, copies_count, lent_count });
         }
         Ok::<_, rusqlite::Error>(result)
     })
