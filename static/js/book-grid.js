@@ -229,6 +229,9 @@ function getLatestDate(books) {
 }
 
 function renderBookCard(book) {
+    const copiesBadge = book.copies_count > 0
+        ? ` <span class="copy-count-badge${book.lent_count > 0 ? ' copy-lent-badge' : ''}">${book.copies_count}${book.lent_count > 0 ? ' (' + book.lent_count + '貸出)' : ''}</span>`
+        : "";
     return `
     <div class="book-card" onclick="showDetail(${book.id})">
         ${
@@ -237,7 +240,7 @@ function renderBookCard(book) {
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
         <div class="book-info">
-            <div class="book-title">${escapeHtml(book.title)}</div>
+            <div class="book-title">${escapeHtml(book.title)}${copiesBadge}</div>
             ${book.authors && book.authors.length > 0 ? `<div class="book-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
             ${book.publisher ? `<div class="book-meta">${escapeHtml(book.publisher)}</div>` : ""}
         </div>

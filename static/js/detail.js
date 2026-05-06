@@ -95,6 +95,14 @@ function showDetail(id) {
         : null;
     const currentGrandSeries = findBookGrandSeries(book.id);
 
+    fetch(`/api/books/${book.id}/copies`)
+        .then((r) => r.json())
+        .then((copies) => renderDetail(book, copies, currentSeries, currentGrandSeries))
+        .catch(() => renderDetail(book, [], currentSeries, currentGrandSeries));
+}
+
+function renderDetail(book, copies, currentSeries, currentGrandSeries) {
+
     const metaParts = [];
     if (book.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(book.publisher)}</div>`);
     if (book.publish_date) metaParts.push(`<div><span class="detail-meta-label">出版日</span>${escapeHtml(book.publish_date)}</div>`);
@@ -106,6 +114,26 @@ function showDetail(id) {
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
         : "";
+
+    let copiesHtml = "";
+    if (copies.length > 0) {
+        copiesHtml = `
+        <div class="detail-copies">
+            <div class="detail-copies-title">所蔵 (${copies.length}件)</div>
+            ${copies.map((c) => `
+                <div class="detail-copy-item${c.lent_to ? ' copy-lent' : ''}">
+                    <span class="copy-type-icon">${c.copy_type === 'ebook' ? 'smartphone' : 'menu_book'}</span>
+                    <span class="copy-location">${c.location ? escapeHtml(c.location) : '<span class="copy-no-location">未設定</span>'}</span>
+                    ${c.lent_to
+                        ? `<span class="copy-lent-badge">貸出中: ${escapeHtml(c.lent_to)}</span>`
+                        : '<span class="copy-available-badge">所持</span>'}
+                    ${c.due_date ? `<span class="copy-due-date">返却予定: ${escapeHtml(c.due_date)}</span>` : ''}
+                </div>
+            `).join("")}
+        </div>`;
+    } else {
+        copiesHtml = `<div class="detail-copies detail-copies-empty">所蔵情報なし</div>`;
+    }
 
     detailContent.innerHTML = `
         <div class="detail-header">
@@ -126,6 +154,7 @@ function showDetail(id) {
                 <div class="detail-meta-list">${metaParts.join("")}</div>
             </div>
         </div>
+        ${copiesHtml}
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url
