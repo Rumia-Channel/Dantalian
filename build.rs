@@ -30,6 +30,7 @@ fn main() {
         "static/js/detail.js",
         "static/js/authors.js",
         "static/js/edit.js",
+        "static/js/borrowers.js",
         "static/js/app.js",
     ];
 

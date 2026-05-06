@@ -1,9 +1,12 @@
 function switchSeriesTab(tab) {
     document.getElementById("tab-series").classList.toggle("active", tab === "series");
     document.getElementById("tab-grand-series").classList.toggle("active", tab === "grand-series");
+    document.getElementById("tab-borrowers").classList.toggle("active", tab === "borrowers");
     document.getElementById("panel-series").classList.toggle("hidden", tab !== "series");
     document.getElementById("panel-grand-series").classList.toggle("hidden", tab !== "grand-series");
+    document.getElementById("panel-borrowers").classList.toggle("hidden", tab !== "borrowers");
     if (tab === "grand-series") renderGrandSeriesManager();
+    if (tab === "borrowers") renderBorrowerList();
 }
 
 function renderSeriesManager() {
