@@ -1,5 +1,6 @@
 pub mod books;
 pub mod borrowers;
+pub mod cds;
 pub mod copies;
 pub mod grand_series;
 pub mod series;
@@ -56,7 +57,6 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/borrowers/{id}", put(borrowers::update))
         .route("/borrowers/{id}", delete(borrowers::delete))
         .route("/settings", get(settings::get_settings).put(settings::update_settings))
-        .route("/books/cd", post(books::cd_register))
         .route("/books/{id}/tracks", get(tracks::list_tracks))
         .route(
             "/books/{id}/tracks/{track_id}",
@@ -65,5 +65,14 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route(
             "/books/{id}/tracks/{track_id}/audio",
             post(tracks::upload_track_audio).delete(tracks::delete_track_audio),
+        )
+        .route("/cds", get(cds::list_cds).post(cds::cd_register))
+        .route("/cds/{id}", put(cds::update_cd).delete(cds::delete_cd))
+        .route("/cds/{id}/cover", post(cds::upload_cd_cover).delete(cds::delete_cd_cover))
+        .route("/cds/{id}/tracks", get(cds::list_cd_tracks))
+        .route("/cds/{id}/tracks/{tid}", put(cds::update_cd_track))
+        .route(
+            "/cds/{id}/tracks/{tid}/audio",
+            post(cds::upload_cd_track_audio).delete(cds::delete_cd_track_audio),
         )
 }

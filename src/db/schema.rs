@@ -97,6 +97,21 @@ impl Db {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS cds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jan TEXT UNIQUE,
+                title TEXT NOT NULL,
+                artist TEXT,
+                publisher TEXT,
+                label TEXT,
+                catalog_number TEXT,
+                publish_date TEXT,
+                cover_url TEXT,
+                description TEXT,
+                disc_count INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            );
             CREATE TABLE IF NOT EXISTS tracks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -160,6 +175,10 @@ impl Db {
             .ok();
         conn.execute_batch("ALTER TABLE books ADD COLUMN updated_at TEXT;")
             .ok();
+        conn.execute_batch(
+            "ALTER TABLE tracks ADD COLUMN cd_id INTEGER REFERENCES cds(id) ON DELETE CASCADE;",
+        )
+        .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 }

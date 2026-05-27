@@ -1,4 +1,5 @@
 let allBooks = [];
+let allCds = [];
 let allSeries = [];
 let allGrandSeries = [];
 
@@ -39,6 +40,17 @@ async function loadBooks() {
     } catch (err) {
         console.error("loadBooks failed:", err);
         allBooks = [];
+    }
+}
+
+async function loadCds() {
+    try {
+        const res = await fetch("/api/cds");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        allCds = await res.json();
+    } catch (err) {
+        console.error("loadCds failed:", err);
+        allCds = [];
     }
 }
 

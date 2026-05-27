@@ -28,6 +28,14 @@ async function renderManualForm() {
     const container = document.getElementById("manual-form-container");
     container.innerHTML = `
         <form class="edit-form" id="manual-form" onsubmit="submitManualBook(event)">
+            <div class="edit-field">
+                <label>登録種別 <span class="edit-required">*</span></label>
+                <select name="media_type" id="manual-media-type">
+                    <option value="book">書籍 (Book)</option>
+                    <option value="cd">CD</option>
+                </select>
+            </div>
+            <div id="manual-book-fields">
             <input type="hidden" name="series_id" value="">
             <input type="hidden" name="grand_series_id" value="">
             <div class="edit-field">
@@ -222,8 +230,76 @@ async function renderManualForm() {
             <div class="edit-actions">
                 <button type="submit" class="btn btn-md btn-primary">登録</button>
             </div>
+            </div>
+            <div id="manual-cd-fields" hidden>
+            <div class="edit-field">
+                <label>タイトル <span class="edit-required">*</span></label>
+                <input type="text" name="cd_title" id="manual-cd-title">
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>アーティスト</label>
+                    <input type="text" name="cd_artist">
+                </div>
+                <div class="edit-field">
+                    <label>レーベル</label>
+                    <input type="text" name="cd_label">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>カタログ番号</label>
+                    <input type="text" name="cd_catalog_number">
+                </div>
+                <div class="edit-field">
+                    <label>発売日</label>
+                    <input type="text" name="cd_publish_date">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>ディスク数</label>
+                    <input type="number" name="cd_disc_count" min="1" step="1">
+                </div>
+                <div class="edit-field">
+                    <label>JAN</label>
+                    <input type="text" name="cd_jan" id="manual-cd-jan">
+                </div>
+            </div>
+            <div class="edit-field">
+                <label>説明</label>
+                <textarea name="cd_description" rows="4"></textarea>
+            </div>
+            <div class="edit-field">
+                <label>表紙画像</label>
+                <div class="manual-cover-row">
+                    <label class="btn btn-xs btn-outline-success manual-cover-label">
+                        ファイルを選択
+                        <input type="file" id="manual-cd-cover-input" accept="image/*" hidden>
+                    </label>
+                    <span class="manual-cover-filename" id="manual-cd-cover-filename"></span>
+                    <img class="manual-cover-preview" id="manual-cd-cover-preview" src="" alt="" hidden>
+                </div>
+            </div>
+            <div id="manual-cd-register-status"></div>
+            <div class="edit-actions">
+                <button type="button" class="btn btn-md btn-primary" onclick="submitManualCd(event)">登録</button>
+            </div>
+            </div>
         </form>
     `;
+
+    document.getElementById("manual-media-type").addEventListener("change", function () {
+        const bookFields = document.getElementById("manual-book-fields");
+        const cdFields = document.getElementById("manual-cd-fields");
+        if (this.value === "cd") {
+            bookFields.hidden = true;
+            cdFields.hidden = false;
+        } else {
+            bookFields.hidden = false;
+            cdFields.hidden = true;
+        }
+    });
 
     const form = document.getElementById("manual-form");
 
@@ -280,6 +356,32 @@ async function renderManualForm() {
         };
         reader.readAsDataURL(file);
     });
+
+    const cdCoverInput = document.getElementById("manual-cd-cover-input");
+    if (cdCoverInput) {
+        cdCoverInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            manualCoverFile = file;
+            document.getElementById("manual-cd-cover-filename").textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = document.getElementById("manual-cd-cover-preview");
+                img.src = ev.target.result;
+                img.hidden = false;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const cdJanInput = document.getElementById("manual-cd-jan");
+    if (cdJanInput) {
+        cdJanInput.addEventListener("input", function () {
+            this.value = this.value
+                .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                .replace(/[\s\u3000\-－ー]/g, "");
+        });
+    }
 }
 
 function renderManualAuthorList() {
@@ -374,6 +476,62 @@ async function submitManualBook(e) {
         const fname = document.getElementById("manual-cover-filename");
         if (fname) fname.textContent = "";
         renderManualAuthorList();
+    } catch (err) {
+        statusEl.textContent = "通信エラーが発生しました";
+        statusEl.className = "error";
+    }
+}
+
+async function submitManualCd(e) {
+    e.preventDefault();
+    const title = document.getElementById("manual-cd-title").value.trim();
+    if (!title) return;
+
+    const body = {
+        jan: document.querySelector("input[name=cd_jan]")?.value || null,
+        title: title,
+        artist: document.querySelector("input[name=cd_artist]")?.value || null,
+        publisher: null,
+        label: document.querySelector("input[name=cd_label]")?.value || null,
+        catalog_number: document.querySelector("input[name=cd_catalog_number]")?.value || null,
+        publish_date: document.querySelector("input[name=cd_publish_date]")?.value || null,
+        description: document.querySelector("textarea[name=cd_description]")?.value || null,
+        disc_count: parseInt(document.querySelector("input[name=cd_disc_count]")?.value) || null,
+    };
+    for (const key in body) {
+        if (body[key] === "") body[key] = null;
+    }
+
+    const statusEl = document.getElementById("manual-cd-register-status");
+
+    try {
+        const res = await fetch("/api/cds", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            statusEl.textContent = data.error || "登録に失敗しました";
+            statusEl.className = "error";
+            return;
+        }
+
+        const cdId = data.cd?.id || data.id;
+
+        if (manualCoverFile && cdId) {
+            const coverFd = new FormData();
+            coverFd.append("cover", manualCoverFile);
+            await fetch(`/api/cds/${cdId}/cover`, { method: "POST", body: coverFd });
+        }
+
+        statusEl.textContent = `「${data.cd?.title || data.title}」を登録しました`;
+        statusEl.className = "success";
+        manualCoverFile = null;
+        manualCoverPreview = null;
+        manualRendered = false;
+        renderManualForm();
     } catch (err) {
         statusEl.textContent = "通信エラーが発生しました";
         statusEl.className = "error";

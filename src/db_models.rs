@@ -204,6 +204,7 @@ pub struct CopyWithStatus {
 pub struct Track {
     pub id: i64,
     pub book_id: i64,
+    pub cd_id: Option<i64>,
     pub disc_number: i64,
     pub track_number: i64,
     pub title: String,
@@ -231,4 +232,43 @@ pub struct CdInfo {
     pub cover_url: Option<String>,
     pub disc_count: Option<i64>,
     pub tracks: Vec<NewTrack>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Cd {
+    pub id: i64,
+    pub jan: Option<String>,
+    pub title: String,
+    pub artist: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub catalog_number: Option<String>,
+    pub publish_date: Option<String>,
+    pub cover_url: Option<String>,
+    pub description: Option<String>,
+    pub disc_count: Option<i64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewCd {
+    pub jan: Option<String>,
+    pub title: String,
+    pub artist: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub catalog_number: Option<String>,
+    pub publish_date: Option<String>,
+    pub cover_url: Option<String>,
+    pub description: Option<String>,
+    pub disc_count: Option<i64>,
+    pub tracks: Option<Vec<NewTrack>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CdWithTracks {
+    #[serde(flatten)]
+    pub cd: Cd,
+    pub tracks: Vec<Track>,
 }

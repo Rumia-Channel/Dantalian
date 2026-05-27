@@ -20,7 +20,7 @@ cdForm.addEventListener("submit", async (e) => {
     cdStatus.className = "";
 
     try {
-        const res = await fetch("/api/books/cd", {
+        const res = await fetch("/api/cds", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ jan }),
@@ -33,8 +33,8 @@ cdForm.addEventListener("submit", async (e) => {
             return;
         }
 
-        const sourceLabel = data.source === "musicbrainz" ? "MusicBrainz" : "キャッシュ";
-        cdStatus.textContent = `「${data.book.title}」を${sourceLabel}から登録しました`;
+        const sourceLabel = data.cd ? "MusicBrainz" : "キャッシュ";
+        cdStatus.textContent = `「${data.cd?.title || data.title}」を${sourceLabel}から登録しました`;
         cdStatus.className = "success";
         cdInput.value = "";
     } catch (err) {
@@ -188,7 +188,7 @@ async function startCdQueue() {
         renderCdBulkQueue();
 
         try {
-            const res = await fetch("/api/books/cd", {
+            const res = await fetch("/api/cds", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ jan: item.jan }),
@@ -201,7 +201,7 @@ async function startCdQueue() {
                 cdQueueFailed++;
             } else {
                 item.status = "success";
-                item.title = data.book.title;
+                item.title = data.cd?.title || data.title;
                 cdQueueDone++;
             }
         } catch (err) {
