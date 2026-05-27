@@ -21,6 +21,7 @@ fn main() {
     ];
 
     let js_files = [
+        "static/js/header.js",
         "static/js/utils.js",
         "static/js/searchable-select.js",
         "static/js/settings.js",

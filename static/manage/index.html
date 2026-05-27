@@ -8,20 +8,8 @@
     <link rel="stylesheet" href="/css/series.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
 </head>
-<body>
+<body data-active-nav="manage">
     <div id="app">
-        <h1>Tsukuyomi</h1>
-        <nav>
-            <a href="/">書籍一覧</a>
-            <a href="/register/">登録</a>
-            <a href="/manage/" class="active">シリーズ</a>
-            <a href="/authors/">著者</a>
-        </nav>
-
-        <div class="settings-bar">
-            <span class="settings-label">表示幅</span>
-            <div class="settings-buttons" id="width-buttons"></div>
-        </div>
 
         <section class="series-manage">
             <h2>シリーズ管理</h2>
@@ -57,6 +45,7 @@
             </div>
         </section>
     </div>
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
     <script src="/js/searchable-select.js?v=ASSET_VERSION"></script>
     <script src="/js/settings.js?v=ASSET_VERSION"></script>
