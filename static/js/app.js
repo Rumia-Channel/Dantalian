@@ -7,5 +7,6 @@ const detailContent = document.getElementById("detail-content");
     await loadSeries();
     await loadGrandSeries();
     await loadBooks();
-    renderBooks();
+    await loadCds();
+    renderItems();
 })();

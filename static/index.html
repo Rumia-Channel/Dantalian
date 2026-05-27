@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tsukuyomi - 書籍一覧</title>
+    <title>Tsukuyomi - 一覧</title>
     <link rel="stylesheet" href="css/base.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="css/book-card.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="css/series.css?v=ASSET_VERSION">
@@ -15,14 +15,14 @@
 
         <section class="booklist">
             <div class="booklist-header">
-                <h2>登録済み書籍 <span id="book-count"></span></h2>
+                <h2>登録済み一覧 <span id="book-count"></span></h2>
                 <div class="view-tabs">
                     <button class="view-tab active" data-view="author">作者別</button>
                     <button class="view-tab" data-view="grid">一覧</button>
                 </div>
             </div>
             <div class="book-search">
-                <input type="search" id="book-search-input" placeholder="書籍を検索" autocomplete="off">
+                <input type="search" id="book-search-input" placeholder="検索" autocomplete="off">
                 <button type="button" id="book-search-clear" class="book-search-clear" aria-label="検索をクリア">
                     <span class="material-icons" aria-hidden="true">close</span>
                 </button>
@@ -56,6 +56,17 @@
                 '<button class="width-btn" data-sort="publish_date">発売日順</button>' +
                 '</div>';
             bar.appendChild(group);
+            var fgroup = document.createElement("div");
+            fgroup.className = "settings-group";
+            fgroup.innerHTML =
+                '<span class="settings-label">表示</span>' +
+                '<div class="settings-buttons" id="type-filter-buttons">' +
+                '<button class="width-btn active" data-type="all">全</button>' +
+                '<button class="width-btn" data-type="book">書籍</button>' +
+                '<button class="width-btn" data-type="cd">CD</button>' +
+                '<button class="width-btn" data-type="audiobook">AB</button>' +
+                '</div>';
+            bar.appendChild(fgroup);
         })();
     </script>
     <script src="js/utils.js?v=ASSET_VERSION"></script>

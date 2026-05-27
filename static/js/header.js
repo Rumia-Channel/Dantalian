@@ -8,9 +8,9 @@
     header.innerHTML =
         '<h1>Tsukuyomi</h1>' +
         '<nav>' +
-            '<a href="/" id="nav-home">書籍一覧</a>' +
+            '<a href="/" id="nav-home">一覧</a>' +
             '<a href="/register/" id="nav-register">登録</a>' +
-            '<a href="/manage/" id="nav-manage">シリーズ</a>' +
+            '<a href="/manage/" id="nav-manage">管理</a>' +
             '<a href="/authors/" id="nav-authors">著者</a>' +
             '<a href="/edit/" id="nav-edit">編集</a>' +
         '</nav>' +
