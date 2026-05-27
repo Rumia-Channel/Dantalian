@@ -862,6 +862,14 @@ impl Db {
         Ok(affected > 0)
     }
 
+    pub fn backup_to_file(&self, dst_path: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut dst = Connection::open(dst_path)?;
+        let backup = rusqlite::backup::Backup::new(&conn, &mut dst)?;
+        backup.run_to_completion(5, std::time::Duration::from_millis(250), None)?;
+        Ok(())
+    }
+
     pub fn get_lending_history(
         &self,
         copy_id: i64,

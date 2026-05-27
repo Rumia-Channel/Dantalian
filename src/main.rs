@@ -1,4 +1,5 @@
 mod api;
+mod backup;
 mod db;
 mod db_models;
 mod external;
@@ -71,6 +72,15 @@ async fn main() {
     tracing::info!(%data_dir, %db_path, %images_dir, "Data directories");
 
     let db = Db::new(&db_path).expect("Failed to initialize database");
+
+    let backup_config = backup::BackupConfig::from_env();
+    if backup_config.enabled {
+        tracing::info!("Backup enabled (retention: {} files)", backup_config.retention);
+        if backup_config.schedule_time.is_some() && backup_config.schedule_tz.is_some() {
+            backup::start_scheduled_backup(db.clone(), backup_config.clone());
+        }
+    }
+
     let client = Client::builder()
         .cookie_store(true)
         .build()
@@ -81,6 +91,9 @@ async fn main() {
         client,
         images_dir: Arc::new(images_dir.clone()),
     };
+
+    let shutdown_db = state.db.clone();
+    let shutdown_backup_config = backup_config.clone();
 
     let images_dir_arc = Arc::new(images_dir);
     let app = Router::new()
@@ -107,5 +120,15 @@ async fn main() {
         .unwrap();
     eprintln!("Server running on http://localhost:{}", port);
     tracing::info!("Server running on http://localhost:{}", port);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c().await.ok();
+            tracing::info!("Shutting down...");
+            if shutdown_backup_config.enabled {
+                backup::perform_backup(&shutdown_db, &shutdown_backup_config).await;
+            }
+            tracing::info!("Goodbye.");
+        })
+        .await
+        .unwrap();
 }
