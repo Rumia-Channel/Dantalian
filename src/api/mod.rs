@@ -3,6 +3,7 @@ pub mod borrowers;
 pub mod copies;
 pub mod grand_series;
 pub mod series;
+pub mod settings;
 
 use axum::routing::{delete, get, post, put};
 
@@ -53,4 +54,5 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/borrowers", post(borrowers::create))
         .route("/borrowers/{id}", put(borrowers::update))
         .route("/borrowers/{id}", delete(borrowers::delete))
+        .route("/settings", get(settings::get_settings).put(settings::update_settings))
 }

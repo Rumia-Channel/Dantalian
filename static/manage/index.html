@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tsukuyomi - シリーズ管理</title>
+    <title>Tsukuyomi - 管理</title>
     <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/series.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
@@ -29,6 +29,7 @@
                 <button class="series-tab active" onclick="switchSeriesTab('series')" id="tab-series">シリーズ</button>
                 <button class="series-tab" onclick="switchSeriesTab('grand-series')" id="tab-grand-series">大シリーズ</button>
                 <button class="series-tab" onclick="switchSeriesTab('borrowers')" id="tab-borrowers">借り手</button>
+                <button class="series-tab" onclick="switchSeriesTab('settings')" id="tab-settings">設定</button>
             </div>
             <div id="panel-series" class="series-tab-panel">
                 <div class="series-create">
@@ -51,6 +52,9 @@
                 </div>
                 <div id="borrower-list"></div>
             </div>
+            <div id="panel-settings" class="series-tab-panel hidden">
+                <div id="settings-form"></div>
+            </div>
         </section>
     </div>
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
@@ -58,6 +62,7 @@
     <script src="/js/settings.js?v=ASSET_VERSION"></script>
     <script src="/js/series.js?v=ASSET_VERSION"></script>
     <script src="/js/borrowers.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings-manage.js?v=ASSET_VERSION"></script>
     <script>
         (async () => {
             await loadSeries();

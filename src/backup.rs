@@ -34,75 +34,67 @@ pub enum BackupDestination {
 }
 
 impl BackupConfig {
-    pub fn from_env() -> Self {
-        let enabled = std::env::var("BACKUP_ENABLED")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+    pub fn load(db: &Db) -> Self {
+        let enabled = Self::setting(db, "backup.enabled", "BACKUP_ENABLED", "false")
+            .to_lowercase();
+        let enabled = enabled == "true" || enabled == "1";
 
-        let schedule_time = std::env::var("BACKUP_SCHEDULE_TIME")
-            .ok()
-            .and_then(|s| chrono::NaiveTime::parse_from_str(&s, "%H:%M").ok());
+        let schedule_time = Self::setting(db, "backup.schedule_time", "BACKUP_SCHEDULE_TIME", "")
+            .parse::<chrono::NaiveTime>()
+            .ok();
 
-        let schedule_tz = std::env::var("BACKUP_SCHEDULE_TZ")
-            .ok()
-            .and_then(|s| s.parse::<Tz>().ok());
+        let schedule_tz = Self::setting(db, "backup.schedule_tz", "BACKUP_SCHEDULE_TZ", "")
+            .parse::<Tz>()
+            .ok();
 
-        let retention: usize = std::env::var("BACKUP_RETENTION")
-            .ok()
-            .and_then(|s| s.parse().ok())
+        let retention: usize = Self::setting(db, "backup.retention", "BACKUP_RETENTION", "7")
+            .parse()
             .unwrap_or(7);
 
-        let dest_type =
-            std::env::var("BACKUP_DEST_TYPE").unwrap_or_else(|_| "local".to_string());
+        let dest_type = Self::setting(db, "backup.dest_type", "BACKUP_DEST_TYPE", "local");
 
         let dest = match dest_type.as_str() {
-            "webdav" => {
-                let url = std::env::var("BACKUP_WEBDAV_URL")
-                    .expect("BACKUP_WEBDAV_URL is required for webdav destination");
-                let username = std::env::var("BACKUP_WEBDAV_USER")
-                    .expect("BACKUP_WEBDAV_USER is required for webdav destination");
-                let password = std::env::var("BACKUP_WEBDAV_PASS")
-                    .expect("BACKUP_WEBDAV_PASS is required for webdav destination");
-                BackupDestination::WebDAV {
-                    url,
-                    username,
-                    password,
-                }
-            }
-            "s3" => {
-                let endpoint = std::env::var("BACKUP_S3_ENDPOINT")
-                    .expect("BACKUP_S3_ENDPOINT is required for s3 destination");
-                let region = std::env::var("BACKUP_S3_REGION")
-                    .expect("BACKUP_S3_REGION is required for s3 destination");
-                let bucket = std::env::var("BACKUP_S3_BUCKET")
-                    .expect("BACKUP_S3_BUCKET is required for s3 destination");
-                let access_key = std::env::var("BACKUP_S3_ACCESS_KEY")
-                    .expect("BACKUP_S3_ACCESS_KEY is required for s3 destination");
-                let secret_key = std::env::var("BACKUP_S3_SECRET_KEY")
-                    .expect("BACKUP_S3_SECRET_KEY is required for s3 destination");
-                let prefix = std::env::var("BACKUP_S3_PREFIX").unwrap_or_default();
-                BackupDestination::S3 {
-                    endpoint,
-                    region,
-                    bucket,
-                    access_key,
-                    secret_key,
-                    prefix,
-                }
-            }
+            "webdav" => BackupDestination::WebDAV {
+                url: Self::setting(db, "backup.webdav_url", "BACKUP_WEBDAV_URL", ""),
+                username: Self::setting(db, "backup.webdav_user", "BACKUP_WEBDAV_USER", ""),
+                password: Self::setting(db, "backup.webdav_pass", "BACKUP_WEBDAV_PASS", ""),
+            },
+            "s3" => BackupDestination::S3 {
+                endpoint: Self::setting(db, "backup.s3_endpoint", "BACKUP_S3_ENDPOINT", ""),
+                region: Self::setting(db, "backup.s3_region", "BACKUP_S3_REGION", "us-east-1"),
+                bucket: Self::setting(db, "backup.s3_bucket", "BACKUP_S3_BUCKET", ""),
+                access_key: Self::setting(
+                    db,
+                    "backup.s3_access_key",
+                    "BACKUP_S3_ACCESS_KEY",
+                    "",
+                ),
+                secret_key: Self::setting(
+                    db,
+                    "backup.s3_secret_key",
+                    "BACKUP_S3_SECRET_KEY",
+                    "",
+                ),
+                prefix: Self::setting(db, "backup.s3_prefix", "BACKUP_S3_PREFIX", ""),
+            },
             _ => {
-                let path = std::env::var("BACKUP_LOCAL_PATH").unwrap_or_else(|_| {
-                    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| {
-                        dirs::document_dir()
-                            .or_else(dirs::data_dir)
-                            .unwrap()
-                            .join("Tsukuyomi")
-                            .to_string_lossy()
-                            .to_string()
-                    });
-                    format!("{}/backups", data_dir)
+                let default_path = std::env::var("DATA_DIR").unwrap_or_else(|_| {
+                    dirs::document_dir()
+                        .or_else(dirs::data_dir)
+                        .unwrap()
+                        .join("Tsukuyomi")
+                        .to_string_lossy()
+                        .to_string()
                 });
-                BackupDestination::Local { path }
+                let default_path = format!("{}/backups", default_path);
+                BackupDestination::Local {
+                    path: Self::setting(
+                        db,
+                        "backup.local_path",
+                        "BACKUP_LOCAL_PATH",
+                        &default_path,
+                    ),
+                }
             }
         };
 
@@ -113,6 +105,12 @@ impl BackupConfig {
             dest,
             retention,
         }
+    }
+
+    fn setting(db: &Db, db_key: &str, env_key: &str, default: &str) -> String {
+        db.get_setting(db_key)
+            .or_else(|| std::env::var(env_key).ok())
+            .unwrap_or_else(|| default.to_string())
     }
 }
 
@@ -614,26 +612,42 @@ fn next_schedule(schedule_time: chrono::NaiveTime, tz: Tz) -> chrono::DateTime<U
     }
 }
 
-pub fn start_scheduled_backup(db: Db, config: BackupConfig) -> tokio::task::JoinHandle<()> {
+pub fn start_scheduled_backup(db: Db) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let (schedule_time, tz) = match (config.schedule_time, config.schedule_tz) {
-            (Some(t), Some(tz)) => (t, tz),
-            _ => {
-                tracing::warn!(
-                    "Scheduled backup is enabled but BACKUP_SCHEDULE_TIME or BACKUP_SCHEDULE_TZ is not set"
-                );
-                return;
-            }
-        };
-
-        tracing::info!(
-            "Scheduled backup enabled: daily at {:02}:{:02} ({})",
-            schedule_time.hour(),
-            schedule_time.minute(),
-            tz.name()
-        );
+        let mut started = false;
 
         loop {
+            let config = BackupConfig::load(&db);
+
+            if !config.enabled {
+                tokio::time::sleep(Duration::from_secs(300)).await;
+                continue;
+            }
+
+            let (schedule_time, tz) = match (config.schedule_time, config.schedule_tz) {
+                (Some(t), Some(tz)) => (t, tz),
+                _ => {
+                    if !started {
+                        tracing::warn!(
+                            "Scheduled backup is enabled but schedule_time or schedule_tz is not set"
+                        );
+                        started = true;
+                    }
+                    tokio::time::sleep(Duration::from_secs(300)).await;
+                    continue;
+                }
+            };
+
+            if !started {
+                tracing::info!(
+                    "Scheduled backup enabled: daily at {:02}:{:02} ({})",
+                    schedule_time.hour(),
+                    schedule_time.minute(),
+                    tz.name()
+                );
+                started = true;
+            }
+
             let target = next_schedule(schedule_time, tz);
             let now = Utc::now();
             let wait = target.signed_duration_since(now);
@@ -647,7 +661,10 @@ pub fn start_scheduled_backup(db: Db, config: BackupConfig) -> tokio::task::Join
                 tokio::time::sleep(wait).await;
             }
 
-            perform_backup(&db, &config).await;
+            let config = BackupConfig::load(&db);
+            if config.enabled {
+                perform_backup(&db, &config).await;
+            }
 
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
