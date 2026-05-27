@@ -175,7 +175,7 @@ function renderGrandSeriesManager() {
                 if (type === "series") {
                     opts = allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }));
                 } else if (type === "cd") {
-                    opts = (window.allCds || []).map((c) => ({ value: `cd:${c.id}`, label: c.title }));
+                    opts = (allCds || []).map((c) => ({ value: `cd:${c.id}`, label: c.title }));
                 } else {
                     opts = allBooks.filter((b) => !isBookInGrandSeriesViaSeries(b.id)).map((b) => ({ value: `book:${b.id}`, label: b.title }));
                 }

@@ -8,6 +8,7 @@ use axum::{Router, response::Html};
 use db::Db;
 use reqwest::Client;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
@@ -42,6 +43,7 @@ async fn serve_authors() -> Html<String> {
 pub struct AppState {
     pub db: Db,
     pub client: Client,
+    pub client_ipv4: Client,
     pub images_dir: Arc<String>,
 }
 
@@ -81,12 +83,16 @@ async fn main() {
 
     let client = Client::builder()
         .cookie_store(true)
+        .connect_timeout(Duration::from_secs(15))
         .build()
         .expect("Failed to build HTTP client");
+
+    let client_ipv4 = client.clone();
 
     let state = AppState {
         db,
         client,
+        client_ipv4,
         images_dir: Arc::new(images_dir.clone()),
     };
 

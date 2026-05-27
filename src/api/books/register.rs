@@ -59,8 +59,14 @@ pub async fn register(
         ));
     }
 
-    let new_book = external::lookup_isbn(&state.client, &isbn, &state.images_dir)
-        .await
+    let new_book = match external::lookup_isbn(&state.client, &isbn, &state.images_dir).await {
+        ok @ Ok(_) => ok,
+        Err(e) => {
+            tracing::warn!("ISBN lookup failed: {}. Retrying...", e);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            external::lookup_isbn(&state.client_ipv4, &isbn, &state.images_dir).await
+        }
+    }
         .map_err(|e| {
             (
                 StatusCode::BAD_GATEWAY,
@@ -169,8 +175,14 @@ pub async fn isdn_register(
         ));
     }
 
-    let new_book = external::lookup_isdn(&state.client, &isdn)
-        .await
+    let new_book = match external::lookup_isdn(&state.client, &isdn).await {
+        ok @ Ok(_) => ok,
+        Err(e) => {
+            tracing::warn!("ISDN lookup failed: {}. Retrying...", e);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            external::lookup_isdn(&state.client_ipv4, &isdn).await
+        }
+    }
         .map_err(|e| {
             (
                 StatusCode::BAD_GATEWAY,

@@ -10,7 +10,7 @@ function showGrandSeriesModal(gsId) {
         if (item.item_type === "series") {
             const series = allSeries.find((s) => s.id === item.item_id);
             const sBooks = allBooks.filter((b) => b.series_id === item.item_id);
-            const sCds = (window.allCds || []).filter((c) => c.series_id === item.item_id);
+            const sCds = (allCds || []).filter((c) => c.series_id === item.item_id);
             const sItems = [...sBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b)),
                 ...(sCds.map((c) => ({ sourceType: "cd", originalId: c.id, id: c.id, title: c.title, cover_url: c.cover_url })))];
             const sorted = typeof sortBookList === "function" ? sortBookList(sItems) : sItems;
@@ -19,7 +19,7 @@ function showGrandSeriesModal(gsId) {
             const book = allBooks.find((b) => b.id === item.item_id);
             if (book) individualBooks.push(Object.assign({ sourceType: "book", originalId: book.id }, book));
         } else if (item.item_type === "cd") {
-            const cd = (window.allCds || []).find((c) => c.id === item.item_id);
+            const cd = (allCds || []).find((c) => c.id === item.item_id);
             if (cd) individualBooks.push({ sourceType: "cd", originalId: cd.id, id: cd.id, title: cd.title, cover_url: cd.cover_url });
         }
     }
@@ -71,7 +71,7 @@ function showSeriesModal(seriesId) {
     const series = allSeries.find((s) => s.id === seriesId);
     if (!series) return;
     const sBooks = allBooks.filter((b) => b.series_id === seriesId);
-    const sCds = (window.allCds || []).filter((c) => c.series_id === seriesId);
+    const sCds = (allCds || []).filter((c) => c.series_id === seriesId);
     const sItems = [
         ...sBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b)),
         ...sCds.map((c) => ({ sourceType: "cd", originalId: c.id, id: c.id, title: c.title, cover_url: c.cover_url })),
@@ -313,7 +313,7 @@ async function deleteBook(id) {
 }
 
 function renderChildrenInDetail(bookId) {
-    if (!window.allCds || allCds.length === 0) return "";
+    if (!allCds || allCds.length === 0) return "";
     const children = allCds.filter((cd) => cd.parent_book_id === bookId);
     if (children.length === 0) return "";
 
@@ -332,7 +332,7 @@ function renderChildrenInDetail(bookId) {
 }
 
 function showCdDetail(cdId) {
-    const rawCd = (window.allCds || []).find((c) => c.id === cdId);
+    const rawCd = (allCds || []).find((c) => c.id === cdId);
     if (!rawCd) return;
     const cd = Object.assign({ sourceType: "cd", originalId: cdId }, rawCd);
     const currentSeries = cd.series_id != null ? allSeries.find((s) => s.id === cd.series_id) : null;
@@ -419,7 +419,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
 }
 
 async function assignCdSeries(cdId, value) {
-    const cd = (window.allCds || []).find((c) => c.id === cdId);
+    const cd = (allCds || []).find((c) => c.id === cdId);
     const seriesId = value != null ? value : null;
     try {
         await fetch(`/api/cds/${cdId}`, {

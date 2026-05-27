@@ -35,7 +35,7 @@ function normalizeCd(cd) {
         copies_count: cd.copies_count || 0,
         lent_count: cd.lent_count || 0,
         media_type: cd.media_type || "cd",
-        jan_code: cd.jan_code,
+        jan_code: cd.jan,
         disc_count: cd.disc_count,
         parent_book_id: cd.parent_book_id,
         isbn: null,
@@ -47,13 +47,13 @@ function normalizeCd(cd) {
         jpno: null,
         ndl_url: null,
         toc_url: null,
-        download_url: cd.download_url,
+        download_url: null,
     };
 }
 
 function getAllItems() {
     let items = allBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b));
-    if (window.allCds && allCds.length > 0) {
+    if (allCds && allCds.length > 0) {
         items = items.concat(allCds.map(normalizeCd));
     }
     return items;

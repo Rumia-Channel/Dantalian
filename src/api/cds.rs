@@ -45,8 +45,14 @@ pub async fn cd_register(
         ));
     }
 
-    let cd_info = external::lookup_cd(&state.client, &jan, &state.images_dir)
-        .await
+    let cd_info = match external::lookup_cd(&state.client, &jan, &state.images_dir).await {
+        ok @ Ok(_) => ok,
+        Err(e) => {
+            tracing::warn!("CD lookup failed: {}. Retrying...", e);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            external::lookup_cd(&state.client_ipv4, &jan, &state.images_dir).await
+        }
+    }
         .map_err(|e| {
             (
                 StatusCode::BAD_GATEWAY,
