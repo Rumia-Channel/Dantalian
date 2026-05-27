@@ -208,6 +208,29 @@
     overflow: hidden;
     transition: transform 0.2s;
     cursor: pointer;
+    position: relative;
+}
+
+.media-badge {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    padding: 0.15rem 0.35rem;
+    border-radius: 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #fff;
+    line-height: 1.2;
+    z-index: 1;
+}
+
+.media-badge--cd {
+    background: #8b5cf6;
+}
+
+.media-badge--audiobook {
+    background: #06b6d4;
 }
 
 .book-card:hover {

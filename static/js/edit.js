@@ -65,6 +65,8 @@ function renderBookEdit(id) {
             <div class="edit-header-info">
                 ${book.isbn ? `<div class="edit-isbn">${escapeHtml(book.isbn)}</div>` : ''}
                 ${book.isdn ? `<div class="edit-isbn">ISDN: ${escapeHtml(book.isdn)}</div>` : ''}
+                ${book.jan ? `<div class="edit-isbn">JAN: ${escapeHtml(book.jan)}</div>` : ''}
+                <div class="edit-isbn" style="font-size:0.75rem;color:var(--color-text-dim);">種別: ${escapeHtml(book.media_type || 'book')}</div>
             </div>
         </div>
         <form class="edit-form" id="edit-form">
@@ -223,6 +225,47 @@ function renderBookEdit(id) {
                 </div>
             </div>
             <div class="edit-section">
+                <h3 class="edit-section-title">メディア</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>種別</label>
+                        <select name="media_type" class="form-input">
+                            <option value="book" ${(!book.media_type || book.media_type === 'book') ? 'selected' : ''}>書籍</option>
+                            <option value="cd" ${book.media_type === 'cd' ? 'selected' : ''}>CD</option>
+                            <option value="audiobook" ${book.media_type === 'audiobook' ? 'selected' : ''}>オーディオブック</option>
+                        </select>
+                    </div>
+                    <div class="edit-field">
+                        <label>JAN</label>
+                        <input type="text" name="jan" value="${escapeAttr(book.jan || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>アーティスト</label>
+                        <input type="text" name="artist" value="${escapeAttr(book.artist || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>レーベル</label>
+                        <input type="text" name="label" value="${escapeAttr(book.label || '')}">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>品番</label>
+                        <input type="text" name="catalog_number" value="${escapeAttr(book.catalog_number || '')}">
+                    </div>
+                    <div class="edit-field">
+                        <label>ディスク枚数</label>
+                        <input type="number" name="disc_count" value="${book.disc_count != null ? book.disc_count : ''}" min="1" step="1">
+                    </div>
+                </div>
+            </div>
+            <div class="edit-section" id="edit-tracks-section">
+                <h3 class="edit-section-title">トラック</h3>
+                <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
+            </div>
+            <div class="edit-section">
                 <h3 class="edit-section-title">作者</h3>
                 <div class="edit-author-list" id="edit-author-list">
                     ${authorList.map((a) => `
@@ -303,6 +346,7 @@ function renderBookEdit(id) {
     });
 
     renderCopiesSection(book.id);
+    loadAndRenderTracks(book.id);
 
     form.addEventListener("submit", (e) => saveBook(e, book.id));
 }
@@ -363,7 +407,7 @@ async function saveBook(e, bookId) {
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
-        if (key === "series_id" || key === "grand_series_id" || key === "series_number") {
+        if (key === "series_id" || key === "grand_series_id" || key === "series_number" || key === "disc_count") {
             body[key] = val === "" ? null : parseInt(val, 10);
         } else if (key === "isbn" || key === "isdn") {
             body[key] = val === "" ? null : val;
@@ -573,5 +617,71 @@ async function returnCopy(copyId, bookId) {
             await loadBooks();
             renderCopiesSection(bookId);
         }
+    } catch {}
+}
+
+async function loadAndRenderTracks(bookId) {
+    const list = document.getElementById("edit-tracks-list");
+    if (!list) return;
+
+    try {
+        const res = await fetch(`/api/books/${bookId}/tracks`);
+        if (!res.ok) { list.innerHTML = "<p class='series-empty'>トラックなし</p>"; return; }
+        const tracks = await res.json();
+        if (tracks.length === 0) { list.innerHTML = "<p class='series-empty'>トラックなし</p>"; return; }
+
+        const discGroups = {};
+        for (const t of tracks) {
+            const d = t.disc_number || 1;
+            if (!discGroups[d]) discGroups[d] = [];
+            discGroups[d].push(t);
+        }
+
+        let html = "";
+        const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
+        for (const d of discKeys) {
+            if (discKeys.length > 1) html += `<div class="detail-tracks-disc">Disc ${d}</div>`;
+            html += discGroups[d].map((t) => `
+                <div class="edit-track-row">
+                    <span class="edit-track-num">${String(t.track_number).padStart(2, "0")}</span>
+                    <span class="edit-track-title-text">${escapeHtml(t.title)}</span>
+                    ${t.duration ? `<span class="edit-track-dur">${escapeHtml(t.duration)}</span>` : ""}
+                    <div class="edit-track-audio">
+                        ${t.file_hash
+                            ? `<span class="edit-track-file">${escapeHtml(t.file_name || t.file_hash)}</span>
+                               <button class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                                   <span class="material-icons" aria-hidden="true">play_arrow</span>
+                               </button>
+                               <button class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio(${bookId},${t.id})">削除</button>`
+                            : `<label class="btn btn-xs btn-outline-success" style="cursor:pointer">
+                                   アップロード
+                                   <input type="file" accept="audio/*" hidden onchange="uploadTrackAudio(${bookId},${t.id},this)">
+                               </label>`}
+                    </div>
+                </div>
+            `).join("");
+        }
+        list.innerHTML = html;
+    } catch {
+        list.innerHTML = "<p class='series-empty'>トラック読み込みエラー</p>";
+    }
+}
+
+async function uploadTrackAudio(bookId, trackId, input) {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("audio", file);
+    try {
+        const res = await fetch(`/api/books/${bookId}/tracks/${trackId}/audio`, { method: "POST", body: fd });
+        if (res.ok) loadAndRenderTracks(bookId);
+    } catch {}
+}
+
+async function deleteTrackAudio(bookId, trackId) {
+    if (!await showConfirm({ message: "音声ファイルを削除しますか？", okLabel: "削除" })) return;
+    try {
+        const res = await fetch(`/api/books/${bookId}/tracks/${trackId}/audio`, { method: "DELETE" });
+        if (res.ok) loadAndRenderTracks(bookId);
     } catch {}
 }

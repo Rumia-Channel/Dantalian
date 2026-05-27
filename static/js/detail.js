@@ -97,12 +97,21 @@ function showDetail(id) {
 
     fetch(`/api/books/${book.id}/copies`)
         .then((r) => r.json())
-        .then((copies) => renderDetail(book, copies, currentSeries, currentGrandSeries))
-        .catch(() => renderDetail(book, [], currentSeries, currentGrandSeries));
+        .then((copies) => {
+            if (book.media_type === "cd" || book.media_type === "audiobook") {
+                fetch(`/api/books/${book.id}/tracks`)
+                    .then((r) => r.json())
+                    .then((tracks) => renderDetail(book, copies, currentSeries, currentGrandSeries, tracks))
+                    .catch(() => renderDetail(book, copies, currentSeries, currentGrandSeries, []));
+            } else {
+                renderDetail(book, copies, currentSeries, currentGrandSeries, []);
+            }
+        })
+        .catch(() => renderDetail(book, [], currentSeries, currentGrandSeries, []));
 }
 
-function renderDetail(book, copies, currentSeries, currentGrandSeries) {
-
+function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
+    tracks = tracks || [];
     const metaParts = [];
     if (book.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(book.publisher)}</div>`);
     if (book.publish_date) metaParts.push(`<div><span class="detail-meta-label">出版日</span>${escapeHtml(book.publish_date)}</div>`);
@@ -110,6 +119,11 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries) {
     if (book.extent) metaParts.push(`<div><span class="detail-meta-label">ページ数</span>${escapeHtml(book.extent)}</div>`);
     if (book.isbn) metaParts.push(`<div><span class="detail-meta-label">ISBN</span>${escapeHtml(book.isbn)}</div>`);
     if (book.isdn) metaParts.push(`<div><span class="detail-meta-label">ISDN</span>${escapeHtml(book.isdn)}</div>`);
+    if (book.jan) metaParts.push(`<div><span class="detail-meta-label">JAN</span>${escapeHtml(book.jan)}</div>`);
+    if (book.artist) metaParts.push(`<div><span class="detail-meta-label">アーティスト</span>${escapeHtml(book.artist)}</div>`);
+    if (book.label) metaParts.push(`<div><span class="detail-meta-label">レーベル</span>${escapeHtml(book.label)}</div>`);
+    if (book.catalog_number) metaParts.push(`<div><span class="detail-meta-label">品番</span>${escapeHtml(book.catalog_number)}</div>`);
+    if (book.disc_count) metaParts.push(`<div><span class="detail-meta-label">ディスク</span>${book.disc_count}枚</div>`);
 
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
@@ -135,6 +149,36 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries) {
         copiesHtml = `<div class="detail-copies detail-copies-empty">所蔵情報なし</div>`;
     }
 
+    let tracksHtml = "";
+    if (tracks.length > 0) {
+        const hasAudio = tracks.some((t) => t.file_hash);
+        const discGroups = {};
+        for (const t of tracks) {
+            const d = t.disc_number || 1;
+            if (!discGroups[d]) discGroups[d] = [];
+            discGroups[d].push(t);
+        }
+        const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
+        for (const d of discKeys) {
+            const discTracks = discGroups[d];
+            const discLabel = discKeys.length > 1 ? `<div class="detail-tracks-disc">Disc ${d}</div>` : "";
+            tracksHtml += `<div class="detail-tracks">${discLabel}
+                <div class="detail-tracks-list">
+                    ${discTracks.map((t) => `
+                        <div class="detail-track-item${hasAudio && t.file_hash ? ' detail-track-has-audio' : ''}">
+                            <span class="detail-track-num">${String(t.track_number).padStart(2, "0")}</span>
+                            <span class="detail-track-title">${escapeHtml(t.title)}</span>
+                            ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
+                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                                <span class="material-icons" aria-hidden="true">play_arrow</span>
+                            </button>` : ""}
+                        </div>
+                    `).join("")}
+                </div>
+            </div>`;
+        }
+    }
+
     detailContent.innerHTML = `
         <div class="detail-header">
             <div class="detail-cover">
@@ -155,6 +199,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries) {
             </div>
         </div>
         ${copiesHtml}
+        ${tracksHtml}
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url

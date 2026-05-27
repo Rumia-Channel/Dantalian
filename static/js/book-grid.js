@@ -232,6 +232,9 @@ function renderBookCard(book) {
     const copiesBadge = book.copies_count > 0
         ? ` <span class="copy-count-badge${book.lent_count > 0 ? ' copy-lent-badge' : ''}">${book.copies_count}${book.lent_count > 0 ? ' (' + book.lent_count + '貸出)' : ''}</span>`
         : "";
+    const mediaType = book.media_type || "book";
+    const mediaBadges = { cd: "CD", audiobook: "AB" };
+    const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
     return `
     <div class="book-card" onclick="showDetail(${book.id})">
         ${
@@ -239,6 +242,7 @@ function renderBookCard(book) {
                 ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeHtml(book.title)}" loading="lazy">`
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
+        ${mediaBadge}
         <div class="book-info">
             <div class="book-title">${escapeHtml(book.title)}${copiesBadge}</div>
             ${book.authors && book.authors.length > 0 ? `<div class="book-author">${book.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
