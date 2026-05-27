@@ -4,6 +4,7 @@ pub mod copies;
 pub mod grand_series;
 pub mod series;
 pub mod settings;
+pub mod tracks;
 
 use axum::routing::{delete, get, post, put};
 
@@ -55,4 +56,14 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/borrowers/{id}", put(borrowers::update))
         .route("/borrowers/{id}", delete(borrowers::delete))
         .route("/settings", get(settings::get_settings).put(settings::update_settings))
+        .route("/books/cd", post(books::cd_register))
+        .route("/books/{id}/tracks", get(tracks::list_tracks))
+        .route(
+            "/books/{id}/tracks/{track_id}",
+            put(tracks::update_track),
+        )
+        .route(
+            "/books/{id}/tracks/{track_id}/audio",
+            post(tracks::upload_track_audio).delete(tracks::delete_track_audio),
+        )
 }

@@ -15,6 +15,8 @@
         <div class="register-tabs">
             <button class="register-tab active" data-tab="isbn">ISBN</button>
             <button class="register-tab" data-tab="isdn">ISDN</button>
+            <button class="register-tab" data-tab="cd">CD</button>
+            <button class="register-tab" data-tab="audiobook">オーディオブック</button>
             <button class="register-tab" data-tab="manual">手動</button>
         </div>
 
@@ -77,6 +79,43 @@
         <section class="register" id="manual-panel" hidden>
             <h2>手動で登録</h2>
             <div id="manual-form-container"></div>
+        </section>
+
+        <section class="register" id="cd-panel" hidden>
+            <h2>CD (JANで登録)</h2>
+            <form id="cd-form">
+                <input type="text" id="cd-input" placeholder="JANコード (13桁)" pattern="[0-9\-]+" required>
+                <button type="submit" id="cd-btn" class="btn btn-primary">登録</button>
+            </form>
+            <p id="cd-status"></p>
+
+            <div class="register-bulk-toggle">
+                <button type="button" class="btn btn-ghost btn-sm" id="cd-bulk-toggle-btn">一括登録を開く</button>
+            </div>
+
+            <section class="register-bulk-section" id="cd-bulk-section" hidden>
+                <p class="bulk-hint">バーコードリーダーでJANを読み取ると自動的にキューに追加されます。</p>
+                <form id="cd-bulk-form" class="bulk-form">
+                    <input type="text" id="cd-bulk-input" placeholder="JANを読み取る..." autocomplete="off">
+                    <button type="button" id="cd-bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
+                </form>
+                <div class="bulk-controls">
+                    <button type="button" id="cd-bulk-start-btn" class="btn btn-primary btn-sm" disabled>開始</button>
+                    <button type="button" id="cd-bulk-stop-btn" class="btn btn-ghost btn-sm" hidden>停止</button>
+                    <span class="bulk-progress" id="cd-bulk-progress"></span>
+                </div>
+                <ul class="bulk-queue" id="cd-bulk-queue"></ul>
+                <div class="bulk-empty" id="cd-bulk-empty">キューは空です</div>
+            </section>
+        </section>
+
+        <section class="register" id="audiobook-panel" hidden>
+            <h2>オーディオブック (ISBNで登録)</h2>
+            <form id="audiobook-form">
+                <input type="text" id="audiobook-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+" required>
+                <button type="submit" id="audiobook-btn" class="btn btn-primary">登録</button>
+            </form>
+            <p id="audiobook-status"></p>
         </section>
     </div>
     <script src="/js/header.js?v=ASSET_VERSION"></script>

@@ -14,6 +14,7 @@ use sha3::{Digest, Sha3_256};
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     pub isbn: String,
+    pub media_type: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -61,7 +62,7 @@ pub async fn register(
             )
         })?;
 
-    let Some(new_book) = new_book else {
+    let Some(mut new_book) = new_book else {
         return Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Book not found for this ISBN"})),
@@ -74,6 +75,10 @@ pub async fn register(
         "ndl"
     }
     .to_string();
+
+    if let Some(ref mt) = req.media_type {
+        new_book.media_type = Some(mt.clone());
+    }
 
     let book = state.db.insert_book(&new_book).map_err(|e| {
         (
@@ -374,6 +379,13 @@ pub async fn manual_register(
         isdn_sample_image_url: req.isdn_sample_image_url.filter(|s| !s.is_empty()),
         isdn_useroption: req.isdn_useroption.filter(|s| !s.is_empty()),
         isdn_external_links: req.isdn_external_links.filter(|s| !s.is_empty()),
+        jan: None,
+        media_type: None,
+        catalog_number: None,
+        artist: None,
+        label: None,
+        disc_count: None,
+        tracks: None,
     };
 
     let mut book = state.db.insert_book(&new_book).map_err(|e| {
@@ -577,6 +589,7 @@ pub async fn update_book(
             id,
             isbn.as_deref(),
             isdn.as_deref(),
+            None,
             req.title.trim(),
             req.publisher.as_deref(),
             req.publish_date.as_deref(),
@@ -610,6 +623,11 @@ pub async fn update_book(
             req.isdn_sample_image_url.as_deref(),
             req.isdn_useroption.as_deref(),
             req.isdn_external_links.as_deref(),
+            None,
+            None,
+            None,
+            None,
+            None,
         )
         .map_err(|e| {
             (
@@ -875,4 +893,124 @@ pub async fn delete_cover(
     })?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct CdRegisterRequest {
+    pub jan: String,
+}
+
+pub async fn cd_register(
+    State(state): State<AppState>,
+    Json(req): Json<CdRegisterRequest>,
+) -> Result<(StatusCode, Json<RegisterResponse>), ApiError> {
+    let jan = req.jan.replace('-', "").replace(' ', "");
+    if jan.len() < 8 || jan.len() > 14 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid JAN length"})),
+        ));
+    }
+
+    if let Ok(Some(existing)) = state.db.find_by_jan(&jan) {
+        let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
+        return Ok((
+            StatusCode::OK,
+            Json(RegisterResponse {
+                book: BookWithAuthors {
+                    book: existing,
+                    authors,
+                    copies_count: 0,
+                    lent_count: 0,
+                },
+                source: "cache".to_string(),
+            }),
+        ));
+    }
+
+    let cd_info = external::lookup_cd(&state.client, &jan, &state.images_dir)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": e})),
+            )
+        })?;
+
+    let cd_info = cd_info.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "CD not found for this JAN"})),
+        )
+    })?;
+
+    let new_book = NewBook {
+        isbn: None,
+        isdn: None,
+        jan: Some(jan),
+        title: cd_info.title,
+        publisher: cd_info.publisher,
+        publish_date: cd_info.publish_date,
+        cover_url: cd_info.cover_url,
+        description: None,
+        title_transcription: None,
+        series_title: None,
+        series_title_transcription: None,
+        alternative: None,
+        alternative_transcription: None,
+        volume: None,
+        volume_transcription: None,
+        price: None,
+        extent: None,
+        jpno: None,
+        ndl_url: None,
+        authors: Vec::new(),
+        isdn_region: None,
+        isdn_class: None,
+        isdn_type: None,
+        isdn_rating_gender: None,
+        isdn_rating_age: None,
+        isdn_genre_code: None,
+        isdn_genre_name: None,
+        isdn_genre_user: None,
+        isdn_c_code: None,
+        isdn_author: None,
+        isdn_shape: None,
+        isdn_contents: None,
+        isdn_barcode2: None,
+        isdn_sample_image_url: None,
+        isdn_useroption: None,
+        isdn_external_links: None,
+        media_type: Some("cd".to_string()),
+        catalog_number: cd_info.catalog_number,
+        artist: cd_info.artist,
+        label: cd_info.label,
+        disc_count: cd_info.disc_count,
+        tracks: Some(cd_info.tracks),
+    };
+
+    let book = state.db.insert_book(&new_book).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
+
+    if let Some(ref tracks) = new_book.tracks {
+        let _ = state.db.insert_tracks_batch(book.id, tracks);
+    }
+
+    let authors = Vec::new();
+    Ok((
+        StatusCode::CREATED,
+        Json(RegisterResponse {
+            book: BookWithAuthors {
+                book,
+                authors,
+                copies_count: 0,
+                lent_count: 0,
+            },
+            source: "musicbrainz".to_string(),
+        }),
+    ))
 }

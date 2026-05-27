@@ -99,6 +99,16 @@ impl Db {
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                disc_number INTEGER NOT NULL DEFAULT 1,
+                track_number INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                duration TEXT,
+                file_hash TEXT,
+                file_name TEXT
             );",
         )?;
         conn.execute_batch(
@@ -133,6 +143,26 @@ impl Db {
             conn.execute_batch(&format!("ALTER TABLE books ADD COLUMN {};", col))
                 .ok();
         }
+        conn.execute_batch(
+            "ALTER TABLE books ADD COLUMN media_type TEXT NOT NULL DEFAULT 'book';",
+        )
+        .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN jan TEXT;").ok();
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_books_jan ON books(jan) WHERE jan IS NOT NULL;",
+        )
+        .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN catalog_number TEXT;")
+            .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN artist TEXT;")
+            .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN label TEXT;").ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN disc_count INTEGER;")
+            .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN created_at TEXT;")
+            .ok();
+        conn.execute_batch("ALTER TABLE books ADD COLUMN updated_at TEXT;")
+            .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -175,6 +205,14 @@ impl Db {
             isdn_sample_image_url: row.get(34)?,
             isdn_useroption: row.get(35)?,
             isdn_external_links: row.get(36)?,
+            jan: row.get(37)?,
+            media_type: row.get(38)?,
+            catalog_number: row.get(39)?,
+            artist: row.get(40)?,
+            label: row.get(41)?,
+            disc_count: row.get(42)?,
+            created_at: row.get(43)?,
+            updated_at: row.get(44)?,
         })
     }
 
@@ -189,16 +227,18 @@ impl Db {
 
     pub fn insert_book(&self, book: &NewBook) -> Result<Book, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         conn.execute(
-            "INSERT OR IGNORE INTO books (isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
-            params![book.isbn, book.isdn, book.title, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.series_title, book.series_title_transcription, book.alternative, book.alternative_transcription, book.volume, book.volume_transcription, book.price, book.extent, book.jpno, book.ndl_url, book.isdn_region, book.isdn_class, book.isdn_type, book.isdn_rating_gender, book.isdn_rating_age, book.isdn_genre_code, book.isdn_genre_name, book.isdn_genre_user, book.isdn_c_code, book.isdn_author, book.isdn_shape, book.isdn_contents, book.isdn_barcode2, book.isdn_sample_image_url, book.isdn_useroption, book.isdn_external_links],
+            "INSERT OR IGNORE INTO books (isbn, isdn, jan, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, media_type, catalog_number, artist, label, disc_count, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41)",
+            params![book.isbn, book.isdn, book.jan, book.title, book.publisher, book.publish_date, book.cover_url, book.description, book.title_transcription, book.series_title, book.series_title_transcription, book.alternative, book.alternative_transcription, book.volume, book.volume_transcription, book.price, book.extent, book.jpno, book.ndl_url, book.isdn_region, book.isdn_class, book.isdn_type, book.isdn_rating_gender, book.isdn_rating_age, book.isdn_genre_code, book.isdn_genre_name, book.isdn_genre_user, book.isdn_c_code, book.isdn_author, book.isdn_shape, book.isdn_contents, book.isdn_barcode2, book.isdn_sample_image_url, book.isdn_useroption, book.isdn_external_links, book.media_type, book.catalog_number, book.artist, book.label, book.disc_count, now],
         )?;
         let id = conn.last_insert_rowid();
         Ok(Book {
             id,
             isbn: book.isbn.clone(),
             isdn: book.isdn.clone(),
+            jan: book.jan.clone(),
             title: book.title.clone(),
             publisher: book.publisher.clone(),
             publish_date: book.publish_date.clone(),
@@ -233,6 +273,13 @@ impl Db {
             isdn_sample_image_url: book.isdn_sample_image_url.clone(),
             isdn_useroption: book.isdn_useroption.clone(),
             isdn_external_links: book.isdn_external_links.clone(),
+            media_type: book.media_type.clone(),
+            catalog_number: book.catalog_number.clone(),
+            artist: book.artist.clone(),
+            label: book.label.clone(),
+            disc_count: book.disc_count,
+            created_at: Some(now),
+            updated_at: None,
         })
     }
 
@@ -330,7 +377,7 @@ impl Db {
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books ORDER BY id DESC",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
@@ -339,7 +386,7 @@ impl Db {
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE isbn = ?1",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isbn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
         match rows.next() {
@@ -351,7 +398,7 @@ impl Db {
     pub fn find_by_isdn(&self, isdn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE isdn = ?1",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isdn = ?1",
         )?;
         let mut rows = stmt.query_map(params![isdn], Self::row_to_book)?;
         match rows.next() {
@@ -363,7 +410,7 @@ impl Db {
     pub fn find_by_id(&self, id: i64) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links FROM books WHERE id = ?1",
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::row_to_book)?;
         match rows.next() {
@@ -396,6 +443,7 @@ impl Db {
         id: i64,
         isbn: Option<&str>,
         isdn: Option<&str>,
+        jan: Option<&str>,
         title: &str,
         publisher: Option<&str>,
         publish_date: Option<&str>,
@@ -429,21 +477,28 @@ impl Db {
         isdn_sample_image_url: Option<&str>,
         isdn_useroption: Option<&str>,
         isdn_external_links: Option<&str>,
+        media_type: Option<&str>,
+        catalog_number: Option<&str>,
+        artist: Option<&str>,
+        label: Option<&str>,
+        disc_count: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
-            "UPDATE books SET isbn=?1, isdn=?2, title=?3, publisher=?4, publish_date=?5, description=?6,
-             title_transcription=?7, series_title=?8, series_title_transcription=?9,
-             alternative=?10, alternative_transcription=?11, volume=?12, volume_transcription=?13,
-             price=?14, extent=?15, jpno=?16, ndl_url=?17,
-             series_id=?18, series_number=?19,
-             isdn_region=?20, isdn_class=?21, isdn_type=?22, isdn_rating_gender=?23, isdn_rating_age=?24,
-             isdn_genre_code=?25, isdn_genre_name=?26, isdn_genre_user=?27, isdn_c_code=?28,
-             isdn_author=?29, isdn_shape=?30, isdn_contents=?31, isdn_barcode2=?32,
-             isdn_sample_image_url=?33, isdn_useroption=?34, isdn_external_links=?35
-             WHERE id=?36",
+            "UPDATE books SET isbn=?1, isdn=?2, jan=?3, title=?4, publisher=?5, publish_date=?6, description=?7,
+             title_transcription=?8, series_title=?9, series_title_transcription=?10,
+             alternative=?11, alternative_transcription=?12, volume=?13, volume_transcription=?14,
+             price=?15, extent=?16, jpno=?17, ndl_url=?18,
+             series_id=?19, series_number=?20,
+             isdn_region=?21, isdn_class=?22, isdn_type=?23, isdn_rating_gender=?24, isdn_rating_age=?25,
+             isdn_genre_code=?26, isdn_genre_name=?27, isdn_genre_user=?28, isdn_c_code=?29,
+             isdn_author=?30, isdn_shape=?31, isdn_contents=?32, isdn_barcode2=?33,
+             isdn_sample_image_url=?34, isdn_useroption=?35, isdn_external_links=?36,
+             media_type=?37, catalog_number=?38, artist=?39, label=?40, disc_count=?41, updated_at=?42
+             WHERE id=?43",
             params![
-                isbn, isdn, title, publisher, publish_date, description,
+                isbn, isdn, jan, title, publisher, publish_date, description,
                 title_transcription, series_title, series_title_transcription,
                 alternative, alternative_transcription, volume, volume_transcription,
                 price, extent, jpno, ndl_url,
@@ -452,6 +507,7 @@ impl Db {
                 isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code,
                 isdn_author, isdn_shape, isdn_contents, isdn_barcode2,
                 isdn_sample_image_url, isdn_useroption, isdn_external_links,
+                media_type, catalog_number, artist, label, disc_count, now,
                 id,
             ],
         )?;
@@ -936,6 +992,124 @@ impl Db {
                 params![key, value],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn find_by_jan(&self, jan: &str) -> Result<Option<Book>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE jan = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![jan], Self::row_to_book)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn insert_track(&self, book_id: i64, track: &NewTrack) -> Result<Track, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO tracks (book_id, disc_number, track_number, title, duration) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![book_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Track {
+            id,
+            book_id,
+            disc_number: track.disc_number.unwrap_or(1),
+            track_number: track.track_number,
+            title: track.title.clone(),
+            duration: track.duration.clone(),
+            file_hash: None,
+            file_name: None,
+        })
+    }
+
+    pub fn insert_tracks_batch(
+        &self,
+        book_id: i64,
+        tracks: &[NewTrack],
+    ) -> Result<Vec<Track>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut result = Vec::new();
+        for track in tracks {
+            conn.execute(
+                "INSERT INTO tracks (book_id, disc_number, track_number, title, duration) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![book_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
+            )?;
+            let id = conn.last_insert_rowid();
+            result.push(Track {
+                id,
+                book_id,
+                disc_number: track.disc_number.unwrap_or(1),
+                track_number: track.track_number,
+                title: track.title.clone(),
+                duration: track.duration.clone(),
+                file_hash: None,
+                file_name: None,
+            });
+        }
+        Ok(result)
+    }
+
+    pub fn list_tracks(&self, book_id: i64) -> Result<Vec<Track>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, book_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE book_id = ?1 ORDER BY disc_number, track_number",
+        )?;
+        let rows = stmt.query_map(params![book_id], |row| {
+            Ok(Track {
+                id: row.get(0)?,
+                book_id: row.get(1)?,
+                disc_number: row.get(2)?,
+                track_number: row.get(3)?,
+                title: row.get(4)?,
+                duration: row.get(5)?,
+                file_hash: row.get(6)?,
+                file_name: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_track(
+        &self,
+        id: i64,
+        title: &str,
+        duration: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE tracks SET title = ?1, duration = ?2 WHERE id = ?3",
+            params![title, duration, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn update_track_audio(
+        &self,
+        id: i64,
+        file_hash: Option<&str>,
+        file_name: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE tracks SET file_hash = ?1, file_name = ?2 WHERE id = ?3",
+            params![file_hash, file_name, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_track(&self, id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute("DELETE FROM tracks WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_tracks_by_book(&self, book_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM tracks WHERE book_id = ?1", params![book_id])?;
         Ok(())
     }
 }

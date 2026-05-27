@@ -93,6 +93,9 @@ async fn main() {
     let shutdown_db = state.db.clone();
 
     let images_dir_arc = Arc::new(images_dir);
+    let audio_dir = format!("{}{}audio", data_dir, std::path::MAIN_SEPARATOR);
+    std::fs::create_dir_all(&audio_dir).expect("Failed to create audio directory");
+    let audio_dir_arc = Arc::new(audio_dir);
     let app = Router::new()
         .route("/", axum::routing::get(serve_index))
         .route("/register", axum::routing::get(serve_register))
@@ -105,6 +108,7 @@ async fn main() {
         .route("/authors/", axum::routing::get(serve_authors))
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
+        .nest_service("/audio", ServeDir::new(audio_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
         .with_state(state);
 

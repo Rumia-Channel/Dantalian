@@ -20,6 +20,7 @@ pub struct Book {
     pub id: i64,
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -54,6 +55,13 @@ pub struct Book {
     pub isdn_sample_image_url: Option<String>,
     pub isdn_useroption: Option<String>,
     pub isdn_external_links: Option<String>,
+    pub media_type: Option<String>,
+    pub catalog_number: Option<String>,
+    pub artist: Option<String>,
+    pub label: Option<String>,
+    pub disc_count: Option<i64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -80,6 +88,7 @@ pub struct BookWithAuthors {
 pub struct NewBook {
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -113,6 +122,12 @@ pub struct NewBook {
     pub isdn_sample_image_url: Option<String>,
     pub isdn_useroption: Option<String>,
     pub isdn_external_links: Option<String>,
+    pub media_type: Option<String>,
+    pub catalog_number: Option<String>,
+    pub artist: Option<String>,
+    pub label: Option<String>,
+    pub disc_count: Option<i64>,
+    pub tracks: Option<Vec<NewTrack>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -183,4 +198,37 @@ pub struct CopyWithStatus {
     pub lent_to: Option<String>,
     pub lent_date: Option<String>,
     pub due_date: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Track {
+    pub id: i64,
+    pub book_id: i64,
+    pub disc_number: i64,
+    pub track_number: i64,
+    pub title: String,
+    pub duration: Option<String>,
+    pub file_hash: Option<String>,
+    pub file_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewTrack {
+    pub disc_number: Option<i64>,
+    pub track_number: i64,
+    pub title: String,
+    pub duration: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CdInfo {
+    pub title: String,
+    pub artist: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub catalog_number: Option<String>,
+    pub publish_date: Option<String>,
+    pub cover_url: Option<String>,
+    pub disc_count: Option<i64>,
+    pub tracks: Vec<NewTrack>,
 }
