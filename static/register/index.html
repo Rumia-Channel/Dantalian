@@ -85,6 +85,10 @@
             <h2>CD (JANで登録)</h2>
             <form id="cd-form">
                 <input type="text" id="cd-input" placeholder="JANコード (13桁)" pattern="[0-9\-]+" required>
+                <div class="register-parent-row">
+                    <label>親書籍ID (付属CDの場合):</label>
+                    <input type="number" id="cd-parent-book-id" placeholder="書籍ID" min="1" step="1" style="width:6rem">
+                </div>
                 <button type="submit" id="cd-btn" class="btn btn-primary">登録</button>
             </form>
             <p id="cd-status"></p>
@@ -114,6 +118,10 @@
             <form id="audiobook-form">
                 <input type="text" id="audiobook-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+">
                 <input type="text" id="audiobook-jan-input" placeholder="JANコード" pattern="[0-9\-]+">
+                <div class="register-parent-row">
+                    <label>親書籍ID (原作):</label>
+                    <input type="number" id="audiobook-parent-book-id" placeholder="書籍ID" min="1" step="1" style="width:6rem">
+                </div>
                 <button type="submit" id="audiobook-btn" class="btn btn-primary">登録</button>
             </form>
             <p id="audiobook-status"></p>

@@ -17,6 +17,8 @@ impl Db {
             disc_count: row.get(10)?,
             created_at: row.get(11)?,
             updated_at: row.get(12)?,
+            parent_book_id: row.get(13)?,
+            media_type: row.get(14)?,
         })
     }
 
@@ -24,9 +26,9 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         conn.execute(
-            "INSERT OR IGNORE INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, now],
+            "INSERT OR IGNORE INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, parent_book_id, media_type, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.parent_book_id, cd.media_type, now],
         )?;
         let id = conn.last_insert_rowid();
         Ok(Cd {
@@ -43,13 +45,15 @@ impl Db {
             disc_count: cd.disc_count,
             created_at: Some(now),
             updated_at: None,
+            parent_book_id: cd.parent_book_id,
+            media_type: cd.media_type.clone(),
         })
     }
 
     pub fn find_by_cd_jan(&self, jan: &str) -> Result<Option<Cd>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at FROM cds WHERE jan = ?1",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at, parent_book_id, media_type FROM cds WHERE jan = ?1",
         )?;
         let mut rows = stmt.query_map(params![jan], Self::row_to_cd)?;
         match rows.next() {
@@ -61,7 +65,7 @@ impl Db {
     pub fn list_cds(&self) -> Result<Vec<Cd>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at FROM cds ORDER BY id DESC",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at, parent_book_id, media_type FROM cds ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_cd)?;
         rows.collect()
@@ -70,7 +74,7 @@ impl Db {
     pub fn find_cd_by_id(&self, id: i64) -> Result<Option<Cd>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at FROM cds WHERE id = ?1",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at, parent_book_id, media_type FROM cds WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::row_to_cd)?;
         match rows.next() {
@@ -98,12 +102,14 @@ impl Db {
         cover_url: Option<&str>,
         description: Option<&str>,
         disc_count: Option<i64>,
+        parent_book_id: Option<i64>,
+        media_type: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
-            "UPDATE cds SET jan=?1, title=?2, artist=?3, publisher=?4, label=?5, catalog_number=?6, publish_date=?7, cover_url=?8, description=?9, disc_count=?10, updated_at=?11 WHERE id=?12",
-            params![jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, now, id],
+            "UPDATE cds SET jan=?1, title=?2, artist=?3, publisher=?4, label=?5, catalog_number=?6, publish_date=?7, cover_url=?8, description=?9, disc_count=?10, parent_book_id=?11, media_type=?12, updated_at=?13 WHERE id=?14",
+            params![jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, parent_book_id, media_type, now, id],
         )?;
         Ok(affected > 0)
     }
@@ -119,5 +125,14 @@ impl Db {
             params![cover_url, id],
         )?;
         Ok(affected > 0)
+    }
+
+    pub fn find_cds_by_parent_book(&self, book_id: i64) -> Result<Vec<Cd>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at, parent_book_id, media_type FROM cds WHERE parent_book_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![book_id], Self::row_to_cd)?;
+        rows.collect()
     }
 }

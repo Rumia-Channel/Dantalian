@@ -185,3 +185,21 @@
     flex-shrink: 0;
     margin-left: auto;
 }
+
+.register-parent-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin: 0.25rem 0;
+}
+
+.register-parent-row input {
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+}

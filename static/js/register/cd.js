@@ -15,15 +15,20 @@ cdForm.addEventListener("submit", async (e) => {
     const jan = cdInput.value.trim().replace(/-/g, "");
     if (!jan) return;
 
+    const parentBookId = document.getElementById("cd-parent-book-id");
+    const parentId = parentBookId ? parseInt(parentBookId.value) || null : null;
+
     cdBtn.disabled = true;
     cdStatus.textContent = "検索中...";
     cdStatus.className = "";
 
     try {
+        const body = { jan };
+        if (parentId) body.parent_book_id = parentId;
         const res = await fetch("/api/cds", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jan }),
+            body: JSON.stringify(body),
         });
         const data = await res.json();
 

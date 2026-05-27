@@ -249,6 +249,8 @@ pub struct Cd {
     pub disc_count: Option<i64>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub parent_book_id: Option<i64>,
+    pub media_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +266,8 @@ pub struct NewCd {
     pub description: Option<String>,
     pub disc_count: Option<i64>,
     pub tracks: Option<Vec<NewTrack>>,
+    pub parent_book_id: Option<i64>,
+    pub media_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

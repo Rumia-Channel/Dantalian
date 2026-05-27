@@ -766,3 +766,24 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+.detail-children {
+    margin: 1rem 0;
+}
+
+.detail-children-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.detail-child-item {
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--color-bg-input);
+    font-size: 0.85rem;
+    margin-bottom: 0.2rem;
+}

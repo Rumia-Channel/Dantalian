@@ -200,6 +200,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         </div>
         ${copiesHtml}
         ${tracksHtml}
+        ${renderChildrenInDetail(book.id)}
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url
@@ -298,6 +299,25 @@ async function deleteBook(id) {
             renderBooks();
         }
     } catch {}
+}
+
+function renderChildrenInDetail(bookId) {
+    if (!window.allCds || allCds.length === 0) return "";
+    const children = allCds.filter((cd) => cd.parent_book_id === bookId);
+    if (children.length === 0) return "";
+
+    return `<div class="detail-children">
+        <div class="detail-children-title">関連CD/オーディオブック (${children.length}件)</div>
+        ${children.map((cd) => `
+            <div class="detail-child-item">
+                <span class="media-badge media-badge--${cd.media_type === 'audiobook' ? 'audiobook' : 'cd'}" style="position:static;display:inline-block;vertical-align:middle;margin-right:0.5rem">
+                    ${cd.media_type === 'audiobook' ? 'AB' : 'CD'}
+                </span>
+                <span>${escapeHtml(cd.title)}</span>
+                ${cd.artist ? `<span style="color:var(--color-text-dim);margin-left:0.5rem">${escapeHtml(cd.artist)}</span>` : ""}
+            </div>
+        `).join("")}
+    </div>`;
 }
 
 document.addEventListener("keydown", (e) => {

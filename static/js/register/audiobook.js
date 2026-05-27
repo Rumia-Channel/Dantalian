@@ -25,25 +25,22 @@ audiobookForm.addEventListener("submit", async (e) => {
     const jan = audiobookJanInput ? audiobookJanInput.value.trim().replace(/-/g, "") : "";
     if (!isbn && !jan) return;
 
+    const parentBookId = document.getElementById("audiobook-parent-book-id");
+    const parentId = parentBookId ? parseInt(parentBookId.value) || null : null;
+
     audiobookBtn.disabled = true;
     audiobookStatus.textContent = "検索中...";
     audiobookStatus.className = "";
 
     try {
-        let res;
-        if (jan) {
-            res = await fetch("/api/books", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ jan, media_type: "audiobook" }),
-            });
-        } else {
-            res = await fetch("/api/books", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ isbn, media_type: "audiobook" }),
-            });
-        }
+        const code = jan || isbn;
+        const body = { jan: code, media_type: "audiobook" };
+        if (parentId) body.parent_book_id = parentId;
+        const res = await fetch("/api/cds", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
         const data = await res.json();
 
         if (!res.ok) {
@@ -52,11 +49,8 @@ audiobookForm.addEventListener("submit", async (e) => {
             return;
         }
 
-        let sourceLabel;
-        if (data.source === "amazon") sourceLabel = "Amazon";
-        else if (data.source === "musicbrainz") sourceLabel = "MusicBrainz";
-        else sourceLabel = "国立国会図書館";
-        audiobookStatus.textContent = `「${data.book.title}」を${sourceLabel}からオーディオブックとして登録しました`;
+        let sourceLabel = "MusicBrainz";
+        audiobookStatus.textContent = `「${data.title}」を${sourceLabel}からオーディオブックとして登録しました`;
         audiobookStatus.className = "success";
         audiobookInput.value = "";
         if (audiobookJanInput) audiobookJanInput.value = "";

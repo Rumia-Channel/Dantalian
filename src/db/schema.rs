@@ -179,6 +179,14 @@ impl Db {
             "ALTER TABLE tracks ADD COLUMN cd_id INTEGER REFERENCES cds(id) ON DELETE CASCADE;",
         )
         .ok();
+        conn.execute_batch(
+            "ALTER TABLE cds ADD COLUMN parent_book_id INTEGER REFERENCES books(id) ON DELETE SET NULL;",
+        )
+        .ok();
+        conn.execute_batch(
+            "ALTER TABLE cds ADD COLUMN media_type TEXT NOT NULL DEFAULT 'cd';",
+        )
+        .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 }

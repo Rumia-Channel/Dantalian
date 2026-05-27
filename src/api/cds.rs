@@ -17,6 +17,8 @@ use super::books::ApiError;
 #[derive(Deserialize)]
 pub struct CdRegisterRequest {
     pub jan: String,
+    pub parent_book_id: Option<i64>,
+    pub media_type: Option<String>,
 }
 
 pub async fn cd_register(
@@ -70,6 +72,8 @@ pub async fn cd_register(
         description: None,
         disc_count: cd_info.disc_count,
         tracks: Some(cd_info.tracks),
+        parent_book_id: req.parent_book_id,
+        media_type: req.media_type.clone(),
     };
 
     let cd = state.db.insert_cd(&new_cd).map_err(|e| {
@@ -159,6 +163,8 @@ pub async fn update_cd(
             body["cover_url"].as_str(),
             body["description"].as_str(),
             body["disc_count"].as_i64(),
+            body["parent_book_id"].as_i64(),
+            body["media_type"].as_str(),
         )
         .map_err(|e| {
             (
