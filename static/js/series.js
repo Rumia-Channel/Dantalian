@@ -120,7 +120,7 @@ function renderGrandSeriesManager() {
     }
     list.innerHTML = allGrandSeries.map((gs) => {
         const itemsHtml = gs.items.map((it) => {
-            const typeLabel = it.item_type === "series" ? "シリーズ" : "書籍";
+            const typeLabel = it.item_type === "series" ? "シリーズ" : it.item_type === "cd" ? "CD" : "書籍";
             return `<div class="gs-item">
                 <span class="gs-item-type">${typeLabel}</span>
                 <span class="gs-item-name">${escapeHtml(it.name)}</span>
@@ -165,14 +165,20 @@ function renderGrandSeriesManager() {
             options: [
                 { value: "series", label: "シリーズ" },
                 { value: "book", label: "書籍" },
+                { value: "cd", label: "CD" },
             ],
             value: "series",
             native: true,
             onChange: (val) => {
                 const type = val || "series";
-                const opts = type === "series"
-                    ? allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }))
-                    : allBooks.filter((b) => !isBookInGrandSeriesViaSeries(b.id)).map((b) => ({ value: `book:${b.id}`, label: b.title }));
+                let opts;
+                if (type === "series") {
+                    opts = allSeries.map((s) => ({ value: `series:${s.id}`, label: s.name }));
+                } else if (type === "cd") {
+                    opts = (window.allCds || []).map((c) => ({ value: `cd:${c.id}`, label: c.title }));
+                } else {
+                    opts = allBooks.filter((b) => !isBookInGrandSeriesViaSeries(b.id)).map((b) => ({ value: `book:${b.id}`, label: b.title }));
+                }
                 targetSs.updateOptions(opts);
                 targetSs.setValue(null);
             },

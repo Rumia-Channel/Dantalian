@@ -19,6 +19,7 @@ pub struct CdRegisterRequest {
     pub jan: String,
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
+    pub series_id: Option<i64>,
 }
 
 pub async fn cd_register(
@@ -74,6 +75,7 @@ pub async fn cd_register(
         tracks: Some(cd_info.tracks),
         parent_book_id: req.parent_book_id,
         media_type: req.media_type.clone(),
+        series_id: req.series_id,
     };
 
     let cd = state.db.insert_cd(&new_cd).map_err(|e| {
@@ -165,6 +167,7 @@ pub async fn update_cd(
             body["disc_count"].as_i64(),
             body["parent_book_id"].as_i64(),
             body["media_type"].as_str(),
+            body["series_id"].as_i64(),
         )
         .map_err(|e| {
             (

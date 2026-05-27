@@ -53,11 +53,12 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT gs.id, gs.name, gsi.item_type, gsi.item_id,
-                    COALESCE(s.name, b.title) AS item_name
+                    COALESCE(s.name, b.title, c.title) AS item_name
              FROM grand_series gs
              LEFT JOIN grand_series_items gsi ON gs.id = gsi.grand_series_id
              LEFT JOIN series s ON gsi.item_type = 'series' AND s.id = gsi.item_id
              LEFT JOIN books b ON gsi.item_type = 'book' AND b.id = gsi.item_id
+             LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
              ORDER BY gs.id, gsi.rowid",
         )?;
         let mut map: std::collections::HashMap<i64, GrandSeriesWithItems> =

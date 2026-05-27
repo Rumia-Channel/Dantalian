@@ -17,7 +17,7 @@ impl Db {
             );
             CREATE TABLE IF NOT EXISTS grand_series_items (
                 grand_series_id INTEGER NOT NULL REFERENCES grand_series(id) ON DELETE CASCADE,
-                item_type TEXT NOT NULL CHECK(item_type IN ('series', 'book')),
+                item_type TEXT NOT NULL CHECK(item_type IN ('series', 'book', 'cd')),
                 item_id INTEGER NOT NULL,
                 PRIMARY KEY (grand_series_id, item_type, item_id)
             );
@@ -185,6 +185,22 @@ impl Db {
         .ok();
         conn.execute_batch(
             "ALTER TABLE cds ADD COLUMN media_type TEXT NOT NULL DEFAULT 'cd';",
+        )
+        .ok();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS grand_series_items_new (
+                grand_series_id INTEGER NOT NULL REFERENCES grand_series(id) ON DELETE CASCADE,
+                item_type TEXT NOT NULL CHECK(item_type IN ('series', 'book', 'cd')),
+                item_id INTEGER NOT NULL,
+                PRIMARY KEY (grand_series_id, item_type, item_id)
+            );
+            INSERT OR IGNORE INTO grand_series_items_new SELECT * FROM grand_series_items;
+            DROP TABLE grand_series_items;
+            ALTER TABLE grand_series_items_new RENAME TO grand_series_items;",
+        )
+        .ok();
+        conn.execute_batch(
+            "ALTER TABLE cds ADD COLUMN series_id INTEGER REFERENCES series(id) ON DELETE SET NULL;",
         )
         .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
