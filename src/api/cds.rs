@@ -17,17 +17,70 @@ use super::books::ApiError;
 
 #[derive(Deserialize)]
 pub struct CdRegisterRequest {
-    pub jan: String,
+    pub jan: Option<String>,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub catalog_number: Option<String>,
+    pub publish_date: Option<String>,
+    pub description: Option<String>,
+    pub disc_count: Option<i64>,
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
+    pub manual: Option<bool>,
 }
 
 pub async fn cd_register(
     State(state): State<AppState>,
     Json(req): Json<CdRegisterRequest>,
 ) -> Result<(StatusCode, Json<CdWithTracks>), ApiError> {
-    let jan = req.jan.replace('-', "").replace(' ', "");
+    let is_manual = req.manual.unwrap_or(false) || req.title.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+
+    if is_manual {
+        let title = req.title.ok_or_else(|| {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Title is required for manual registration"})))
+        })?;
+        let jan = req.jan.as_ref().map(|j| j.replace('-', "").replace(' ', "")).filter(|j| !j.is_empty());
+
+        if let Some(ref j) = jan {
+            if j.len() >= 8 {
+                if let Ok(Some(existing)) = state.db.find_by_cd_jan(j) {
+                    let tracks = state.db.list_tracks_for_cd(existing.id).unwrap_or_default();
+                    let authors = state.db.get_cd_authors(existing.id).unwrap_or_default();
+                    return Ok((StatusCode::OK, Json(CdWithTracks { cd: existing, tracks, authors })));
+                }
+            }
+        }
+
+        let new_cd = NewCd {
+            jan,
+            title,
+            artist: req.artist,
+            publisher: req.publisher,
+            label: req.label,
+            catalog_number: req.catalog_number,
+            publish_date: req.publish_date,
+            cover_url: None,
+            description: req.description,
+            disc_count: req.disc_count,
+            tracks: None,
+            parent_book_id: req.parent_book_id,
+            media_type: req.media_type.clone(),
+            series_id: req.series_id,
+        };
+
+        let cd = state.db.insert_cd(&new_cd).map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+        })?;
+
+        let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
+        let authors = state.db.get_cd_authors(cd.id).unwrap_or_default();
+        return Ok((StatusCode::CREATED, Json(CdWithTracks { cd, tracks, authors })));
+    }
+
+    let jan = req.jan.unwrap_or_default().replace('-', "").replace(' ', "");
     if jan.len() < 8 || jan.len() > 14 {
         return Err((
             StatusCode::BAD_REQUEST,
