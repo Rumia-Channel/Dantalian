@@ -51,24 +51,51 @@ pub async fn cd_register(
     let cd_info = match external::lookup_cd(&state.client, &jan, &state.images_dir).await {
         ok @ Ok(_) => ok,
         Err(e) => {
-            tracing::warn!("CD lookup failed: {}. Retrying...", e);
+            tracing::warn!("MusicBrainz lookup failed: {}. Retrying...", e);
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             external::lookup_cd(&state.client_ipv4, &jan, &state.images_dir).await
         }
-    }
-        .map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({"error": e})),
-            )
-        })?;
+    };
 
-    let cd_info = cd_info.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "CD not found for this JAN"})),
-        )
-    })?;
+    let cd_info = match cd_info {
+        Ok(Some(info)) => Some(info),
+        Ok(None) => {
+            tracing::info!("MusicBrainz returned no results for JAN={}", jan);
+            None
+        }
+        Err(e) => {
+            tracing::warn!("MusicBrainz lookup error: {}", e);
+            None
+        }
+    };
+
+    let cd_info = match cd_info {
+        Some(info) => info,
+        None => {
+            if state.discogs_token.is_empty() {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "CD not found for this JAN"})),
+                ));
+            }
+            tracing::info!("Falling back to Discogs for JAN={}", jan);
+            match external::lookup_cd_discogs(&state.client, &jan, &state.discogs_token).await {
+                Ok(Some(info)) => info,
+                Ok(None) => {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({"error": "CD not found for this JAN"})),
+                    ));
+                }
+                Err(e) => {
+                    return Err((
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({"error": format!("Discogs error: {}", e)})),
+                    ));
+                }
+            }
+        }
+    };
 
     let new_cd = NewCd {
         jan: Some(jan),

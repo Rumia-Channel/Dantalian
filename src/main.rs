@@ -45,6 +45,7 @@ pub struct AppState {
     pub client: Client,
     pub client_ipv4: Client,
     pub images_dir: Arc<String>,
+    pub discogs_token: String,
 }
 
 #[tokio::main]
@@ -89,11 +90,14 @@ async fn main() {
 
     let client_ipv4 = client.clone();
 
+    let discogs_token = std::env::var("DISCOGS_TOKEN").unwrap_or_default();
+
     let state = AppState {
         db,
         client,
         client_ipv4,
         images_dir: Arc::new(images_dir.clone()),
+        discogs_token,
     };
 
     let shutdown_db = state.db.clone();
