@@ -38,6 +38,10 @@ function normalizeCd(cd) {
         jan_code: cd.jan,
         disc_count: cd.disc_count,
         parent_book_id: cd.parent_book_id,
+        artist: cd.artist,
+        label: cd.label,
+        catalog_number: cd.catalog_number,
+        tracks: cd.tracks || [],
         isbn: null,
         tanka_isbn: null,
         has_toc: false,
@@ -313,6 +317,83 @@ function renderBookCard(item) {
     </div>`;
 }
 
+function renderCdCard(item) {
+    const mediaType = item.media_type || "cd";
+    const mediaBadges = { cd: "CD", audiobook: "AB" };
+    const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
+
+    let discCount = item.disc_count || 1;
+    let tracks = item.tracks || [];
+    if (tracks.length > 0) {
+        const maxDisc = Math.max(...tracks.map((t) => t.disc_number || 1), 1);
+        discCount = Math.max(discCount, maxDisc);
+    }
+
+    let tracksHtml = "";
+    if (tracks.length > 0) {
+        const discGroups = {};
+        for (const t of tracks) {
+            const d = t.disc_number || 1;
+            if (!discGroups[d]) discGroups[d] = [];
+            discGroups[d].push(t);
+        }
+        const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
+
+        const MAX_DISPLAY = 8;
+        let shown = 0;
+        let remaining = 0;
+        const discParts = [];
+        for (const d of discKeys) {
+            const discTracks = discGroups[d];
+            const discLabel = discKeys.length > 1 ? `<span class="cd-card-disc-label">Disc ${d}</span>` : "";
+            const trackLines = discTracks.map((t) => {
+                if (shown >= MAX_DISPLAY) {
+                    remaining++;
+                    return "";
+                }
+                shown++;
+                const hasAudio = t.file_hash ? ' cd-card-track-has-audio' : '';
+                return `<span class="cd-card-track${hasAudio}">${String(t.track_number).padStart(2, "0")}. ${escapeHtml(t.title)}${t.duration ? ` <span class="cd-card-duration">${escapeHtml(t.duration)}</span>` : ""}</span>`;
+            }).filter(Boolean).join("");
+            if (trackLines) {
+                discParts.push(`${discLabel}<div class="cd-card-disc-tracks">${trackLines}</div>`);
+            }
+        }
+
+        if (discParts.length > 0) {
+            tracksHtml = `<div class="cd-card-tracks">${discParts.join("")}</div>`;
+            if (remaining > 0) {
+                tracksHtml += `<div class="cd-card-more">他 ${remaining} 曲</div>`;
+            }
+        }
+    } else if (discCount > 1) {
+        tracksHtml = `<div class="cd-card-tracks-empty">${discCount}枚組</div>`;
+    }
+
+    const metaParts = [];
+    if (item.artist) metaParts.push(escapeHtml(item.artist));
+    if (item.label || item.catalog_number) {
+        metaParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
+    }
+
+    return `
+    <div class="cd-card" onclick="showCdDetail(${item.originalId})">
+        ${mediaBadge}
+        <div class="cd-card-cover">
+            ${
+                item.cover_url
+                    ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeHtml(item.title)}" loading="lazy">`
+                    : '<div class="book-cover-placeholder">No Image</div>'
+            }
+        </div>
+        <div class="cd-card-body">
+            <div class="cd-card-title">${escapeHtml(item.title)}</div>
+            ${metaParts.length > 0 ? `<div class="cd-card-meta">${metaParts.map((p) => escapeHtml(p)).join(" / ")}</div>` : ""}
+            ${tracksHtml}
+        </div>
+    </div>`;
+}
+
 function renderSeriesCard(series, books) {
     const coversHtml = books.slice(0, 8).map((b) =>
         b.cover_url
@@ -431,6 +512,8 @@ function buildGridHtml(items) {
             html += renderGrandSeriesCard(item.gs, sortedBooks);
         } else if (item.type === "series") {
             html += renderSeriesCard(item.series, sortedBooks);
+        } else if (item.item.sourceType === "cd") {
+            html += renderCdCard(item.item);
         } else {
             html += renderBookCard(item.item);
         }
