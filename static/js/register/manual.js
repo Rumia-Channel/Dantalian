@@ -5,6 +5,7 @@ let manualAllGrandSeries = [];
 let manualCoverFile = null;
 let manualCoverPreview = null;
 let manualAuthorIds = [];
+let manualCdTracks = [];
 let manualRendered = false;
 let manualAuthorSelect = null;
 let manualSeriesSelect = null;
@@ -201,6 +202,87 @@ async function renderManualForm() {
                     ${manualCoverPreview ? `<img class="manual-cover-preview" id="manual-cover-preview" src="${manualCoverPreview}" alt="">` : '<img class="manual-cover-preview" id="manual-cover-preview" src="" alt="" hidden>'}
                 </div>
             </div>
+            <div id="manual-register-status"></div>
+            <div class="edit-actions">
+                <button type="submit" class="btn btn-md btn-primary">登録</button>
+            </div>
+            </div>
+            <div id="manual-cd-fields" hidden>
+            <div class="edit-field">
+                <label>タイトル <span class="edit-required">*</span></label>
+                <input type="text" name="cd_title" id="manual-cd-title">
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>出版社</label>
+                    <input type="text" name="cd_publisher">
+                </div>
+                <div class="edit-field">
+                    <label>JAN</label>
+                    <input type="text" name="cd_jan" id="manual-cd-jan">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>レーベル</label>
+                    <input type="text" name="cd_label">
+                </div>
+                <div class="edit-field">
+                    <label>カタログ番号</label>
+                    <input type="text" name="cd_catalog_number">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>発売日</label>
+                    <input type="text" name="cd_publish_date">
+                </div>
+                <div class="edit-field">
+                    <label>ディスク数</label>
+                    <input type="number" name="cd_disc_count" min="1" step="1">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>種別</label>
+                    <select name="cd_media_type" class="form-input">
+                        <option value="cd">CD</option>
+                        <option value="audiobook">オーディオブック</option>
+                    </select>
+                </div>
+                <div class="edit-field">
+                    <label>親書籍ID</label>
+                    <input type="number" name="cd_parent_book_id" min="1" step="1">
+                </div>
+            </div>
+            <div class="edit-field">
+                <label>説明</label>
+                <textarea name="cd_description" rows="3"></textarea>
+            </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">トラック</h3>
+                <div id="manual-cd-tracks-list"><p class="series-empty">トラックなし</p></div>
+                <div style="margin-top:0.4rem">
+                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addManualCdTrack()">+ トラック追加</button>
+                </div>
+            </div>
+            <div class="edit-field">
+                <label>表紙画像</label>
+                <div class="manual-cover-row">
+                    <label class="btn btn-xs btn-outline-success manual-cover-label">
+                        ファイルを選択
+                        <input type="file" id="manual-cd-cover-input" accept="image/*" hidden>
+                    </label>
+                    <span class="manual-cover-filename" id="manual-cd-cover-filename"></span>
+                    <img class="manual-cover-preview" id="manual-cd-cover-preview" src="" alt="" hidden>
+                </div>
+            </div>
+            <div id="manual-cd-register-status"></div>
+            <div class="edit-actions">
+                <button type="button" class="btn btn-md btn-primary" onclick="submitManualCd(event)">登録</button>
+            </div>
+            </div>
+            </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">アーティスト</h3>
                 <div class="edit-author-list" id="manual-author-list"></div>
@@ -225,16 +307,6 @@ async function renderManualForm() {
                     <label>大シリーズ</label>
                     <div id="manual-grand-series-select-container"></div>
                 </div>
-            </div>
-            <div id="manual-register-status"></div>
-            <div class="edit-actions">
-                <button type="submit" class="btn btn-md btn-primary">登録</button>
-            </div>
-            </div>
-            <div id="manual-cd-fields" hidden>
-            <div class="edit-field">
-                <label>タイトル <span class="edit-required">*</span></label>
-                <input type="text" name="cd_title" id="manual-cd-title">
             </div>
             <div class="edit-row">
                 <div class="edit-field">
@@ -466,6 +538,7 @@ async function submitManualBook(e) {
         manualCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];
+        manualCdTracks = [];
         manualRendered = false;
         manualAuthorSelect = null;
         manualSeriesSelect = null;
@@ -490,17 +563,20 @@ async function submitManualCd(e) {
     const body = {
         jan: document.querySelector("input[name=cd_jan]")?.value || null,
         title: title,
-        artist: document.querySelector("input[name=cd_artist]")?.value || null,
-        publisher: null,
+        publisher: document.querySelector("input[name=cd_publisher]")?.value || null,
         label: document.querySelector("input[name=cd_label]")?.value || null,
         catalog_number: document.querySelector("input[name=cd_catalog_number]")?.value || null,
         publish_date: document.querySelector("input[name=cd_publish_date]")?.value || null,
         description: document.querySelector("textarea[name=cd_description]")?.value || null,
         disc_count: parseInt(document.querySelector("input[name=cd_disc_count]")?.value) || null,
+        media_type: document.querySelector("select[name=cd_media_type]")?.value || null,
+        parent_book_id: parseInt(document.querySelector("input[name=cd_parent_book_id]")?.value) || null,
+        manual: true,
     };
     for (const key in body) {
         if (body[key] === "") body[key] = null;
     }
+    if (manualSeriesSelect) body.series_id = manualSeriesSelect.getValue();
 
     const statusEl = document.getElementById("manual-cd-register-status");
 
@@ -520,6 +596,19 @@ async function submitManualCd(e) {
 
         const cdId = data.cd?.id || data.id;
 
+        if (cdId) {
+            for (const aid of manualAuthorIds) {
+                await fetch(`/api/cds/${cdId}/authors/${aid}`, { method: "POST" }).catch(() => {});
+            }
+            for (const t of manualCdTracks) {
+                await fetch(`/api/cds/${cdId}/tracks`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(t),
+                }).catch(() => {});
+            }
+        }
+
         if (manualCoverFile && cdId) {
             const coverFd = new FormData();
             coverFd.append("cover", manualCoverFile);
@@ -530,10 +619,49 @@ async function submitManualCd(e) {
         statusEl.className = "success";
         manualCoverFile = null;
         manualCoverPreview = null;
+        manualAuthorIds = [];
+        manualCdTracks = [];
+        manualCdTracks = [];
         manualRendered = false;
         renderManualForm();
     } catch (err) {
         statusEl.textContent = "通信エラーが発生しました";
         statusEl.className = "error";
     }
+}
+
+function renderManualCdTracks() {
+    const list = document.getElementById("manual-cd-tracks-list");
+    if (!list) return;
+    if (manualCdTracks.length === 0) {
+        list.innerHTML = "<p class='series-empty'>トラックなし</p>";
+        return;
+    }
+    list.innerHTML = manualCdTracks.map((t, idx) => `
+        <div class="edit-track-row">
+            <span class="edit-track-num">${String(t.track_number).padStart(2, "0")}</span>
+            <span class="edit-track-title-text">${escapeHtml(t.title)}</span>
+            ${t.duration ? `<span class="edit-track-dur">${escapeHtml(t.duration)}</span>` : ""}
+            <button type="button" class="btn btn-xs btn-outline-danger" style="margin-left:auto" onclick="removeManualCdTrack(${idx})">&#10005;</button>
+        </div>
+    `).join("");
+}
+
+function addManualCdTrack() {
+    const title = prompt("トラック名を入力:");
+    if (!title || !title.trim()) return;
+    const dur = prompt("時間 (MM:SS, 省略可):") || null;
+    manualCdTracks.push({
+        disc_number: 1,
+        track_number: manualCdTracks.length + 1,
+        title: title.trim(),
+        duration: dur,
+    });
+    renderManualCdTracks();
+}
+
+function removeManualCdTrack(idx) {
+    manualCdTracks.splice(idx, 1);
+    manualCdTracks.forEach((t, i) => { t.track_number = i + 1; });
+    renderManualCdTracks();
 }
