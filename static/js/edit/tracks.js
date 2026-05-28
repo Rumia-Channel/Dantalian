@@ -1,5 +1,11 @@
 function renderTracksHtml(tracks, editType, parentId) {
     if (tracks.length === 0) {
+        if (editType === "cd") {
+            return `<p class='series-empty'>トラックなし</p>
+                <div style="margin-top:0.4rem">
+                    <button class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},1,'${editType}')">+ トラック追加</button>
+                </div>`;
+        }
         return "<p class='series-empty'>トラックなし</p>";
     }
 

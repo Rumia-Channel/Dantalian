@@ -536,6 +536,10 @@ function renderCdEdit(cdId) {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
+                    <label>JAN</label>
+                    <input type="text" name="jan" value="${escapeAttr(cd.jan || '')}">
+                </div>
+                <div class="edit-field">
                     <label>出版社</label>
                     <input type="text" name="publisher" value="${escapeAttr(cd.publisher || '')}">
                 </div>
