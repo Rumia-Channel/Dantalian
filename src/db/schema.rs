@@ -153,7 +153,24 @@ impl Db {
         ];
         for col in &isdn_cols {
             conn.execute_batch(&format!("ALTER TABLE books ADD COLUMN {};", col))
-                .ok();
+        .ok();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tracks_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
+                cd_id INTEGER REFERENCES cds(id) ON DELETE CASCADE,
+                disc_number INTEGER NOT NULL DEFAULT 1,
+                track_number INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                duration TEXT,
+                file_hash TEXT,
+                file_name TEXT
+            );
+            INSERT OR IGNORE INTO tracks_new SELECT * FROM tracks;
+            DROP TABLE tracks;
+            ALTER TABLE tracks_new RENAME TO tracks;",
+        )
+        .ok();
         }
         conn.execute_batch(
             "ALTER TABLE books ADD COLUMN media_type TEXT NOT NULL DEFAULT 'book';",

@@ -25,7 +25,7 @@ impl Db {
     pub fn insert_track_for_cd(&self, cd_id: i64, track: &NewTrack) -> Result<Track, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute(
-            "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (0, ?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (NULL, ?1, ?2, ?3, ?4, ?5)",
             params![cd_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
         )?;
         let id = conn.last_insert_rowid();
@@ -79,7 +79,7 @@ impl Db {
         let mut result = Vec::new();
         for track in tracks {
             conn.execute(
-                "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (0, ?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (NULL, ?1, ?2, ?3, ?4, ?5)",
                 params![cd_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
             )?;
             let id = conn.last_insert_rowid();
