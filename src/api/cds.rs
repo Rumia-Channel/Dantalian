@@ -3,9 +3,10 @@ use crate::db::{CdWithTracks, NewCd};
 use crate::external;
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
+    extract::{Path, State},
     http::StatusCode,
 };
+use axum_extra::extract::Multipart;
 use base64::Engine;
 use serde::Deserialize;
 use sha3::{Digest, Sha3_256};
@@ -227,7 +228,7 @@ pub async fn upload_cd_track_audio(
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field
             .bytes()
