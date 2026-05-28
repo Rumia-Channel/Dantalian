@@ -241,7 +241,54 @@ pub async fn update_cd_track(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if let Some(disc) = body["disc_number"].as_i64() {
+        let tn = body["track_number"].as_i64().unwrap_or(1);
+        let db2 = state.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db2.update_track_position(track_id, disc, tn)
+        })
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
     Ok(Json("ok".into()))
+}
+
+pub async fn add_cd_track(
+    State(state): State<AppState>,
+    Path(cd_id): Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::db_models::Track>, StatusCode> {
+    let track = crate::db_models::NewTrack {
+        disc_number: body["disc_number"].as_i64().or(Some(1)),
+        track_number: body["track_number"].as_i64().unwrap_or(1),
+        title: body["title"].as_str().unwrap_or("").to_string(),
+        duration: body["duration"].as_str().map(|s| s.to_string()),
+    };
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || db.insert_track_for_cd(cd_id, &track))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map(Json)
+}
+
+pub async fn delete_cd_track(
+    State(state): State<AppState>,
+    Path((_cd_id, track_id)): Path<(i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let db = state.db.clone();
+    let deleted = tokio::task::spawn_blocking(move || db.delete_track(track_id))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 pub async fn upload_cd_track_audio(

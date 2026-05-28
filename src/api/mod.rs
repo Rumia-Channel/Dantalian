@@ -69,8 +69,8 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/cds", get(cds::list_cds).post(cds::cd_register))
         .route("/cds/{id}", put(cds::update_cd).delete(cds::delete_cd))
         .route("/cds/{id}/cover", post(cds::upload_cd_cover).delete(cds::delete_cd_cover))
-        .route("/cds/{id}/tracks", get(cds::list_cd_tracks))
-        .route("/cds/{id}/tracks/{tid}", put(cds::update_cd_track))
+        .route("/cds/{id}/tracks", get(cds::list_cd_tracks).post(cds::add_cd_track))
+        .route("/cds/{id}/tracks/{tid}", put(cds::update_cd_track).delete(cds::delete_cd_track))
         .route(
             "/cds/{id}/tracks/{tid}/audio",
             post(cds::upload_cd_track_audio).delete(cds::delete_cd_track_audio),

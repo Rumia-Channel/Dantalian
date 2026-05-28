@@ -174,6 +174,20 @@ impl Db {
         Ok(affected > 0)
     }
 
+    pub fn update_track_position(
+        &self,
+        id: i64,
+        disc_number: i64,
+        track_number: i64,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE tracks SET disc_number = ?1, track_number = ?2 WHERE id = ?3",
+            params![disc_number, track_number, id],
+        )?;
+        Ok(affected > 0)
+    }
+
     pub fn delete_tracks_by_book(&self, book_id: i64) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute("DELETE FROM tracks WHERE book_id = ?1", params![book_id])?;

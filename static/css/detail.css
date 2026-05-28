@@ -787,3 +787,46 @@
     font-size: 0.85rem;
     margin-bottom: 0.2rem;
 }
+
+.edit-track-title-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.82rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: 0.2rem;
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+}
+
+.edit-track-title-input:focus {
+    border-color: var(--color-success);
+    outline: none;
+}
+
+.edit-track-dur-input {
+    width: 3.5rem;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.8rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: 0.2rem;
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.edit-track-dur-input:focus {
+    border-color: var(--color-success);
+    outline: none;
+}
+
+.edit-track-reorder {
+    display: flex;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+
+.edit-track-file.has-audio {
+    color: var(--color-success);
+}
