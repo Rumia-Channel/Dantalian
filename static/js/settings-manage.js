@@ -1,4 +1,5 @@
-const BACKUP_KEYS = [
+const SETTINGS_KEYS = [
+    "discogs_token",
     "backup.enabled",
     "backup.schedule_time",
     "backup.schedule_tz",
@@ -44,7 +45,7 @@ async function loadSettings() {
 
 async function saveSettings(settings) {
     const body = {};
-    for (const key of BACKUP_KEYS) {
+    for (const key of SETTINGS_KEYS) {
         if (settings[key] !== undefined) {
             body[key] = String(settings[key]);
         }
@@ -96,6 +97,16 @@ async function renderSettingsForm() {
     ).join("");
 
     container.innerHTML = `
+        <div class="settings-form-section">
+            <h3>外部API</h3>
+
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-discogs-token">Discogs Token</label>
+                <input type="password" id="s-discogs-token" value="${escapeAttr(getValue(settings, "discogs_token", ""))}" class="form-input" placeholder="Discogs Personal Access Token">
+                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);margin-left:0.5rem">CD検索のMusicBrainzフォールバックに使用</span>
+            </div>
+        </div>
+
         <div class="settings-form-section">
             <h3>バックアップ</h3>
 
@@ -194,6 +205,7 @@ function renderDestFields(destType, settings) {
 
 async function submitSettings() {
     const settings = {};
+    settings["discogs_token"] = document.getElementById("s-discogs-token").value;
     settings["backup.enabled"] = document.getElementById("s-backup-enabled").checked ? "true" : "false";
     settings["backup.schedule_time"] = document.getElementById("s-schedule-time").value;
     settings["backup.schedule_tz"] = document.getElementById("s-schedule-tz").value;

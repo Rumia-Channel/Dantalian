@@ -90,7 +90,10 @@ async fn main() {
 
     let client_ipv4 = client.clone();
 
-    let discogs_token = std::env::var("DISCOGS_TOKEN").unwrap_or_default();
+    let discogs_token = db
+        .get_setting("discogs_token")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| std::env::var("DISCOGS_TOKEN").unwrap_or_default());
 
     let state = AppState {
         db,
