@@ -160,6 +160,7 @@ function renderGrandSeriesManager() {
             placeholder: "選択...",
             clearable: false,
         });
+        targetContainer._ssInstance = targetSs;
 
         createSearchableSelect(typeContainer, {
             options: [
