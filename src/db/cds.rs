@@ -115,7 +115,6 @@ impl Db {
         label: Option<&str>,
         catalog_number: Option<&str>,
         publish_date: Option<&str>,
-        cover_url: Option<&str>,
         description: Option<&str>,
         disc_count: Option<i64>,
         parent_book_id: Option<i64>,
@@ -125,8 +124,8 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
-            "UPDATE cds SET jan=?1, title=?2, artist=?3, publisher=?4, label=?5, catalog_number=?6, publish_date=?7, cover_url=?8, description=?9, disc_count=?10, parent_book_id=?11, media_type=?12, series_id=?13, updated_at=?14 WHERE id=?15",
-            params![jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, parent_book_id, media_type, series_id, now, id],
+            "UPDATE cds SET jan=?1, title=?2, artist=?3, publisher=?4, label=?5, catalog_number=?6, publish_date=?7, description=?8, disc_count=?9, parent_book_id=?10, media_type=?11, series_id=?12, updated_at=?13 WHERE id=?14",
+            params![jan, title, artist, publisher, label, catalog_number, publish_date, description, disc_count, parent_book_id, media_type, series_id, now, id],
         )?;
         Ok(affected > 0)
     }

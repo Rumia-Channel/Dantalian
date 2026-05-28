@@ -150,7 +150,6 @@ pub async fn update_cd(
     Path(id): Path<i64>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<StatusCode, ApiError> {
-    let jan = body["jan"].as_str().map(|s| s.to_string());
     let title = body["title"].as_str().unwrap_or("").to_string();
     if title.trim().is_empty() {
         return Err((
@@ -158,23 +157,51 @@ pub async fn update_cd(
             Json(serde_json::json!({"error": "Title is required"})),
         ));
     }
+
+    let existing = state
+        .db
+        .find_cd_by_id(id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "CD not found"})),
+            )
+        })?;
+
+    let jan = body["jan"].as_str().or(existing.jan.as_deref()).map(|s| s.to_string());
+    let artist = body["artist"].as_str().or(existing.artist.as_deref());
+    let publisher = body["publisher"].as_str().or(existing.publisher.as_deref());
+    let label = body["label"].as_str().or(existing.label.as_deref());
+    let catalog_number = body["catalog_number"].as_str().or(existing.catalog_number.as_deref());
+    let publish_date = body["publish_date"].as_str().or(existing.publish_date.as_deref());
+    let description = body["description"].as_str().or(existing.description.as_deref());
+    let disc_count = body["disc_count"].as_i64().or(existing.disc_count);
+    let parent_book_id = body["parent_book_id"].as_i64().or(existing.parent_book_id);
+    let media_type = body["media_type"].as_str().or(existing.media_type.as_deref());
+    let series_id = body["series_id"].as_i64().or(existing.series_id);
+
     state
         .db
         .update_cd(
             id,
             jan.as_deref(),
             title.trim(),
-            body["artist"].as_str(),
-            body["publisher"].as_str(),
-            body["label"].as_str(),
-            body["catalog_number"].as_str(),
-            body["publish_date"].as_str(),
-            body["cover_url"].as_str(),
-            body["description"].as_str(),
-            body["disc_count"].as_i64(),
-            body["parent_book_id"].as_i64(),
-            body["media_type"].as_str(),
-            body["series_id"].as_i64(),
+            artist,
+            publisher,
+            label,
+            catalog_number,
+            publish_date,
+            description,
+            disc_count,
+            parent_book_id,
+            media_type,
+            series_id,
         )
         .map_err(|e| {
             (
