@@ -37,11 +37,13 @@ pub async fn cd_register(
 
     if let Ok(Some(existing)) = state.db.find_by_cd_jan(&jan) {
         let tracks = state.db.list_tracks_for_cd(existing.id).unwrap_or_default();
+        let authors = state.db.get_cd_authors(existing.id).unwrap_or_default();
         return Ok((
             StatusCode::OK,
             Json(CdWithTracks {
                 cd: existing,
                 tracks,
+                authors,
             }),
         ));
     }
@@ -99,7 +101,7 @@ pub async fn cd_register(
     let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
     Ok((
         StatusCode::CREATED,
-        Json(CdWithTracks { cd, tracks }),
+        Json(CdWithTracks { cd, tracks, authors: vec![] }),
     ))
 }
 
@@ -112,7 +114,8 @@ pub async fn list_cds(
         let mut result = Vec::new();
         for cd in cds {
             let tracks = db.list_tracks_for_cd(cd.id).unwrap_or_default();
-            result.push(CdWithTracks { cd, tracks });
+            let authors = db.get_cd_authors(cd.id).unwrap_or_default();
+            result.push(CdWithTracks { cd, tracks, authors });
         }
         Ok::<_, rusqlite::Error>(result)
     })
@@ -467,5 +470,40 @@ pub async fn delete_cd_cover(
         )
     })?;
 
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_cd_author(
+    State(state): State<AppState>,
+    Path((cd_id, author_id)): Path<(i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    state
+        .db
+        .add_cd_author(cd_id, author_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_cd_author(
+    State(state): State<AppState>,
+    Path((cd_id, author_id)): Path<(i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    state
+        .db
+        .remove_cd_author(cd_id, author_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_cd_author_order(
+    State(state): State<AppState>,
+    Path((cd_id, author_id)): Path<(i64, i64)>,
+    Json(req): Json<serde_json::Value>,
+) -> Result<StatusCode, StatusCode> {
+    let sort_order = req["sort_order"].as_i64().unwrap_or(0);
+    state
+        .db
+        .update_cd_author_order(cd_id, author_id, sort_order)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

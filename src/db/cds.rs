@@ -151,4 +151,57 @@ impl Db {
         let rows = stmt.query_map(params![book_id], Self::row_to_cd)?;
         rows.collect()
     }
+
+    pub fn add_cd_author(&self, cd_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO cd_authors (cd_id, author_id) VALUES (?1, ?2)",
+            params![cd_id, author_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_cd_author(&self, cd_id: i64, author_id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "DELETE FROM cd_authors WHERE cd_id = ?1 AND author_id = ?2",
+            params![cd_id, author_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn get_cd_authors(&self, cd_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.ndl_id, a.name, a.transcription, ca.sort_order
+             FROM authors a
+             JOIN cd_authors ca ON a.id = ca.author_id
+             WHERE ca.cd_id = ?1
+             ORDER BY ca.sort_order, ca.author_id",
+        )?;
+        let rows = stmt.query_map(params![cd_id], |row| {
+            Ok(BookAuthor {
+                id: row.get(0)?,
+                ndl_id: row.get(1)?,
+                name: row.get(2)?,
+                transcription: row.get(3)?,
+                sort_order: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_cd_author_order(
+        &self,
+        cd_id: i64,
+        author_id: i64,
+        sort_order: i64,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE cd_authors SET sort_order = ?1 WHERE cd_id = ?2 AND author_id = ?3",
+            params![sort_order, cd_id, author_id],
+        )?;
+        Ok(affected > 0)
+    }
 }

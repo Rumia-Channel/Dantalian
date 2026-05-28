@@ -75,4 +75,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
             "/cds/{id}/tracks/{tid}/audio",
             post(cds::upload_cd_track_audio).delete(cds::delete_cd_track_audio),
         )
+        .route(
+            "/cds/{id}/authors/{author_id}",
+            post(cds::add_cd_author)
+                .delete(cds::remove_cd_author)
+                .put(cds::update_cd_author_order),
+        )
 }

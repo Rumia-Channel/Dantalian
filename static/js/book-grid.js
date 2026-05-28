@@ -38,7 +38,6 @@ function normalizeCd(cd) {
         jan_code: cd.jan,
         disc_count: cd.disc_count,
         parent_book_id: cd.parent_book_id,
-        artist: cd.artist,
         label: cd.label,
         catalog_number: cd.catalog_number,
         tracks: cd.tracks || [],
@@ -351,7 +350,9 @@ function renderCdCard(item) {
     }
 
     const subParts = [];
-    if (item.artist) subParts.push(escapeHtml(item.artist));
+    if (item.authors && item.authors.length > 0) {
+        subParts.push(item.authors.map((a) => escapeHtml(a.name)).join(", "));
+    }
     if (item.label || item.catalog_number) {
         subParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
     }
@@ -532,7 +533,7 @@ function renderItemsByAuthor(items) {
                     <span class="author-group-count">${books.length}件</span>
                 </button>`
             : `<button type="button" class="author-group-header author-group-header--none" aria-expanded="${!isCollapsed}">
-                    <span class="author-group-name">作者未設定</span>
+                    <span class="author-group-name">アーティスト未設定</span>
                     <span class="author-group-count">${books.length}件</span>
                 </button>`;
 

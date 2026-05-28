@@ -345,13 +345,18 @@ function showCdDetail(cdId) {
 
 function renderCdDetail(cd, currentSeries, tracks) {
     tracks = tracks || [];
-    const mediaLabel = cd.media_type === "audiobook" ? "CD (AB)" : "CD";
     const mediaBadge = `<span class="media-badge media-badge--${cd.media_type === "audiobook" ? "audiobook" : "cd"}" style="position:static;display:inline-block;margin-bottom:0.5rem">${cd.media_type === "audiobook" ? "AB" : "CD"}</span>`;
     const metaParts = [];
     if (cd.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(cd.publisher)}</div>`);
     if (cd.publish_date) metaParts.push(`<div><span class="detail-meta-label">出版日</span>${escapeHtml(cd.publish_date)}</div>`);
-    if (cd.jan_code) metaParts.push(`<div><span class="detail-meta-label">JAN</span>${escapeHtml(cd.jan_code)}</div>`);
+    if (cd.jan_code || cd.jan) metaParts.push(`<div><span class="detail-meta-label">JAN</span>${escapeHtml(cd.jan_code || cd.jan)}</div>`);
     if (cd.disc_count) metaParts.push(`<div><span class="detail-meta-label">ディスク</span>${cd.disc_count}枚</div>`);
+    if (cd.label) metaParts.push(`<div><span class="detail-meta-label">レーベル</span>${escapeHtml(cd.label)}</div>`);
+    if (cd.catalog_number) metaParts.push(`<div><span class="detail-meta-label">品番</span>${escapeHtml(cd.catalog_number)}</div>`);
+
+    const authorLinks = cd.authors && cd.authors.length > 0
+        ? cd.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
+        : (cd.artist ? escapeHtml(cd.artist) : "");
 
     let tracksHtml = "";
     if (tracks.length > 0) {
@@ -394,6 +399,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
                 ${mediaBadge}
                 ${currentSeries ? `<div class="detail-series-name">${escapeHtml(currentSeries.name)}</div>` : ""}
                 <div class="detail-title">${escapeHtml(cd.title)}</div>
+                ${authorLinks ? `<div class="detail-author">${authorLinks}</div>` : ""}
                 <div class="detail-meta-list">${metaParts.join("")}</div>
             </div>
         </div>

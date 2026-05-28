@@ -25,9 +25,9 @@ async function loadAuthors() {
 function renderAuthorList() {
     window.history.replaceState(null, "", "/authors/");
     authorsContent.innerHTML = `
-        <h2>著者一覧 <span style="font-size:0.8rem;color:#888;">(${authors.length}件)</span></h2>
+        <h2>アーティスト一覧 <span style="font-size:0.8rem;color:#888;">(${authors.length}件)</span></h2>
         <div class="author-create">
-            <input type="text" id="new-author-name" placeholder="著者名">
+            <input type="text" id="new-author-name" placeholder="アーティスト名">
             <input type="text" id="new-author-transcription" placeholder="ヨミガナ（任意）">
             <input type="text" id="new-author-ndl-id" placeholder="NDL ID（任意）">
             <button onclick="createAuthor()" class="btn btn-primary">追加</button>
@@ -45,7 +45,7 @@ function renderAuthorList() {
                     <button class="btn btn-xs btn-outline-success" onclick="renderAuthorEdit(${a.id})">編集</button>
                 </div>
             `).join("")}
-            ${authors.length === 0 ? '<p class="series-empty">著者がいません</p>' : ""}
+            ${authors.length === 0 ? '<p class="series-empty">アーティストがいません</p>' : ""}
         </div>
     `;
 }
@@ -59,7 +59,7 @@ function renderAuthorEdit(id) {
 
     window.history.replaceState(null, "", `/authors/?edit=${author.id}`);
     authorsContent.innerHTML = `
-        <h2>著者情報編集</h2>
+        <h2>アーティスト情報編集</h2>
         <div class="edit-author-edit-header">
             <span class="edit-author-id">ID: ${author.id}</span>
             ${author.ndl_id ? `<span class="edit-author-ndl">NDL: ${escapeHtml(author.ndl_id)}</span>` : ""}

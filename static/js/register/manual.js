@@ -202,7 +202,7 @@ async function renderManualForm() {
                 </div>
             </div>
             <div class="edit-section">
-                <h3 class="edit-section-title">作者</h3>
+                <h3 class="edit-section-title">アーティスト</h3>
                 <div class="edit-author-list" id="manual-author-list"></div>
                 <div class="edit-author-add">
                     <div id="manual-author-select-container"></div>
@@ -324,7 +324,7 @@ async function renderManualForm() {
     manualAuthorSelect = createSearchableSelect(document.getElementById("manual-author-select-container"), {
         options: manualAllAuthors.map((a) => ({ value: a.id, label: a.name })),
         value: null,
-        placeholder: "作者を追加...",
+        placeholder: "アーティストを追加...",
         clearable: false,
     });
 

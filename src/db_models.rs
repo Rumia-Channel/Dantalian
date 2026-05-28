@@ -277,4 +277,5 @@ pub struct CdWithTracks {
     #[serde(flatten)]
     pub cd: Cd,
     pub tracks: Vec<Track>,
+    pub authors: Vec<BookAuthor>,
 }

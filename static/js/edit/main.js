@@ -8,6 +8,7 @@ let allAuthors = [];
 var allBorrowers = [];
 let editAuthorSelect = null;
 let editCdSeriesSelect = null;
+let editCdAuthorSelect = null;
 
 (async () => {
     await loadBooks();
@@ -271,7 +272,7 @@ function renderBookEdit(id) {
                 <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
             </div>
             <div class="edit-section">
-                <h3 class="edit-section-title">作者</h3>
+                <h3 class="edit-section-title">アーティスト</h3>
                 <div class="edit-author-list" id="edit-author-list">
                     ${authorList.map((a) => `
                         <div class="edit-author-item" data-author-id="${a.id}">
@@ -286,7 +287,7 @@ function renderBookEdit(id) {
                             <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeAuthorFromBook(${book.id}, ${a.id})">削除</button>
                         </div>
                     `).join("")}
-                    ${authorList.length === 0 ? '<p class="series-empty">作者がいません</p>' : ""}
+                    ${authorList.length === 0 ? '<p class="series-empty">アーティストがいません</p>' : ""}
                 </div>
                 <div class="edit-author-add" id="edit-author-add-wrap">
                     <div id="edit-author-select-container"></div>
@@ -346,7 +347,7 @@ function renderBookEdit(id) {
     editAuthorSelect = createSearchableSelect(document.getElementById("edit-author-select-container"), {
         options: authorOpts,
         value: null,
-        placeholder: "作者を追加...",
+        placeholder: "アーティストを追加...",
         clearable: false,
     });
 
@@ -535,10 +536,6 @@ function renderCdEdit(cdId) {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
-                    <label>アーティスト</label>
-                    <input type="text" name="artist" value="${escapeAttr(cd.artist || '')}">
-                </div>
-                <div class="edit-field">
                     <label>出版社</label>
                     <input type="text" name="publisher" value="${escapeAttr(cd.publisher || '')}">
                 </div>
@@ -585,6 +582,16 @@ function renderCdEdit(cdId) {
                 <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
             </div>
             <div class="edit-section">
+                <h3 class="edit-section-title">アーティスト</h3>
+                <div class="edit-author-list" id="edit-cd-author-list">
+                    ${renderCdAuthorListHtml(cdId, cd.authors || [])}
+                </div>
+                <div class="edit-author-add">
+                    <div id="edit-cd-author-select-container"></div>
+                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToCd(${cdId})">追加</button>
+                </div>
+            </div>
+            <div class="edit-section">
                 <h3 class="edit-section-title">シリーズ設定</h3>
                 <div class="edit-field">
                     <label>シリーズ</label>
@@ -606,6 +613,14 @@ function renderCdEdit(cdId) {
     });
 
     loadAndRenderCdTracks(cdId);
+
+    const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
+    editCdAuthorSelect = createSearchableSelect(document.getElementById("edit-cd-author-select-container"), {
+        options: authorOpts,
+        value: null,
+        placeholder: "アーティストを追加...",
+        clearable: false,
+    });
 
     const form = document.getElementById("edit-cd-form");
     form.addEventListener("submit", (e) => saveCd(e, cdId));
@@ -634,6 +649,62 @@ async function saveCd(e, cdId) {
         if (res.ok) {
             window.location.href = "/";
         }
+    } catch {}
+}
+
+function renderCdAuthorListHtml(cdId, authors) {
+    if (!authors || authors.length === 0) {
+        return '<p class="series-empty">アーティストがいません</p>';
+    }
+    return authors.map((a) => `
+        <div class="edit-author-item" data-author-id="${a.id}">
+            <input type="number" class="edit-author-order" value="${a.sort_order != null ? a.sort_order : 0}" min="0" step="1" onchange="updateCdAuthorOrder(${cdId}, ${a.id}, this.value)">
+            <div class="edit-author-info">
+                <div class="edit-author-name">${escapeHtml(a.name)}</div>
+                <div class="edit-author-meta">
+                    ${a.transcription ? `<span class="edit-author-yomi">${escapeHtml(a.transcription)}</span>` : ""}
+                    ${a.ndl_id ? `<span class="edit-author-ndl">NDL: ${escapeHtml(a.ndl_id)}</span>` : ""}
+                </div>
+            </div>
+            <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeAuthorFromCd(${cdId}, ${a.id})">削除</button>
+        </div>
+    `).join("");
+}
+
+async function addAuthorToCd(cdId) {
+    if (!editCdAuthorSelect) return;
+    const authorId = editCdAuthorSelect.getValue();
+    if (!authorId) return;
+    try {
+        const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "POST" });
+        if (res.ok) {
+            await loadCds();
+            renderCdEdit(cdId);
+        }
+    } catch {}
+}
+
+async function removeAuthorFromCd(cdId, authorId) {
+    const ok = await showConfirm({ message: "このアーティストを削除しますか？", okLabel: "削除" });
+    if (!ok) return;
+    try {
+        const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "DELETE" });
+        if (res.ok) {
+            await loadCds();
+            renderCdEdit(cdId);
+        }
+    } catch {}
+}
+
+async function updateCdAuthorOrder(cdId, authorId, value) {
+    const sort_order = parseInt(value, 10);
+    if (isNaN(sort_order)) return;
+    try {
+        await fetch(`/api/cds/${cdId}/authors/${authorId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sort_order }),
+        });
     } catch {}
 }
 

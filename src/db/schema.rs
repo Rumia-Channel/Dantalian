@@ -203,6 +203,15 @@ impl Db {
             "ALTER TABLE cds ADD COLUMN series_id INTEGER REFERENCES series(id) ON DELETE SET NULL;",
         )
         .ok();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS cd_authors (
+                cd_id INTEGER NOT NULL REFERENCES cds(id) ON DELETE CASCADE,
+                author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (cd_id, author_id)
+            );",
+        )
+        .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 }
