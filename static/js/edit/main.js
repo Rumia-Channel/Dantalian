@@ -2,13 +2,16 @@ const editContent = document.getElementById("edit-content");
 
 const params = new URLSearchParams(window.location.search);
 const bookId = params.get("book");
+const cdId = params.get("cd");
 
 let allAuthors = [];
 var allBorrowers = [];
 let editAuthorSelect = null;
+let editCdSeriesSelect = null;
 
 (async () => {
     await loadBooks();
+    await loadCds();
     await loadSeries();
     await loadGrandSeries();
 
@@ -19,7 +22,9 @@ let editAuthorSelect = null;
     if (aRes.ok) allAuthors = await aRes.json();
     if (bRes.ok) allBorrowers = await bRes.json();
 
-    if (bookId) {
+    if (cdId) {
+        renderCdEdit(parseInt(cdId, 10));
+    } else if (bookId) {
         renderBookEdit(parseInt(bookId, 10));
     } else {
         renderBookSelect();
@@ -432,22 +437,36 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const file = e.target.files[0];
     if (!file) return;
 
-    const bid = parseInt(new URLSearchParams(window.location.search).get("book"), 10);
-    if (!bid) return;
+    const params = new URLSearchParams(window.location.search);
+    const bid = parseInt(params.get("book"), 10);
+    const cid = parseInt(params.get("cd"), 10);
 
     const fd = new FormData();
     fd.append("cover", file);
 
-    try {
-        const res = await fetch(`/api/books/${bid}/cover`, {
-            method: "POST",
-            body: fd,
-        });
-        if (res.ok) {
-            await loadBooks();
-            renderBookEdit(bid);
-        }
-    } catch {}
+    if (cid) {
+        try {
+            const res = await fetch(`/api/cds/${cid}/cover`, {
+                method: "POST",
+                body: fd,
+            });
+            if (res.ok) {
+                await loadCds();
+                renderCdEdit(cid);
+            }
+        } catch {}
+    } else if (bid) {
+        try {
+            const res = await fetch(`/api/books/${bid}/cover`, {
+                method: "POST",
+                body: fd,
+            });
+            if (res.ok) {
+                await loadBooks();
+                renderBookEdit(bid);
+            }
+        } catch {}
+    }
 });
 
 async function deleteCover(bookId) {
@@ -459,6 +478,156 @@ async function deleteCover(bookId) {
         if (res.ok) {
             await loadBooks();
             renderBookEdit(bookId);
+        }
+    } catch {}
+}
+
+function renderCdEdit(cdId) {
+    const cd = (allCds || []).find((c) => c.id === cdId);
+    if (!cd) {
+        editContent.innerHTML = '<p class="empty-state">CDが見つかりません</p>';
+        return;
+    }
+
+    editContent.innerHTML = `
+        <h2>CD編集</h2>
+        <div class="edit-header">
+            <div class="edit-cover-wrap">
+                <div class="edit-cover" id="edit-cover-display">
+                    ${cd.cover_url
+                        ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="">`
+                        : '<div class="book-cover-placeholder">No Image</div>'}
+                </div>
+                <div class="edit-cover-actions">
+                    <label class="btn btn-xs btn-outline-success edit-cover-upload-label">
+                        変更
+                        <input type="file" id="edit-cover-input" accept="image/*" hidden>
+                    </label>
+                    ${cd.cover_url ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteCdCover(${cd.id})">削除</button>` : ""}
+                </div>
+            </div>
+            <div class="edit-header-info">
+                ${cd.jan ? `<div class="edit-isbn">JAN: ${escapeHtml(cd.jan)}</div>` : ''}
+                <div class="edit-isbn" style="font-size:0.75rem;color:var(--color-text-dim);">種別: ${escapeHtml(cd.media_type || 'cd')}</div>
+            </div>
+        </div>
+        <form class="edit-form" id="edit-cd-form">
+            <div class="edit-field">
+                <label>タイトル <span class="edit-required">*</span></label>
+                <input type="text" name="title" value="${escapeAttr(cd.title)}" required>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>アーティスト</label>
+                    <input type="text" name="artist" value="${escapeAttr(cd.artist || '')}">
+                </div>
+                <div class="edit-field">
+                    <label>出版社</label>
+                    <input type="text" name="publisher" value="${escapeAttr(cd.publisher || '')}">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>レーベル</label>
+                    <input type="text" name="label" value="${escapeAttr(cd.label || '')}">
+                </div>
+                <div class="edit-field">
+                    <label>品番</label>
+                    <input type="text" name="catalog_number" value="${escapeAttr(cd.catalog_number || '')}">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>発売日</label>
+                    <input type="text" name="publish_date" value="${escapeAttr(cd.publish_date || '')}">
+                </div>
+                <div class="edit-field">
+                    <label>ディスク枚数</label>
+                    <input type="number" name="disc_count" value="${cd.disc_count != null ? cd.disc_count : ''}" min="1" step="1">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>種別</label>
+                    <select name="media_type" class="form-input">
+                        <option value="cd" ${(!cd.media_type || cd.media_type === 'cd') ? 'selected' : ''}>CD</option>
+                        <option value="audiobook" ${cd.media_type === 'audiobook' ? 'selected' : ''}>オーディオブック</option>
+                    </select>
+                </div>
+                <div class="edit-field">
+                    <label>親書籍ID</label>
+                    <input type="number" name="parent_book_id" value="${cd.parent_book_id != null ? cd.parent_book_id : ''}" min="1" step="1">
+                </div>
+            </div>
+            <div class="edit-field">
+                <label>説明</label>
+                <textarea name="description" rows="4">${escapeHtml(cd.description || '')}</textarea>
+            </div>
+            <div class="edit-section" id="edit-tracks-section">
+                <h3 class="edit-section-title">トラック</h3>
+                <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
+            </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">シリーズ設定</h3>
+                <div class="edit-field">
+                    <label>シリーズ</label>
+                    <div id="edit-cd-series-select-container"></div>
+                </div>
+            </div>
+            <div class="edit-actions">
+                <a href="/" class="btn btn-md btn-ghost">戻る</a>
+                <button type="submit" class="btn btn-md btn-primary">保存</button>
+            </div>
+        </form>
+    `;
+
+    const seriesOpts = allSeries.map((s) => ({ value: s.id, label: s.name }));
+    editCdSeriesSelect = createSearchableSelect(document.getElementById("edit-cd-series-select-container"), {
+        options: seriesOpts,
+        value: cd.series_id,
+        placeholder: "なし",
+    });
+
+    loadAndRenderCdTracks(cdId);
+
+    const form = document.getElementById("edit-cd-form");
+    form.addEventListener("submit", (e) => saveCd(e, cdId));
+}
+
+async function saveCd(e, cdId) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {};
+    for (const [key, val] of fd.entries()) {
+        if (key === "disc_count" || key === "parent_book_id") {
+            body[key] = val === "" ? null : parseInt(val, 10);
+        } else {
+            body[key] = val === "" ? null : val;
+        }
+    }
+    if (editCdSeriesSelect) {
+        body.series_id = editCdSeriesSelect.getValue();
+    }
+    try {
+        const res = await fetch(`/api/cds/${cdId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (res.ok) {
+            window.location.href = "/";
+        }
+    } catch {}
+}
+
+async function deleteCdCover(cdId) {
+    const ok = await showConfirm({ message: "表紙画像を削除しますか？", okLabel: "削除" });
+    if (!ok) return;
+    try {
+        const res = await fetch(`/api/cds/${cdId}/cover`, { method: "DELETE" });
+        if (res.ok) {
+            await loadCds();
+            renderCdEdit(cdId);
         }
     } catch {}
 }
