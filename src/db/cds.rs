@@ -26,11 +26,25 @@ impl Db {
     pub fn insert_cd(&self, cd: &NewCd) -> Result<Cd, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        conn.execute(
+        let media_type = cd.media_type.clone().unwrap_or_else(|| "cd".to_string());
+        let changes = conn.execute(
             "INSERT OR IGNORE INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, parent_book_id, media_type, series_id, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.parent_book_id, cd.media_type, cd.series_id, now],
+            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.parent_book_id, media_type, cd.series_id, now],
         )?;
+        if changes == 0 {
+            if let Some(jan) = &cd.jan {
+                let mut stmt = conn.prepare(
+                    "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, created_at, updated_at, parent_book_id, media_type, series_id FROM cds WHERE jan = ?1",
+                )?;
+                if let Some(row) = stmt.query_map(params![jan], Self::row_to_cd)?.next() {
+                    return row;
+                }
+            }
+            return Err(rusqlite::Error::ToSqlConversionFailure(
+                Box::new(std::io::Error::new(std::io::ErrorKind::Other, "INSERT was ignored but existing CD not found"))
+            ));
+        }
         let id = conn.last_insert_rowid();
         Ok(Cd {
             id,
@@ -47,7 +61,7 @@ impl Db {
             created_at: Some(now),
             updated_at: None,
             parent_book_id: cd.parent_book_id,
-            media_type: cd.media_type.clone(),
+            media_type: Some(media_type),
             series_id: cd.series_id,
         })
     }
