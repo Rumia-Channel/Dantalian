@@ -281,92 +281,25 @@
     margin-top: 0.3rem;
 }
 
-.cd-card {
-    display: flex;
-    background: var(--color-bg-surface);
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: transform 0.2s;
-    cursor: pointer;
-    position: relative;
-    min-height: 100%;
+.cd-card-v {
 }
 
-.cd-card:hover {
-    transform: translateY(-0.125rem);
-}
-
-.cd-card .media-badge {
-    z-index: 1;
-}
-
-.cd-card-cover {
-    flex: 0 0 7rem;
-    width: 7rem;
-}
-
-.cd-card-cover .book-cover,
-.cd-card-cover .book-cover-placeholder {
-    width: 100%;
-    height: 100%;
-    aspect-ratio: auto;
-    object-fit: cover;
-}
-
-.cd-card-body {
-    flex: 1;
+.cd-card-v .book-info {
     padding: 0.6rem 0.75rem;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.cd-card-title {
-    font-size: 0.85rem;
-    font-weight: bold;
-    margin-bottom: 0.2rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.cd-card-meta {
-    font-size: 0.72rem;
-    color: var(--color-text-tertiary);
-    margin-bottom: 0.35rem;
-}
-
-.cd-card-meta:empty {
-    display: none;
 }
 
 .cd-card-tracks {
+    margin-top: 0.35rem;
     font-size: 0.65rem;
     color: var(--color-text-secondary);
     line-height: 1.45;
 }
 
-.cd-card-disc-label {
-    display: block;
-    font-weight: 600;
-    color: var(--color-text-tertiary);
-    margin: 0.15rem 0 0.1rem;
-    font-size: 0.62rem;
-}
-
-.cd-card-disc-tracks {
-    display: flex;
-    flex-wrap: wrap;
-    column-gap: 0.6rem;
-    row-gap: 0.08rem;
-}
-
 .cd-card-track {
+    display: block;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
 }
 
 .cd-card-track-has-audio {
@@ -382,10 +315,11 @@
 .cd-card-more {
     font-size: 0.62rem;
     color: var(--color-text-label);
-    margin-top: 0.2rem;
+    margin-top: 0.15rem;
 }
 
 .cd-card-tracks-empty {
+    margin-top: 0.35rem;
     font-size: 0.65rem;
     color: var(--color-text-label);
     font-style: italic;

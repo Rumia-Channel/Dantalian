@@ -331,37 +331,17 @@ function renderCdCard(item) {
 
     let tracksHtml = "";
     if (tracks.length > 0) {
-        const discGroups = {};
-        for (const t of tracks) {
-            const d = t.disc_number || 1;
-            if (!discGroups[d]) discGroups[d] = [];
-            discGroups[d].push(t);
-        }
-        const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
+        const MAX_DISPLAY = 6;
+        const shown = tracks.slice(0, MAX_DISPLAY);
+        const remaining = tracks.length - MAX_DISPLAY;
 
-        const MAX_DISPLAY = 8;
-        let shown = 0;
-        let remaining = 0;
-        const discParts = [];
-        for (const d of discKeys) {
-            const discTracks = discGroups[d];
-            const discLabel = discKeys.length > 1 ? `<span class="cd-card-disc-label">Disc ${d}</span>` : "";
-            const trackLines = discTracks.map((t) => {
-                if (shown >= MAX_DISPLAY) {
-                    remaining++;
-                    return "";
-                }
-                shown++;
-                const hasAudio = t.file_hash ? ' cd-card-track-has-audio' : '';
-                return `<span class="cd-card-track${hasAudio}">${String(t.track_number).padStart(2, "0")}. ${escapeHtml(t.title)}${t.duration ? ` <span class="cd-card-duration">${escapeHtml(t.duration)}</span>` : ""}</span>`;
-            }).filter(Boolean).join("");
-            if (trackLines) {
-                discParts.push(`${discLabel}<div class="cd-card-disc-tracks">${trackLines}</div>`);
-            }
-        }
+        const lines = shown.map((t) => {
+            const hasAudio = t.file_hash ? ' cd-card-track-has-audio' : '';
+            return `<span class="cd-card-track${hasAudio}">${String(t.track_number).padStart(2, "0")}. ${escapeHtml(t.title)}${t.duration ? ` <span class="cd-card-duration">${escapeHtml(t.duration)}</span>` : ""}</span>`;
+        }).join("");
 
-        if (discParts.length > 0) {
-            tracksHtml = `<div class="cd-card-tracks">${discParts.join("")}</div>`;
+        if (lines) {
+            tracksHtml = `<div class="cd-card-tracks">${lines}</div>`;
             if (remaining > 0) {
                 tracksHtml += `<div class="cd-card-more">他 ${remaining} 曲</div>`;
             }
@@ -370,25 +350,23 @@ function renderCdCard(item) {
         tracksHtml = `<div class="cd-card-tracks-empty">${discCount}枚組</div>`;
     }
 
-    const metaParts = [];
-    if (item.artist) metaParts.push(escapeHtml(item.artist));
+    const subParts = [];
+    if (item.artist) subParts.push(escapeHtml(item.artist));
     if (item.label || item.catalog_number) {
-        metaParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
+        subParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
     }
 
     return `
-    <div class="cd-card" onclick="showCdDetail(${item.originalId})">
+    <div class="book-card cd-card-v" onclick="showCdDetail(${item.originalId})">
+        ${
+            item.cover_url
+                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeHtml(item.title)}" loading="lazy">`
+                : '<div class="book-cover-placeholder">No Image</div>'
+        }
         ${mediaBadge}
-        <div class="cd-card-cover">
-            ${
-                item.cover_url
-                    ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeHtml(item.title)}" loading="lazy">`
-                    : '<div class="book-cover-placeholder">No Image</div>'
-            }
-        </div>
-        <div class="cd-card-body">
-            <div class="cd-card-title">${escapeHtml(item.title)}</div>
-            ${metaParts.length > 0 ? `<div class="cd-card-meta">${metaParts.map((p) => escapeHtml(p)).join(" / ")}</div>` : ""}
+        <div class="book-info">
+            <div class="book-title">${escapeHtml(item.title)}</div>
+            ${subParts.length > 0 ? `<div class="book-author">${subParts.join(" / ")}</div>` : ""}
             ${tracksHtml}
         </div>
     </div>`;
