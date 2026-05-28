@@ -437,6 +437,9 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const file = e.target.files[0];
     if (!file) return;
 
+    const coverDisplay = document.getElementById("edit-cover-display");
+    if (coverDisplay) coverDisplay.style.opacity = "0.5";
+
     const params = new URLSearchParams(window.location.search);
     const bid = parseInt(params.get("book"), 10);
     const cid = parseInt(params.get("cd"), 10);
@@ -450,22 +453,36 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 method: "POST",
                 body: fd,
             });
-            if (res.ok) {
-                await loadCds();
-                renderCdEdit(cid);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error("CD cover upload failed:", res.status, err);
+                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
             }
-        } catch {}
+            await loadCds();
+            renderCdEdit(cid);
+        } catch (err) {
+            console.error("CD cover upload error:", err);
+            alert("カバー画像のアップロード中に通信エラーが発生しました");
+            if (coverDisplay) coverDisplay.style.opacity = "1";
+        }
     } else if (bid) {
         try {
             const res = await fetch(`/api/books/${bid}/cover`, {
                 method: "POST",
                 body: fd,
             });
-            if (res.ok) {
-                await loadBooks();
-                renderBookEdit(bid);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error("Book cover upload failed:", res.status, err);
+                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
             }
-        } catch {}
+            await loadBooks();
+            renderBookEdit(bid);
+        } catch (err) {
+            console.error("Book cover upload error:", err);
+            alert("カバー画像のアップロード中に通信エラーが発生しました");
+            if (coverDisplay) coverDisplay.style.opacity = "1";
+        }
     }
 });
 
