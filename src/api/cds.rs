@@ -26,6 +26,7 @@ pub struct CdRegisterRequest {
     pub publish_date: Option<String>,
     pub description: Option<String>,
     pub disc_count: Option<i64>,
+    pub volume: Option<String>,
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
@@ -65,6 +66,7 @@ pub async fn cd_register(
             cover_url: None,
             description: req.description,
             disc_count: req.disc_count,
+            volume: req.volume,
             tracks: None,
             parent_book_id: req.parent_book_id,
             media_type: req.media_type.clone(),
@@ -161,6 +163,7 @@ pub async fn cd_register(
         cover_url: cd_info.cover_url,
         description: None,
         disc_count: cd_info.disc_count,
+        volume: req.volume,
         tracks: Some(cd_info.tracks),
         parent_book_id: req.parent_book_id,
         media_type: req.media_type.clone(),
@@ -265,6 +268,7 @@ pub async fn update_cd(
     let publish_date = body["publish_date"].as_str().or(existing.publish_date.as_deref());
     let description = body["description"].as_str().or(existing.description.as_deref());
     let disc_count = body["disc_count"].as_i64().or(existing.disc_count);
+    let volume = body["volume"].as_str().or(existing.volume.as_deref()).map(|s| s.to_string());
     let parent_book_id = body["parent_book_id"].as_i64().or(existing.parent_book_id);
     let media_type = body["media_type"].as_str().or(existing.media_type.as_deref());
     let series_id = body["series_id"].as_i64().or(existing.series_id);
@@ -282,6 +286,7 @@ pub async fn update_cd(
             publish_date,
             description,
             disc_count,
+            volume.as_deref(),
             parent_book_id,
             media_type,
             series_id,

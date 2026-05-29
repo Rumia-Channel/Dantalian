@@ -229,6 +229,10 @@ impl Db {
             );",
         )
         .ok();
+        conn.execute_batch(
+            "ALTER TABLE cds ADD COLUMN volume TEXT;",
+        )
+        .ok();
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 }

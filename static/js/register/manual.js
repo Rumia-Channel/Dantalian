@@ -238,6 +238,12 @@ async function renderManualForm() {
                     <input type="text" name="cd_publish_date">
                 </div>
                 <div class="edit-field">
+                    <label>巻</label>
+                    <input type="text" name="cd_volume">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
                     <label>ディスク数</label>
                     <input type="number" name="cd_disc_count" min="1" step="1">
                 </div>
@@ -569,6 +575,7 @@ async function submitManualCd(e) {
         publish_date: document.querySelector("input[name=cd_publish_date]")?.value || null,
         description: document.querySelector("textarea[name=cd_description]")?.value || null,
         disc_count: parseInt(document.querySelector("input[name=cd_disc_count]")?.value) || null,
+        volume: document.querySelector("input[name=cd_volume]")?.value || null,
         media_type: document.querySelector("select[name=cd_media_type]")?.value || null,
         parent_book_id: parseInt(document.querySelector("input[name=cd_parent_book_id]")?.value) || null,
         manual: true,

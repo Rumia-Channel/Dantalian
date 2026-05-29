@@ -560,6 +560,12 @@ function renderCdEdit(cdId) {
                     <input type="text" name="publish_date" value="${escapeAttr(cd.publish_date || '')}">
                 </div>
                 <div class="edit-field">
+                    <label>巻</label>
+                    <input type="text" name="volume" value="${escapeAttr(cd.volume || '')}">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
                     <label>ディスク枚数</label>
                     <input type="number" name="disc_count" value="${cd.disc_count != null ? cd.disc_count : ''}" min="1" step="1">
                 </div>
