@@ -7,6 +7,7 @@ mod external;
 use axum::{Router, response::Html};
 use db::Db;
 use reqwest::Client;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::services::ServeDir;
@@ -88,7 +89,12 @@ async fn main() {
         .build()
         .expect("Failed to build HTTP client");
 
-    let client_ipv4 = client.clone();
+    let client_ipv4 = Client::builder()
+        .cookie_store(true)
+        .connect_timeout(Duration::from_secs(15))
+        .local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        .build()
+        .expect("Failed to build IPv4 HTTP client");
 
     let discogs_token = db
         .get_setting("discogs_token")
