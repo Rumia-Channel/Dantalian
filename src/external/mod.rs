@@ -4,6 +4,7 @@ mod isdn;
 mod musicbrainz;
 pub(crate) mod ndl;
 
+pub use amazon::lookup_amazon_cover_for_jan;
 pub use amazon::lookup_isbn;
 pub use discogs::lookup_cd_discogs;
 pub use isdn::lookup_isdn;

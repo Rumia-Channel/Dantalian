@@ -86,34 +86,8 @@ pub async fn lookup_isbn(
     };
     super::ndl::enrich_author_ndl_ids(client, &mut ndl.authors).await;
 
-    let (cover_url, amazon_description) = {
-        let delays: &[u64] = &[3, 5, 10];
-        let mut result = None;
-        for lookup_isbn in &isbn_variants {
-            result = lookup_amazon_cover(client, lookup_isbn, images_dir)
-                .await
-                .ok();
-            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
-                break;
-            }
-        }
-        for &delay in delays {
-            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
-                break;
-            }
-            warn!(isbn = %isbn, "Amazon cover fetch failed, retrying in {}s", delay);
-            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            for lookup_isbn in &isbn_variants {
-                result = lookup_amazon_cover(client, lookup_isbn, images_dir)
-                    .await
-                    .ok();
-                if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
-                    break;
-                }
-            }
-        }
-        result.unwrap_or((None, None))
-    };
+    let (cover_url, amazon_description) =
+        fetch_amazon_cover_with_retry(client, &isbn_variants, images_dir, isbn).await;
 
     let description = amazon_description.or(ndl.description);
 
@@ -208,11 +182,11 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
 
 async fn lookup_amazon_cover(
     client: &Client,
-    isbn: &str,
+    lookup_key: &str,
     images_dir: &str,
 ) -> Result<(Option<String>, Option<String>), String> {
-    let search_url = format!("https://www.amazon.co.jp/s?k={}", isbn);
-    debug!(isbn = %isbn, "Amazon search: {}", search_url);
+    let search_url = format!("https://www.amazon.co.jp/s?k={}", lookup_key);
+    debug!(key = %lookup_key, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
         .send()
         .await
@@ -231,7 +205,7 @@ async fn lookup_amazon_cover(
     .flatten();
 
     let Some(href) = product_url else {
-        warn!(isbn = %isbn, "No product link found in Amazon search results");
+        warn!(key = %lookup_key, "No product link found in Amazon search results");
         return Ok((None, None));
     };
 
@@ -240,7 +214,7 @@ async fn lookup_amazon_cover(
     } else {
         format!("https://www.amazon.co.jp{}", href)
     };
-    debug!(isbn = %isbn, "Amazon detail: {}", detail_url);
+    debug!(key = %lookup_key, "Amazon detail: {}", detail_url);
 
     let detail_body = amazon_request(client, &detail_url)
         .send()
@@ -258,7 +232,7 @@ async fn lookup_amazon_cover(
     .map_err(|e| format!("Black curtain check panicked: {}", e))?;
 
     let detail_body = if has_black_curtain {
-        debug!(isbn = %isbn, "Amazon black-curtain detected, confirming age eligibility");
+        debug!(key = %lookup_key, "Amazon black-curtain detected, confirming age eligibility");
         let detail_path = detail_url
             .find("/dp/")
             .map(|i| &detail_url[i..])
@@ -291,11 +265,11 @@ async fn lookup_amazon_cover(
         .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
 
     match &amazon_info.cover_url {
-        Some(url) => debug!(isbn = %isbn, "Amazon cover found: {}", url),
-        None => warn!(isbn = %isbn, "No cover image found on Amazon detail page"),
+        Some(url) => debug!(key = %lookup_key, "Amazon cover found: {}", url),
+        None => warn!(key = %lookup_key, "No cover image found on Amazon detail page"),
     }
     if amazon_info.description.is_some() {
-        debug!(isbn = %isbn, "Amazon description found");
+        debug!(key = %lookup_key, "Amazon description found");
     }
 
     let Some(url) = amazon_info.cover_url else {
@@ -305,11 +279,51 @@ async fn lookup_amazon_cover(
     let cover = download_cover(client, &url, images_dir)
         .await
         .map_err(|e| {
-            warn!(isbn = %isbn, "Failed to download cover: {}", e);
+            warn!(key = %lookup_key, "Failed to download cover: {}", e);
             e
         })?;
 
     Ok((Some(cover), amazon_info.description))
+}
+
+async fn fetch_amazon_cover_with_retry(
+    client: &Client,
+    lookup_keys: &[String],
+    images_dir: &str,
+    log_label: &str,
+) -> (Option<String>, Option<String>) {
+    let delays: &[u64] = &[3, 5, 10];
+    let mut result: Option<(Option<String>, Option<String>)> = None;
+    for key in lookup_keys {
+        result = lookup_amazon_cover(client, key, images_dir).await.ok();
+        if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+            return result.unwrap();
+        }
+    }
+    for &delay in delays {
+        if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+            break;
+        }
+        warn!(key = %log_label, "Amazon cover fetch failed, retrying in {}s", delay);
+        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+        for key in lookup_keys {
+            result = lookup_amazon_cover(client, key, images_dir).await.ok();
+            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+                return result.unwrap();
+            }
+        }
+    }
+    result.unwrap_or((None, None))
+}
+
+pub async fn lookup_amazon_cover_for_jan(
+    client: &Client,
+    jan: &str,
+    images_dir: &str,
+) -> Option<String> {
+    let (cover, _) =
+        fetch_amazon_cover_with_retry(client, &[jan.to_string()], images_dir, jan).await;
+    cover
 }
 
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {

@@ -152,6 +152,23 @@ pub async fn cd_register(
         }
     };
 
+    let amazon_cover = match external::lookup_amazon_cover_for_jan(
+        &state.client,
+        &jan,
+        &state.images_dir,
+    )
+    .await
+    {
+        Some(c) => Some(c),
+        None => {
+            tracing::warn!(jan = %jan, "Amazon cover not found, retrying with IPv4");
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            external::lookup_amazon_cover_for_jan(&state.client_ipv4, &jan, &state.images_dir)
+                .await
+        }
+    };
+    let cover_url = amazon_cover.or(cd_info.cover_url);
+
     let new_cd = NewCd {
         jan: Some(jan),
         title: cd_info.title,
@@ -160,7 +177,7 @@ pub async fn cd_register(
         label: cd_info.label,
         catalog_number: cd_info.catalog_number,
         publish_date: cd_info.publish_date,
-        cover_url: cd_info.cover_url,
+        cover_url,
         description: None,
         disc_count: cd_info.disc_count,
         volume: req.volume,
