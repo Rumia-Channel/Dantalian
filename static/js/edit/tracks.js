@@ -3,7 +3,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         if (editType === "cd") {
             return `<p class='series-empty'>トラックなし</p>
                 <div style="margin-top:0.4rem">
-                    <button class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},1,'${editType}')">+ トラック追加</button>
+                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},1,'${editType}')">+ トラック追加</button>
                 </div>`;
         }
         return "<p class='series-empty'>トラックなし</p>";
@@ -24,7 +24,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         if (discKeys.length > 1) {
             html += `<div class="detail-tracks-disc" style="display:flex;justify-content:space-between;align-items:center">
                 <span>Disc ${d}</span>
-                <button class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${d},'${editType}')">+ トラック追加</button>
+                <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${d},'${editType}')">+ トラック追加</button>
             </div>`;
         }
         html += discTracks.map((t, idx) => {
@@ -40,10 +40,10 @@ function renderTracksHtml(tracks, editType, parentId) {
                     <div class="edit-track-audio">
                         ${t.file_hash
                             ? `<span class="edit-track-file${hasAudio}" title="${escapeAttr(t.file_name || t.file_hash)}">${escapeHtml(t.file_name || t.file_hash)}</span>
-                               <button class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                               <button type="button" class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
                                    <span class="material-icons" aria-hidden="true">play_arrow</span>
                                </button>
-                               <button class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
+                               <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
                                <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
                                    差替
                                    <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
@@ -55,9 +55,9 @@ function renderTracksHtml(tracks, editType, parentId) {
                                </label>`}
                     </div>
                     <div class="edit-track-reorder">
-                        <button class="btn btn-xs btn-ghost" ${isFirst ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'up','${editType}')" title="上へ">&#9650;</button>
-                        <button class="btn btn-xs btn-ghost" ${isLast ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'down','${editType}')" title="下へ">&#9660;</button>
-                        <button class="btn btn-xs btn-outline-danger" onclick="removeTrack(${parentId},${t.id},'${editType}')" title="削除">&#10005;</button>
+                        <button type="button" class="btn btn-xs btn-ghost" ${isFirst ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'up','${editType}')" title="上へ">&#9650;</button>
+                        <button type="button" class="btn btn-xs btn-ghost" ${isLast ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'down','${editType}')" title="下へ">&#9660;</button>
+                        <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeTrack(${parentId},${t.id},'${editType}')" title="削除">&#10005;</button>
                     </div>
                 </div>`;
         }).join("");
@@ -66,7 +66,7 @@ function renderTracksHtml(tracks, editType, parentId) {
     if (discKeys.length === 1) {
         const dVal = discKeys[0];
         html += `<div style="margin-top:0.4rem">
-            <button class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${dVal},'${editType}')">+ トラック追加</button>
+            <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${dVal},'${editType}')">+ トラック追加</button>
         </div>`;
     }
 
