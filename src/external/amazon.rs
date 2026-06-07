@@ -75,6 +75,12 @@ fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
         .header("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
 }
 
+fn is_valid_cover_url(u: &str) -> bool {
+    !u.is_empty()
+        && (u.starts_with("http://") || u.starts_with("https://"))
+        && !u.starts_with("data:")
+}
+
 pub async fn lookup_isbn(
     client: &Client,
     isbn: &str,
@@ -138,6 +144,12 @@ pub async fn lookup_isbn(
 }
 
 async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<String, String> {
+    if url.is_empty() {
+        return Err("Empty cover URL".to_string());
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(format!("Invalid cover URL scheme: {}", url));
+    }
     let response = amazon_request(client, url)
         .send()
         .await
@@ -406,28 +418,55 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
 
     let cover_url = if let Ok(selector) = scraper::Selector::parse(r#"img#landingImage"#) {
         document.select(&selector).next().and_then(|el| {
-            el.value().attr("data-old-hires").map(|s| s.to_string()).or_else(|| {
-                el.value().attr("data-a-dynamic-image").and_then(|dynamic| {
-                    serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(dynamic)
+            let hires = el
+                .value()
+                .attr("data-old-hires")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+
+            hires.or_else(|| {
+                el.value()
+                    .attr("data-a-dynamic-image")
+                    .and_then(|dynamic| {
+                        serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(
+                            dynamic,
+                        )
                         .ok()
-                        .and_then(|map| map.keys().max_by_key(|k| k.len()).cloned())
-                })
+                    })
+                    .and_then(|map| {
+                        map.keys()
+                            .filter(|k| !k.is_empty())
+                            .max_by_key(|k| k.len())
+                            .cloned()
+                    })
+            })
+            .or_else(|| {
+                el.value()
+                    .attr("src")
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && !s.starts_with("data:"))
+                    .map(|s| s.to_string())
             })
         })
     } else {
         None
     };
 
-    let cover_url = cover_url.or_else(|| {
-        scraper::Selector::parse(r#"img#imgBlkFront"#)
-            .ok()
-            .and_then(|selector| {
-                document
-                    .select(&selector)
-                    .next()
-                    .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
-            })
-    });
+    let cover_url = cover_url
+        .filter(|u| !u.is_empty())
+        .or_else(|| {
+            scraper::Selector::parse(r#"img#imgBlkFront"#)
+                .ok()
+                .and_then(|selector| {
+                    document
+                        .select(&selector)
+                        .next()
+                        .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
+                })
+        });
+
+    let cover_url = cover_url.filter(|u| is_valid_cover_url(u));
 
     let description =
         scraper::Selector::parse(r#"div#bookDescription_feature_div div.a-expander-content span"#)
