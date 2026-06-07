@@ -309,7 +309,12 @@ impl Db {
              isdn_genre_code=?26, isdn_genre_name=?27, isdn_genre_user=?28, isdn_c_code=?29,
              isdn_author=?30, isdn_shape=?31, isdn_contents=?32, isdn_barcode2=?33,
              isdn_sample_image_url=?34, isdn_useroption=?35, isdn_external_links=?36,
-             media_type=?37, catalog_number=?38, artist=?39, label=?40, disc_count=?41, updated_at=?42
+             media_type=COALESCE(?37, media_type),
+             catalog_number=COALESCE(?38, catalog_number),
+             artist=COALESCE(?39, artist),
+             label=COALESCE(?40, label),
+             disc_count=COALESCE(?41, disc_count),
+             updated_at=?42
              WHERE id=?43",
             params![
                 isbn, isdn, jan, title, publisher, publish_date, description,
