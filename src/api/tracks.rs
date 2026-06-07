@@ -1,7 +1,6 @@
 use axum::{
     Json, extract::{Multipart, Path, State},
 };
-use std::sync::Arc;
 use tokio::fs;
 
 pub async fn list_tracks(
@@ -38,8 +37,7 @@ pub async fn upload_track_audio(
     Path((_book_id, track_id)): Path<(i64, i64)>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let audio_dir = Arc::clone(&state.images_dir);
-    let audio_dir = audio_dir.replace("/images", "/audio");
+    let audio_dir = state.audio_dir.as_str();
 
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
@@ -92,8 +90,7 @@ pub async fn delete_track_audio(
     Path((_book_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
     let db = state.db.clone();
-    let audio_dir = Arc::clone(&state.images_dir);
-    let audio_dir = audio_dir.replace("/images", "/audio");
+    let audio_dir = state.audio_dir.as_str();
 
     let tracks = tokio::task::spawn_blocking(move || db.list_tracks(track_id))
         .await
