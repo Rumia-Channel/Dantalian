@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -154,9 +154,43 @@ CREATE TABLE IF NOT EXISTS cd_authors (
     sort_order INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (cd_id, author_id)
 );
+
+CREATE TABLE IF NOT EXISTS track_metadata (
+    track_id           INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    title              TEXT,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    track_number       INTEGER,
+    track_total        INTEGER,
+    disc_number        INTEGER,
+    disc_total         INTEGER,
+    year               INTEGER,
+    genre              TEXT,
+    composer           TEXT,
+    encoder            TEXT,
+    comment            TEXT,
+    lyrics             TEXT,
+    cover_mime         TEXT,
+    cover_data         BLOB,
+    replay_gain_track_gain_db REAL,
+    replay_gain_track_peak    REAL,
+    replay_gain_album_gain_db REAL,
+    replay_gain_album_peak    REAL,
+    encoder_vendor     TEXT,
+    file_type          TEXT,
+    raw_size_bytes     INTEGER,
+    custom_json        TEXT NOT NULL DEFAULT '{}',
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tm_artist ON track_metadata(artist);
+CREATE INDEX IF NOT EXISTS idx_tm_album  ON track_metadata(album);
+CREATE INDEX IF NOT EXISTS idx_tm_year   ON track_metadata(year);
 "#;
 
 const DROP_ALL_SQL: &str = r#"
+DROP TABLE IF EXISTS track_metadata;
 DROP TABLE IF EXISTS cd_authors;
 DROP TABLE IF EXISTS tracks;
 DROP TABLE IF EXISTS cds;
@@ -172,6 +206,41 @@ DROP TABLE IF EXISTS series;
 DROP TABLE IF EXISTS settings;
 "#;
 
+const MIGRATE_V1_TO_V2_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS track_metadata (
+    track_id           INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    title              TEXT,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    track_number       INTEGER,
+    track_total        INTEGER,
+    disc_number        INTEGER,
+    disc_total         INTEGER,
+    year               INTEGER,
+    genre              TEXT,
+    composer           TEXT,
+    encoder            TEXT,
+    comment            TEXT,
+    lyrics             TEXT,
+    cover_mime         TEXT,
+    cover_data         BLOB,
+    replay_gain_track_gain_db REAL,
+    replay_gain_track_peak    REAL,
+    replay_gain_album_gain_db REAL,
+    replay_gain_album_peak    REAL,
+    encoder_vendor     TEXT,
+    file_type          TEXT,
+    raw_size_bytes     INTEGER,
+    custom_json        TEXT NOT NULL DEFAULT '{}',
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tm_artist ON track_metadata(artist);
+CREATE INDEX IF NOT EXISTS idx_tm_album  ON track_metadata(album);
+CREATE INDEX IF NOT EXISTS idx_tm_year   ON track_metadata(year);
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -180,18 +249,30 @@ impl Db {
         let current_version: u32 =
             conn.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
 
-        if current_version != SCHEMA_VERSION {
-            if current_version != 0 {
-                tracing::warn!(
-                    current = current_version,
-                    target = SCHEMA_VERSION,
-                    "Database schema mismatch (pre-1.0); dropping all tables and recreating"
-                );
-                conn.execute_batch(DROP_ALL_SQL)?;
-            }
+        if current_version == 0 {
             conn.execute_batch(SCHEMA_SQL)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema initialized");
+        } else if current_version < SCHEMA_VERSION {
+            tracing::info!(
+                from = current_version,
+                to = SCHEMA_VERSION,
+                "Migrating database schema"
+            );
+            if current_version < 2 {
+                conn.execute_batch(MIGRATE_V1_TO_V2_SQL)?;
+            }
+            conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
+            tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
+        } else if current_version > SCHEMA_VERSION {
+            tracing::warn!(
+                current = current_version,
+                target = SCHEMA_VERSION,
+                "Database schema newer than expected; dropping all tables and recreating"
+            );
+            conn.execute_batch(DROP_ALL_SQL)?;
+            conn.execute_batch(SCHEMA_SQL)?;
+            conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
         }
 
         Ok(Self(Arc::new(Mutex::new(conn))))
