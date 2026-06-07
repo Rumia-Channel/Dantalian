@@ -456,10 +456,57 @@ pub async fn upload_cd_track_audio(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let metadata = extract_and_save_metadata(&state, track_id, &hash).await;
+
     Ok(Json(serde_json::json!({
         "file_hash": hash,
         "file_name": fname,
+        "metadata": metadata,
     })))
+}
+
+async fn extract_and_save_metadata(
+    state: &AppState,
+    track_id: i64,
+    file_hash: &str,
+) -> Option<serde_json::Value> {
+    let path = std::path::PathBuf::from(state.audio_dir.as_str()).join(file_hash);
+    let path_for_task = path.clone();
+
+    let extracted = match tokio::task::spawn_blocking(move || {
+        external::audio_meta::extract(&path_for_task)
+    })
+    .await
+    {
+        Ok(Ok(meta)) => meta,
+        Ok(Err(e)) => {
+            tracing::debug!(track_id, file_hash, "Audio metadata extraction failed: {}", e);
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
+            return None;
+        }
+    };
+
+    let db = state.db.clone();
+    let meta_clone = extracted.clone();
+    if let Err(e) = tokio::task::spawn_blocking(move || {
+        db.upsert_track_metadata(track_id, &meta_clone)
+    })
+    .await
+    .map_err(|e| {
+        tracing::warn!(track_id, "Metadata save task failed: {}", e);
+    })
+    .and_then(|r| {
+        r.map_err(|e| {
+            tracing::warn!(track_id, "Metadata upsert failed: {}", e);
+        })
+    }) {
+        return None;
+    }
+
+    serde_json::to_value(&extracted).ok()
 }
 
 pub async fn delete_cd_track_audio(

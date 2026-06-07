@@ -7,6 +7,7 @@ pub mod schema;
 pub mod series;
 pub mod settings;
 pub mod tracks;
+pub mod track_metadata;
 
 pub use crate::db_models::*;
 use rusqlite::Connection;

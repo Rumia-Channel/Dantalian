@@ -1,5 +1,5 @@
 mod amazon;
-mod audio_meta;
+pub mod audio_meta;
 mod discogs;
 mod isdn;
 mod musicbrainz;
