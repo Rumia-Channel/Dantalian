@@ -143,12 +143,12 @@ impl Db {
     pub fn update_track(
         &self,
         id: i64,
-        title: &str,
+        title: Option<&str>,
         duration: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute(
-            "UPDATE tracks SET title = ?1, duration = ?2 WHERE id = ?3",
+            "UPDATE tracks SET title = COALESCE(?1, title), duration = COALESCE(?2, duration) WHERE id = ?3",
             params![title, duration, id],
         )?;
         Ok(affected > 0)

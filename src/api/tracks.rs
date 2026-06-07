@@ -20,11 +20,14 @@ pub async fn update_track(
     Path((_book_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
-    let title = body["title"].as_str().unwrap_or("").to_string();
-    let duration = body["duration"].as_str().map(|s| s.to_string());
+    let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let duration = body.get("duration").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if title.is_none() && duration.is_none() {
+        return Err(axum::http::StatusCode::BAD_REQUEST);
+    }
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
-        db.update_track(track_id, &title, duration.as_deref())
+        db.update_track(track_id, title.as_deref(), duration.as_deref())
     })
     .await
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?

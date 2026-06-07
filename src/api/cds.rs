@@ -348,18 +348,21 @@ pub async fn update_cd_track(
     Path((_cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
-    let title = body["title"].as_str().unwrap_or("").to_string();
-    let duration = body["duration"].as_str().map(|s| s.to_string());
+    let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let duration = body.get("duration").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if title.is_none() && duration.is_none() && body.get("disc_number").is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
-        db.update_track(track_id, &title, duration.as_deref())
+        db.update_track(track_id, title.as_deref(), duration.as_deref())
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some(disc) = body["disc_number"].as_i64() {
-        let tn = body["track_number"].as_i64().unwrap_or(1);
+    if let Some(disc) = body.get("disc_number").and_then(|v| v.as_i64()) {
+        let tn = body.get("track_number").and_then(|v| v.as_i64()).unwrap_or(1);
         let db2 = state.db.clone();
         tokio::task::spawn_blocking(move || {
             db2.update_track_position(track_id, disc, tn)
