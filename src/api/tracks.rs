@@ -15,6 +15,18 @@ pub async fn list_tracks(
     Ok(Json(tracks))
 }
 
+pub async fn get_book_track_metadata(
+    State(state): State<crate::AppState>,
+    Path((_book_id, track_id)): Path<(i64, i64)>,
+) -> Result<Json<Option<crate::external::audio_meta::TrackMetadata>>, axum::http::StatusCode> {
+    let db = state.db.clone();
+    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id))
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(meta))
+}
+
 pub async fn update_track(
     State(state): State<crate::AppState>,
     Path((_book_id, track_id)): Path<(i64, i64)>,

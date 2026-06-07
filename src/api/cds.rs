@@ -343,6 +343,18 @@ pub async fn list_cd_tracks(
     Ok(Json(tracks))
 }
 
+pub async fn get_cd_track_metadata(
+    State(state): State<AppState>,
+    Path((_cd_id, track_id)): Path<(i64, i64)>,
+) -> Result<Json<Option<crate::external::audio_meta::TrackMetadata>>, StatusCode> {
+    let db = state.db.clone();
+    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(meta))
+}
+
 pub async fn update_cd_track(
     State(state): State<AppState>,
     Path((_cd_id, track_id)): Path<(i64, i64)>,
