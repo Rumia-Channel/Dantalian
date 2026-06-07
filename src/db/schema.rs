@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -241,6 +241,11 @@ CREATE INDEX IF NOT EXISTS idx_tm_album  ON track_metadata(album);
 CREATE INDEX IF NOT EXISTS idx_tm_year   ON track_metadata(year);
 "#;
 
+const MIGRATE_V2_TO_V3_SQL: &str = r#"
+ALTER TABLE track_metadata ADD COLUMN publisher TEXT;
+ALTER TABLE track_metadata ADD COLUMN label TEXT;
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -261,6 +266,9 @@ impl Db {
             );
             if current_version < 2 {
                 conn.execute_batch(MIGRATE_V1_TO_V2_SQL)?;
+            }
+            if current_version < 3 {
+                conn.execute_batch(MIGRATE_V2_TO_V3_SQL)?;
             }
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");

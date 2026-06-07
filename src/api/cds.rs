@@ -374,13 +374,28 @@ pub async fn list_cd_tracks(
 pub async fn get_cd_track_metadata(
     State(state): State<AppState>,
     Path((_cd_id, track_id)): Path<(i64, i64)>,
-) -> Result<Json<Option<crate::external::audio_meta::TrackMetadata>>, StatusCode> {
+) -> Result<Json<serde_json::Value>, StatusCode> {
     let db = state.db.clone();
-    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id))
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(meta))
+    let join_result = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id)).await;
+    let meta = match join_result {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            tracing::error!(track_id, "track_metadata read failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(e) => {
+            tracing::error!(track_id, "track_metadata task failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let json = match serde_json::to_value(&meta) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(track_id, "track_metadata serialize failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    Ok(Json(json))
 }
 
 pub async fn update_cd_track(
