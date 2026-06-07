@@ -23,23 +23,36 @@ impl Db {
     ) -> Result<Vec<MetadataSearchResult>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut sql = String::from(
-            "SELECT track_id, cd_id, book_id, title, artist, album, year, track_number, disc_number
-             FROM track_metadata WHERE 1=1",
+            "SELECT t.id, t.cd_id, t.book_id, t.title,
+                    COALESCE(tm.artist, cdm.artist) AS artist,
+                    COALESCE(tm.album,  cdm.album)  AS album,
+                    COALESCE(tm.year,   cdm.year)   AS year,
+                    COALESCE(tm.track_number, t.track_number) AS track_number,
+                    COALESCE(tm.disc_number,  t.disc_number)  AS disc_number
+             FROM tracks t
+             LEFT JOIN track_metadata tm ON tm.track_id = t.id
+             LEFT JOIN cd_metadata cdm    ON cdm.cd_id   = t.cd_id
+             WHERE 1=1",
         );
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         if let Some(a) = artist {
-            sql.push_str(" AND artist LIKE ?");
-            params_vec.push(Box::new(format!("%{}%", a)));
+            sql.push_str(" AND (tm.artist LIKE ? OR cdm.artist LIKE ?)");
+            let pat = format!("%{}%", a);
+            params_vec.push(Box::new(pat.clone()));
+            params_vec.push(Box::new(pat));
         }
         if let Some(a) = album {
-            sql.push_str(" AND album LIKE ?");
-            params_vec.push(Box::new(format!("%{}%", a)));
+            sql.push_str(" AND (tm.album LIKE ? OR cdm.album LIKE ?)");
+            let pat = format!("%{}%", a);
+            params_vec.push(Box::new(pat.clone()));
+            params_vec.push(Box::new(pat));
         }
         if let Some(y) = year {
-            sql.push_str(" AND year = ?");
+            sql.push_str(" AND (tm.year = ? OR cdm.year = ?)");
+            params_vec.push(Box::new(y));
             params_vec.push(Box::new(y));
         }
-        sql.push_str(" ORDER BY year DESC NULLS LAST, title LIMIT ?");
+        sql.push_str(" ORDER BY year DESC, title LIMIT ?");
         params_vec.push(Box::new(limit));
 
         let mut stmt = conn.prepare(&sql)?;

@@ -77,6 +77,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
             get(cds::get_cd_track_metadata).put(cds::put_cd_track_metadata),
         )
         .route(
+            "/cds/{id}/metadata",
+            get(cds::get_cd_metadata).put(cds::put_cd_metadata),
+        )
+        .route(
             "/books/{id}/tracks/{track_id}/audio",
             post(tracks::upload_track_audio)
                 .layer(DefaultBodyLimit::max(AUDIO_MAX_BYTES))

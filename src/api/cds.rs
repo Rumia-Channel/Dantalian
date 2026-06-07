@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::db::{CdWithTracks, NewCd};
+use crate::db_models::CdMetadata;
 use crate::external;
 use axum::{
     Json,
@@ -376,7 +377,9 @@ pub async fn get_cd_track_metadata(
     Path((_cd_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let db = state.db.clone();
-    let join_result = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id)).await;
+    let join_result =
+        tokio::task::spawn_blocking(move || db.get_track_metadata_with_cd_inheritance(track_id))
+            .await;
     let meta = match join_result {
         Ok(Ok(m)) => m,
         Ok(Err(e)) => {
@@ -415,6 +418,55 @@ pub async fn put_cd_track_metadata(
         }
         Err(e) => {
             tracing::error!(track_id, "track_metadata task failed: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+pub async fn get_cd_metadata(
+    State(state): State<AppState>,
+    Path(cd_id): Path<i64>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let db = state.db.clone();
+    let join_result = tokio::task::spawn_blocking(move || db.get_cd_metadata(cd_id)).await;
+    let meta = match join_result {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            tracing::error!(cd_id, "cd_metadata read failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(e) => {
+            tracing::error!(cd_id, "cd_metadata task failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let json = match serde_json::to_value(&meta) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(cd_id, "cd_metadata serialize failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    Ok(Json(json))
+}
+
+pub async fn put_cd_metadata(
+    State(state): State<AppState>,
+    Path(cd_id): Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<String>, StatusCode> {
+    let meta = CdMetadata::from_json(cd_id, &body);
+    let db = state.db.clone();
+    let join_result =
+        tokio::task::spawn_blocking(move || db.upsert_cd_metadata(cd_id, &meta)).await;
+    match join_result {
+        Ok(Ok(())) => Ok(Json("ok".into())),
+        Ok(Err(e)) => {
+            tracing::error!(cd_id, "cd_metadata upsert failed: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(e) => {
+            tracing::error!(cd_id, "cd_metadata task failed: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -533,7 +585,17 @@ pub async fn upload_cd_track_audio(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let metadata = extract_and_save_metadata(&state, track_id, &hash).await;
+    let cd_id_for_meta = state
+        .db
+        .list_tracks(track_id)
+        .ok()
+        .and_then(|v| v.into_iter().next())
+        .and_then(|t| t.cd_id);
+    let metadata = if let Some(cd_id) = cd_id_for_meta {
+        extract_and_save_metadata(&state, track_id, cd_id, &hash).await
+    } else {
+        extract_and_save_track_only(&state, track_id, &hash).await
+    };
 
     Ok(Json(serde_json::json!({
         "file_hash": hash,
@@ -543,6 +605,60 @@ pub async fn upload_cd_track_audio(
 }
 
 async fn extract_and_save_metadata(
+    state: &AppState,
+    track_id: i64,
+    cd_id: i64,
+    file_hash: &str,
+) -> Option<serde_json::Value> {
+    let path = std::path::PathBuf::from(state.audio_dir.as_str()).join(file_hash);
+    let path_for_task = path.clone();
+
+    let extracted = match tokio::task::spawn_blocking(move || {
+        external::audio_meta::extract(&path_for_task)
+    })
+    .await
+    {
+        Ok(Ok(meta)) => meta,
+        Ok(Err(e)) => {
+            tracing::debug!(track_id, file_hash, "Audio metadata extraction failed: {}", e);
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
+            return None;
+        }
+    };
+
+    let db = state.db.clone();
+    let track_meta = extracted.clone();
+    let track_save = tokio::task::spawn_blocking(move || {
+        db.upsert_track_metadata(track_id, &track_meta)
+    })
+    .await;
+
+    if let Err(e) = track_save.as_ref() {
+        tracing::warn!(track_id, "Track metadata save task failed: {}", e);
+    } else if let Err(e) = track_save.as_ref().unwrap().as_ref() {
+        tracing::warn!(track_id, "Track metadata upsert failed: {}", e);
+    }
+
+    let db = state.db.clone();
+    let cd_meta = extracted.clone().into_cd_metadata(cd_id);
+    let cd_save = tokio::task::spawn_blocking(move || {
+        db.upsert_cd_metadata(cd_id, &cd_meta)
+    })
+    .await;
+
+    if let Err(e) = cd_save.as_ref() {
+        tracing::warn!(cd_id, "CD metadata save task failed: {}", e);
+    } else if let Err(e) = cd_save.as_ref().unwrap().as_ref() {
+        tracing::warn!(cd_id, "CD metadata upsert failed: {}", e);
+    }
+
+    serde_json::to_value(&extracted).ok()
+}
+
+async fn extract_and_save_track_only(
     state: &AppState,
     track_id: i64,
     file_hash: &str,

@@ -3,6 +3,8 @@ use lofty::prelude::TaggedFileExt;
 use lofty::tag::{Accessor, ItemKey, Tag, TagType};
 use serde::{Deserialize, Serialize};
 
+use crate::db_models::CdMetadata;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct TrackMetadata {
@@ -35,6 +37,62 @@ pub struct TrackMetadata {
 
     pub file_type: Option<String>,
     pub raw_size_bytes: Option<i64>,
+}
+
+impl TrackMetadata {
+    pub fn into_cd_metadata(self, cd_id: i64) -> CdMetadata {
+        CdMetadata {
+            cd_id,
+            artist: self.artist,
+            album: self.album,
+            album_artist: self.album_artist,
+            year: self.year,
+            genre: self.genre,
+            composer: self.composer,
+            publisher: self.publisher,
+            label: self.label,
+            catalog_number: None,
+            isrc: None,
+            cover_mime: self.cover_mime,
+            cover_data: self.cover_data,
+            replay_gain_album_gain_db: self.replay_gain_album_gain_db,
+            replay_gain_album_peak: self.replay_gain_album_peak,
+        }
+    }
+}
+
+impl CdMetadata {
+    pub fn from_json(cd_id: i64, body: &serde_json::Value) -> Self {
+        fn opt_str(v: &serde_json::Value, k: &str) -> Option<String> {
+            v.get(k).and_then(|x| x.as_str()).map(String::from)
+        }
+        fn opt_i64(v: &serde_json::Value, k: &str) -> Option<i64> {
+            v.get(k).and_then(|x| x.as_i64())
+        }
+        fn opt_f64(v: &serde_json::Value, k: &str) -> Option<f64> {
+            v.get(k).and_then(|x| x.as_f64())
+        }
+        Self {
+            cd_id,
+            artist: opt_str(body, "artist"),
+            album: opt_str(body, "album"),
+            album_artist: opt_str(body, "album_artist"),
+            year: opt_i64(body, "year"),
+            genre: opt_str(body, "genre"),
+            composer: opt_str(body, "composer"),
+            publisher: opt_str(body, "publisher"),
+            label: opt_str(body, "label"),
+            catalog_number: opt_str(body, "catalog_number"),
+            isrc: opt_str(body, "isrc"),
+            cover_mime: opt_str(body, "cover_mime"),
+            cover_data: body
+                .get("cover_data")
+                .and_then(|x| x.as_array())
+                .and_then(|arr| arr.iter().map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok())).collect::<Option<Vec<u8>>>()),
+            replay_gain_album_gain_db: opt_f64(body, "replay_gain_album_gain_db"),
+            replay_gain_album_peak: opt_f64(body, "replay_gain_album_peak"),
+        }
+    }
 }
 
 impl TrackMetadata {
