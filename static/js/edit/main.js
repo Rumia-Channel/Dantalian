@@ -631,6 +631,17 @@ function renderCdEdit(cdId) {
 
     loadAndRenderCdTracks(cdId);
     loadAndRenderCdMetadata(cdId);
+
+    const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
+    editCdAuthorSelect = createSearchableSelect(document.getElementById("edit-cd-author-select-container"), {
+        options: authorOpts,
+        value: null,
+        placeholder: "アーティストを追加...",
+        clearable: false,
+    });
+
+    const form = document.getElementById("edit-cd-form");
+    form.addEventListener("submit", (e) => saveCd(e, cdId));
 }
 
 async function loadAndRenderCdMetadata(cdId) {
@@ -706,18 +717,6 @@ async function saveCdMetadata(cdId) {
         console.error("saveCdMetadata error:", err);
         alert("通信エラーが発生しました");
     }
-}
-
-    const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
-    editCdAuthorSelect = createSearchableSelect(document.getElementById("edit-cd-author-select-container"), {
-        options: authorOpts,
-        value: null,
-        placeholder: "アーティストを追加...",
-        clearable: false,
-    });
-
-    const form = document.getElementById("edit-cd-form");
-    form.addEventListener("submit", (e) => saveCd(e, cdId));
 }
 
 async function saveCd(e, cdId) {
