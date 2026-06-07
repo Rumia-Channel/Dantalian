@@ -11,6 +11,48 @@ pub use discogs::lookup_cd_discogs;
 pub use isdn::lookup_isdn;
 pub use musicbrainz::lookup_cd;
 
+pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
+    let s = raw?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let formats = [
+        "%Y-%m-%d",
+        "%Y-%m",
+        "%Y/%m/%d",
+        "%Y/%m",
+        "%Y.%m.%d",
+        "%Y.%m",
+        "%Y%m%d",
+    ];
+    for fmt in formats {
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(s, fmt) {
+            return Some(d.format("%Y-%m-%d").to_string());
+        }
+    }
+    if s.len() == 4 {
+        if let Ok(y) = s.parse::<i32>() {
+            if (1900..=2999).contains(&y) {
+                return Some(format!("{:04}-01-01", y));
+            }
+        }
+    }
+    let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() >= 4 {
+        let y: i32 = digits[0..4].parse().ok()?;
+        if !(1900..=2999).contains(&y) {
+            return None;
+        }
+        let m: i32 = if digits.len() >= 6 { digits[4..6].parse().unwrap_or(1) } else { 1 };
+        let d: i32 = if digits.len() >= 8 { digits[6..8].parse().unwrap_or(1) } else { 1 };
+        if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+            return None;
+        }
+        return Some(format!("{:04}-{:02}-{:02}", y, m, d));
+    }
+    None
+}
+
 pub(crate) use self::save_uploaded_audio::save_uploaded_audio;
 
 mod save_uploaded_audio {

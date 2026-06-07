@@ -262,7 +262,7 @@ pub async fn lookup_cd(
         publisher: label.clone(),
         label,
         catalog_number,
-        publish_date: release.date,
+        publish_date: crate::external::normalize_publish_date(release.date.as_deref()),
         cover_url,
         disc_count,
         tracks,

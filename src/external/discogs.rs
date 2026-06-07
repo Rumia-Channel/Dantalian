@@ -208,7 +208,9 @@ pub async fn lookup_cd_discogs(
             .or_else(|| imgs.first().and_then(|img| img.uri.clone()))
     });
 
-    let publish_date = release.year.map(|y| y.to_string());
+    let publish_date = release
+        .year
+        .map(|y| crate::external::normalize_publish_date(Some(&y.to_string())).unwrap_or_default());
 
     Ok(Some(CdInfo {
         title: release.title,

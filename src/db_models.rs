@@ -287,14 +287,10 @@ pub struct CdWithTracks {
 pub struct CdMetadata {
     pub cd_id: i64,
     pub artist: Option<String>,
-    pub album: Option<String>,
     pub album_artist: Option<String>,
     pub year: Option<i64>,
     pub genre: Option<String>,
     pub composer: Option<String>,
-    pub publisher: Option<String>,
-    pub label: Option<String>,
-    pub catalog_number: Option<String>,
     pub isrc: Option<String>,
 
     #[serde(skip)]

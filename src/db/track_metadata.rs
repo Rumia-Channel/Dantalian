@@ -177,25 +177,35 @@ impl Db {
 
         if let Some(cd_id) = cd_id {
             let mut cstmt = conn.prepare(
-                "SELECT artist, album, album_artist, year, genre, composer, publisher, label,
-                        catalog_number, isrc, cover_mime, cover_data,
-                        replay_gain_album_gain_db, replay_gain_album_peak
-                 FROM cd_metadata WHERE cd_id = ?1",
+                "SELECT title, artist, album_artist, publisher, label
+                 FROM cds WHERE id = ?1",
             )?;
             let mut crows = cstmt.query(params![cd_id])?;
             if let Some(cr) = crows.next()? {
-                if meta.artist.is_none() { meta.artist = cr.get(0)?; }
-                if meta.album.is_none() { meta.album = cr.get(1)?; }
+                if meta.album.is_none() { meta.album = cr.get(0)?; }
+                if meta.artist.is_none() { meta.artist = cr.get(1)?; }
                 if meta.album_artist.is_none() { meta.album_artist = cr.get(2)?; }
-                if meta.year.is_none() { meta.year = cr.get(3)?; }
-                if meta.genre.is_none() { meta.genre = cr.get(4)?; }
-                if meta.composer.is_none() { meta.composer = cr.get(5)?; }
-                if meta.publisher.is_none() { meta.publisher = cr.get(6)?; }
-                if meta.label.is_none() { meta.label = cr.get(7)?; }
-                if meta.cover_mime.is_none() { meta.cover_mime = cr.get(10)?; }
-                if meta.cover_data.is_none() { meta.cover_data = cr.get(11)?; }
-                if meta.replay_gain_album_gain_db.is_none() { meta.replay_gain_album_gain_db = cr.get(12)?; }
-                if meta.replay_gain_album_peak.is_none() { meta.replay_gain_album_peak = cr.get(13)?; }
+                if meta.publisher.is_none() { meta.publisher = cr.get(3)?; }
+                if meta.label.is_none() { meta.label = cr.get(4)?; }
+            }
+
+            let mut mstmt = conn.prepare(
+                "SELECT artist, album_artist, year, genre, composer, isrc,
+                        cover_mime, cover_data,
+                        replay_gain_album_gain_db, replay_gain_album_peak
+                 FROM cd_metadata WHERE cd_id = ?1",
+            )?;
+            let mut mrows = mstmt.query(params![cd_id])?;
+            if let Some(mr) = mrows.next()? {
+                if meta.artist.is_none() { meta.artist = mr.get(0)?; }
+                if meta.album_artist.is_none() { meta.album_artist = mr.get(1)?; }
+                if meta.year.is_none() { meta.year = mr.get(2)?; }
+                if meta.genre.is_none() { meta.genre = mr.get(3)?; }
+                if meta.composer.is_none() { meta.composer = mr.get(4)?; }
+                if meta.cover_mime.is_none() { meta.cover_mime = mr.get(5)?; }
+                if meta.cover_data.is_none() { meta.cover_data = mr.get(6)?; }
+                if meta.replay_gain_album_gain_db.is_none() { meta.replay_gain_album_gain_db = mr.get(7)?; }
+                if meta.replay_gain_album_peak.is_none() { meta.replay_gain_album_peak = mr.get(8)?; }
             }
         }
 

@@ -24,25 +24,27 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let mut sql = String::from(
             "SELECT t.id, t.cd_id, t.book_id, t.title,
-                    COALESCE(tm.artist, cdm.artist) AS artist,
-                    COALESCE(tm.album,  cdm.album)  AS album,
-                    COALESCE(tm.year,   cdm.year)   AS year,
-                    COALESCE(tm.track_number, t.track_number) AS track_number,
-                    COALESCE(tm.disc_number,  t.disc_number)  AS disc_number
+                    COALESCE(tm.artist, cdm.artist, cds.artist) AS artist,
+                    COALESCE(tm.album,  cds.title)               AS album,
+                    COALESCE(tm.year,   cdm.year)                AS year,
+                    COALESCE(tm.track_number, t.track_number)     AS track_number,
+                    COALESCE(tm.disc_number,  t.disc_number)      AS disc_number
              FROM tracks t
              LEFT JOIN track_metadata tm ON tm.track_id = t.id
              LEFT JOIN cd_metadata cdm    ON cdm.cd_id   = t.cd_id
+             LEFT JOIN cds                ON cds.id      = t.cd_id
              WHERE 1=1",
         );
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         if let Some(a) = artist {
-            sql.push_str(" AND (tm.artist LIKE ? OR cdm.artist LIKE ?)");
+            sql.push_str(" AND (tm.artist LIKE ? OR cdm.artist LIKE ? OR cds.artist LIKE ?)");
             let pat = format!("%{}%", a);
+            params_vec.push(Box::new(pat.clone()));
             params_vec.push(Box::new(pat.clone()));
             params_vec.push(Box::new(pat));
         }
         if let Some(a) = album {
-            sql.push_str(" AND (tm.album LIKE ? OR cdm.album LIKE ?)");
+            sql.push_str(" AND (tm.album LIKE ? OR cds.title LIKE ?)");
             let pat = format!("%{}%", a);
             params_vec.push(Box::new(pat.clone()));
             params_vec.push(Box::new(pat));
