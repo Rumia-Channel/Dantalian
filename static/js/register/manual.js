@@ -273,24 +273,14 @@ async function renderManualForm() {
                         <input type="text" name="cd_meta_artist">
                     </div>
                     <div class="edit-field">
-                        <label>アルバム</label>
-                        <input type="text" name="cd_meta_album">
-                    </div>
-                </div>
-                <div class="edit-row">
-                    <div class="edit-field">
                         <label>アルバムアーティスト</label>
                         <input type="text" name="cd_meta_album_artist">
                     </div>
-                    <div class="edit-field">
-                        <label>作曲</label>
-                        <input type="text" name="cd_meta_composer">
-                    </div>
                 </div>
                 <div class="edit-row">
                     <div class="edit-field">
-                        <label>年</label>
-                        <input type="number" name="cd_meta_year" min="1000" max="9999">
+                        <label>作曲</label>
+                        <input type="text" name="cd_meta_composer">
                     </div>
                     <div class="edit-field">
                         <label>ジャンル</label>
@@ -299,12 +289,12 @@ async function renderManualForm() {
                 </div>
                 <div class="edit-row">
                     <div class="edit-field">
-                        <label>ISRC</label>
-                        <input type="text" name="cd_meta_isrc">
+                        <label>年</label>
+                        <input type="number" name="cd_meta_year" min="1000" max="9999">
                     </div>
                     <div class="edit-field">
-                        <label>品番 (アルバム)</label>
-                        <input type="text" name="cd_meta_catalog_number">
+                        <label>ISRC</label>
+                        <input type="text" name="cd_meta_isrc">
                     </div>
                 </div>
             </div>
@@ -652,7 +642,7 @@ async function submitManualCd(e) {
             }
 
             const cdMetaBody = {};
-            for (const f of ["cd_meta_artist", "cd_meta_album", "cd_meta_album_artist", "cd_meta_composer", "cd_meta_genre", "cd_meta_isrc", "cd_meta_catalog_number"]) {
+            for (const f of ["cd_meta_artist", "cd_meta_album_artist", "cd_meta_composer", "cd_meta_genre", "cd_meta_isrc"]) {
                 const v = document.querySelector(`input[name=${f}]`)?.value?.trim();
                 if (v) cdMetaBody[f.replace(/^cd_meta_/, "")] = v;
             }

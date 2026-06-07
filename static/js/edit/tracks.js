@@ -304,13 +304,10 @@ async function showTrackMetadata(editType, parentId, trackId) {
     const isCd = editType === "cd";
     const cdLevelFields = [
         { key: "artist", label: "アーティスト" },
-        { key: "album", label: "アルバム" },
         { key: "album_artist", label: "アルバムアーティスト" },
         { key: "composer", label: "作曲" },
         { key: "genre", label: "ジャンル" },
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
-        { key: "publisher", label: "出版社" },
-        { key: "label", label: "レーベル" },
         { key: "isrc", label: "ISRC" },
     ];
     const trackLevelFields = [

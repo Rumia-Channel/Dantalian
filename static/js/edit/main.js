@@ -588,11 +588,8 @@ function renderCdEdit(cdId) {
                 <textarea name="description" rows="4">${escapeHtml(cd.description || '')}</textarea>
             </div>
             <div class="edit-section" id="edit-cd-metadata-section">
-                <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有)</span></h3>
+                <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有・トラック編集のデフォルト値)</span></h3>
                 <div id="edit-cd-metadata-fields"><p class="series-empty">読み込み中...</p></div>
-                <div class="edit-actions" style="margin-top:0.6rem">
-                    <button type="button" class="btn btn-sm btn-primary" onclick="saveCdMetadata(${cdId})">アルバム情報を保存</button>
-                </div>
             </div>
             <div class="edit-section" id="edit-tracks-section">
                 <h3 class="edit-section-title">トラック</h3>
@@ -661,13 +658,11 @@ async function loadAndRenderCdMetadata(cdId) {
 
     const fields = [
         { key: "artist", label: "アーティスト", type: "text", placeholder: "例: 凛として時雨" },
-        { key: "album", label: "アルバム", type: "text" },
         { key: "album_artist", label: "アルバムアーティスト", type: "text" },
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
         { key: "genre", label: "ジャンル", type: "text" },
         { key: "composer", label: "作曲", type: "text" },
         { key: "isrc", label: "ISRC", type: "text" },
-        { key: "catalog_number", label: "品番 (アルバム)", type: "text" },
     ];
     const html = fields.map((f) => {
         const v = meta[f.key];
