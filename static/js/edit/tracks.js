@@ -301,39 +301,55 @@ async function showTrackMetadata(editType, parentId, trackId) {
         console.error("showTrackMetadata fetch failed:", err);
     }
 
-    const fieldDefs = [
-        { key: "title", label: "タイトル", type: "text" },
-        { key: "artist", label: "アーティスト", type: "text" },
-        { key: "album", label: "アルバム", type: "text" },
-        { key: "album_artist", label: "アルバムアーティスト", type: "text" },
-        { key: "composer", label: "作曲", type: "text" },
-        { key: "genre", label: "ジャンル", type: "text" },
+    const isCd = editType === "cd";
+    const cdLevelFields = [
+        { key: "artist", label: "アーティスト" },
+        { key: "album", label: "アルバム" },
+        { key: "album_artist", label: "アルバムアーティスト" },
+        { key: "composer", label: "作曲" },
+        { key: "genre", label: "ジャンル" },
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
-        { key: "publisher", label: "出版社", type: "text" },
-        { key: "label", label: "レーベル", type: "text" },
-        { key: "isrc", label: "ISRC", type: "text" },
+        { key: "publisher", label: "出版社" },
+        { key: "label", label: "レーベル" },
+        { key: "isrc", label: "ISRC" },
+    ];
+    const trackLevelFields = [
+        { key: "title", label: "タイトル" },
         { key: "track_number", label: "トラック番号", type: "number", min: 1 },
         { key: "track_total", label: "トラック総数", type: "number", min: 1 },
         { key: "disc_number", label: "ディスク番号", type: "number", min: 1 },
         { key: "disc_total", label: "ディスク総数", type: "number", min: 1 },
-        { key: "comment", label: "コメント", type: "text" },
-        { key: "encoder", label: "エンコーダ", type: "text" },
+        { key: "comment", label: "コメント" },
+        { key: "encoder", label: "エンコーダ" },
     ];
-    const rows = fieldDefs.map((f) => {
+
+    function rowFor(f, scope) {
         const v = meta[f.key];
         const val = v == null ? "" : String(v);
+        const type = f.type || "text";
         const min = f.min != null ? `min="${f.min}"` : "";
         const max = f.max != null ? `max="${f.max}"` : "";
         return `<tr><th><label for="meta-field-${f.key}">${escapeHtml(f.label)}</label></th>
-            <td><input type="${f.type}" id="meta-field-${f.key}" data-meta-key="${f.key}" value="${escapeAttr(val)}" ${min} ${max}></td></tr>`;
-    }).join("");
+            <td><input type="${type}" id="meta-field-${f.key}" data-meta-key="${f.key}" data-meta-scope="${scope}" value="${escapeAttr(val)}" ${min} ${max}></td></tr>`;
+    }
+
+    const cdLevelRows = cdLevelFields.map((f) => rowFor(f, "cd")).join("");
+    const trackLevelRows = trackLevelFields.map((f) => rowFor(f, "track")).join("");
 
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay";
     overlay.innerHTML = `
         <div class="confirm-box" style="max-width:560px;text-align:left;max-height:80vh;overflow-y:auto">
-            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">トラックメタデータ編集</div>
-            <table class="edit-meta-table">${rows}</table>
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.4rem">トラックメタデータ編集</div>
+            <div style="font-size:0.75rem;color:var(--color-text-dim);margin-bottom:0.4rem">
+                「<strong>${isCd ? 'アルバム情報' : 'トラック情報'}</strong>」を編集すると${isCd ? '全トラック / CD 側' : 'このトラック'}に反映されます。
+            </div>
+            <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">${isCd ? 'アルバム情報 (CD レベル・全トラック共有)' : 'アルバム情報 (トラックレベル)'}</div>
+            <table class="edit-meta-table">${isCd ? cdLevelRows : trackLevelRows}</table>
+            ${isCd ? `
+            <div style="font-size:0.85rem;font-weight:600;margin-top:0.8rem">トラック情報 (このトラックのみ)</div>
+            <table class="edit-meta-table">${trackLevelRows}</table>
+            ` : ''}
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end;gap:0.4rem">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-close">キャンセル</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="meta-modal-clear">クリア</button>
@@ -354,34 +370,67 @@ async function showTrackMetadata(editType, parentId, trackId) {
             overlay.querySelectorAll("input[data-meta-key]").forEach((i) => { i.value = ""; });
         });
         overlay.querySelector("#meta-modal-save").addEventListener("click", async () => {
-            const body = {};
+            const cdBody = {};
+            const trackBody = {};
             overlay.querySelectorAll("input[data-meta-key]").forEach((i) => {
                 const k = i.dataset.metaKey;
+                const scope = i.dataset.metaScope;
                 const v = i.value.trim();
-                if (v !== "") {
-                    if (i.type === "number") body[k] = parseInt(v, 10);
-                    else body[k] = v;
+                if (v === "") return;
+                if (i.type === "number") {
+                    const n = parseInt(v, 10);
+                    if (!Number.isFinite(n)) return;
+                    (scope === "cd" ? cdBody : trackBody)[k] = n;
+                } else {
+                    (scope === "cd" ? cdBody : trackBody)[k] = v;
                 }
             });
-            const saveUrl = editType === "cd"
-                ? `/api/cds/${parentId}/tracks/${trackId}/metadata`
-                : `/api/books/${parentId}/tracks/${trackId}/metadata`;
-            try {
-                const r = await fetch(saveUrl, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (r.ok) {
-                    alert("メタデータを保存しました");
-                    close();
-                } else {
-                    const err = await r.json().catch(() => ({}));
-                    alert(`保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
+
+            let allOk = true;
+            if (isCd && Object.keys(cdBody).length > 0) {
+                try {
+                    const r = await fetch(`/api/cds/${parentId}/metadata`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(cdBody),
+                    });
+                    if (!r.ok) {
+                        allOk = false;
+                        const err = await r.json().catch(() => ({}));
+                        alert(`アルバム情報の保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
+                    }
+                } catch (err) {
+                    allOk = false;
+                    console.error("cd meta save error:", err);
+                    alert("アルバム情報の通信エラーが発生しました");
                 }
-            } catch (err) {
-                console.error("meta save error:", err);
-                alert("通信エラーが発生しました");
+            }
+            if (allOk && Object.keys(trackBody).length > 0) {
+                const saveUrl = editType === "cd"
+                    ? `/api/cds/${parentId}/tracks/${trackId}/metadata`
+                    : `/api/books/${parentId}/tracks/${trackId}/metadata`;
+                try {
+                    const r = await fetch(saveUrl, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(trackBody),
+                    });
+                    if (!r.ok) {
+                        allOk = false;
+                        const err = await r.json().catch(() => ({}));
+                        alert(`トラック情報の保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
+                    }
+                } catch (err) {
+                    allOk = false;
+                    console.error("track meta save error:", err);
+                    alert("トラック情報の通信エラーが発生しました");
+                }
+            }
+            if (allOk) {
+                if (Object.keys(cdBody).length > 0 || Object.keys(trackBody).length > 0) {
+                    alert("メタデータを保存しました");
+                }
+                close();
             }
         });
         overlay.addEventListener("click", (e) => {

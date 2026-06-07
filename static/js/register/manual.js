@@ -266,6 +266,49 @@ async function renderManualForm() {
                 <textarea name="cd_description" rows="3"></textarea>
             </div>
             <div class="edit-section">
+                <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有)</span></h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>アーティスト</label>
+                        <input type="text" name="cd_meta_artist">
+                    </div>
+                    <div class="edit-field">
+                        <label>アルバム</label>
+                        <input type="text" name="cd_meta_album">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>アルバムアーティスト</label>
+                        <input type="text" name="cd_meta_album_artist">
+                    </div>
+                    <div class="edit-field">
+                        <label>作曲</label>
+                        <input type="text" name="cd_meta_composer">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>年</label>
+                        <input type="number" name="cd_meta_year" min="1000" max="9999">
+                    </div>
+                    <div class="edit-field">
+                        <label>ジャンル</label>
+                        <input type="text" name="cd_meta_genre">
+                    </div>
+                </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>ISRC</label>
+                        <input type="text" name="cd_meta_isrc">
+                    </div>
+                    <div class="edit-field">
+                        <label>品番 (アルバム)</label>
+                        <input type="text" name="cd_meta_catalog_number">
+                    </div>
+                </div>
+            </div>
+            <div class="edit-section">
                 <h3 class="edit-section-title">トラック</h3>
                 <div id="manual-cd-tracks-list"><p class="series-empty">トラックなし</p></div>
                 <div style="margin-top:0.4rem">
@@ -607,6 +650,24 @@ async function submitManualCd(e) {
             for (const aid of manualAuthorIds) {
                 await fetch(`/api/cds/${cdId}/authors/${aid}`, { method: "POST" }).catch(() => {});
             }
+
+            const cdMetaBody = {};
+            for (const f of ["cd_meta_artist", "cd_meta_album", "cd_meta_album_artist", "cd_meta_composer", "cd_meta_genre", "cd_meta_isrc", "cd_meta_catalog_number"]) {
+                const v = document.querySelector(`input[name=${f}]`)?.value?.trim();
+                if (v) cdMetaBody[f.replace(/^cd_meta_/, "")] = v;
+            }
+            const yearEl = document.querySelector("input[name=cd_meta_year]");
+            if (yearEl && yearEl.value.trim()) {
+                cdMetaBody.year = parseInt(yearEl.value.trim(), 10);
+            }
+            if (Object.keys(cdMetaBody).length > 0) {
+                await fetch(`/api/cds/${cdId}/metadata`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(cdMetaBody),
+                }).catch(() => {});
+            }
+
             for (const t of manualCdTracks) {
                 const { title, disc_number, track_number, duration, ...metaFields } = t;
                 const trackBody = {

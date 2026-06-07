@@ -587,6 +587,13 @@ function renderCdEdit(cdId) {
                 <label>説明</label>
                 <textarea name="description" rows="4">${escapeHtml(cd.description || '')}</textarea>
             </div>
+            <div class="edit-section" id="edit-cd-metadata-section">
+                <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有)</span></h3>
+                <div id="edit-cd-metadata-fields"><p class="series-empty">読み込み中...</p></div>
+                <div class="edit-actions" style="margin-top:0.6rem">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="saveCdMetadata(${cdId})">アルバム情報を保存</button>
+                </div>
+            </div>
             <div class="edit-section" id="edit-tracks-section">
                 <h3 class="edit-section-title">トラック</h3>
                 <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
@@ -623,6 +630,83 @@ function renderCdEdit(cdId) {
     });
 
     loadAndRenderCdTracks(cdId);
+    loadAndRenderCdMetadata(cdId);
+}
+
+async function loadAndRenderCdMetadata(cdId) {
+    const container = document.getElementById("edit-cd-metadata-fields");
+    if (!container) return;
+    container.innerHTML = '<p class="series-empty">読み込み中...</p>';
+    let meta = {};
+    try {
+        const res = await fetch(`/api/cds/${cdId}/metadata`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && typeof data === "object") meta = data;
+        }
+    } catch (err) {
+        console.error("loadAndRenderCdMetadata failed:", err);
+    }
+
+    const fields = [
+        { key: "artist", label: "アーティスト", type: "text", placeholder: "例: 凛として時雨" },
+        { key: "album", label: "アルバム", type: "text" },
+        { key: "album_artist", label: "アルバムアーティスト", type: "text" },
+        { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
+        { key: "genre", label: "ジャンル", type: "text" },
+        { key: "composer", label: "作曲", type: "text" },
+        { key: "isrc", label: "ISRC", type: "text" },
+        { key: "catalog_number", label: "品番 (アルバム)", type: "text" },
+    ];
+    const html = fields.map((f) => {
+        const v = meta[f.key];
+        const val = v == null ? "" : String(v);
+        const min = f.min != null ? `min="${f.min}"` : "";
+        const max = f.max != null ? `max="${f.max}"` : "";
+        const ph = f.placeholder ? `placeholder="${escapeAttr(f.placeholder)}"` : "";
+        return `<div class="edit-field">
+            <label>${escapeHtml(f.label)}</label>
+            <input type="${f.type}" id="cd-meta-${f.key}" data-cd-meta-key="${f.key}" value="${escapeAttr(val)}" ${min} ${max} ${ph}>
+        </div>`;
+    });
+    const rows = [];
+    for (let i = 0; i < html.length; i += 2) {
+        const pair = html.slice(i, i + 2).join("");
+        rows.push(`<div class="edit-row">${pair}</div>`);
+    }
+    container.innerHTML = rows.join("");
+}
+
+async function saveCdMetadata(cdId) {
+    const container = document.getElementById("edit-cd-metadata-fields");
+    if (!container) return;
+    const body = {};
+    container.querySelectorAll("input[data-cd-meta-key]").forEach((i) => {
+        const k = i.dataset.cdMetaKey;
+        const v = i.value.trim();
+        if (v !== "") {
+            if (i.type === "number") body[k] = parseInt(v, 10);
+            else body[k] = v;
+        }
+    });
+    try {
+        const r = await fetch(`/api/cds/${cdId}/metadata`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (r.ok) {
+            alert("アルバム情報を保存しました");
+            if (typeof loadCds === "function") await loadCds();
+        } else {
+            const err = await r.json().catch(() => ({}));
+            alert(`保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
+        }
+    } catch (err) {
+        console.error("saveCdMetadata error:", err);
+        alert("通信エラーが発生しました");
+    }
+}
 
     const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
     editCdAuthorSelect = createSearchableSelect(document.getElementById("edit-cd-author-select-container"), {
