@@ -71,17 +71,20 @@ struct MbRelease {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MbArtistCredit {
     name: String,
     artist: Option<MbArtist>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MbArtist {
     name: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MbLabelInfo {
     label: Option<MbLabel>,
     #[serde(rename = "catalog-number")]
@@ -89,6 +92,7 @@ struct MbLabelInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct MbLabel {
     name: String,
 }
@@ -96,13 +100,16 @@ struct MbLabel {
 #[derive(Debug, Deserialize)]
 struct MbCoverArtArchive {
     front: Option<bool>,
+    #[allow(dead_code)]
     artwork: Option<bool>,
+    #[allow(dead_code)]
     count: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 struct MbMedia {
     position: Option<i64>,
+    #[allow(dead_code)]
     format: Option<String>,
     tracks: Option<Vec<MbTrack>>,
 }

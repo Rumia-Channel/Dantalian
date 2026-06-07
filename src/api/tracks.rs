@@ -129,7 +129,7 @@ async fn extract_and_save_metadata(
 
     let db = state.db.clone();
     let meta_clone = extracted.clone();
-    if let Err(e) = tokio::task::spawn_blocking(move || {
+    if tokio::task::spawn_blocking(move || {
         db.upsert_track_metadata(track_id, &meta_clone)
     })
     .await
@@ -140,7 +140,9 @@ async fn extract_and_save_metadata(
         r.map_err(|e| {
             tracing::warn!(track_id, "Metadata upsert failed: {}", e);
         })
-    }) {
+    })
+    .is_err()
+    {
         return None;
     }
 

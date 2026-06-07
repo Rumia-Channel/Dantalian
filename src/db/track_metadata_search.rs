@@ -1,5 +1,4 @@
 use super::Db;
-use rusqlite::params;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MetadataSearchResult {
