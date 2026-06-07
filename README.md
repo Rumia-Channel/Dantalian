@@ -1,4 +1,4 @@
-# Tsukuyomi
+# Dantalian
 
 ISBN から書籍メタデータを自動取得し、ローカルで管理する Web アプリケーション。
 
@@ -59,14 +59,14 @@ ISBN から書籍メタデータを自動取得し、ローカルで管理する
 |------|------|------------|
 | `DATA_DIR` | データ保存ディレクトリ | `~/Documents` (Windows: `C:\Users\{user}\Documents`) |
 | `PORT` | サーバー待受ポート | `3000` |
-| `RUST_LOG` | ログレベル | `tsukuyomi=debug` でデバッグ出力 |
+| `RUST_LOG` | ログレベル | `dantalian=debug` でデバッグ出力 |
 
 ## データ構成
 
 ```
 {DATA_DIR}/
-  Tsukuyomi/
+  Dantalian/
     db/
-      tsukuyomi.db    # SQLite データベース
+      dantalian.db    # SQLite データベース
     images/       # 表紙画像ファイル
 ```

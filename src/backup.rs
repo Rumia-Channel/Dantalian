@@ -82,7 +82,7 @@ impl BackupConfig {
                     dirs::document_dir()
                         .or_else(dirs::data_dir)
                         .unwrap()
-                        .join("Tsukuyomi")
+                        .join("Dantalian")
                         .to_string_lossy()
                         .to_string()
                 });
@@ -117,7 +117,7 @@ impl BackupConfig {
 fn make_filename() -> String {
     let now = Utc::now();
     format!(
-        "tsukuyomi-{:04}-{:02}-{:02}T{:02}-{:02}-{:02}Z.db",
+        "dantalian-{:04}-{:02}-{:02}T{:02}-{:02}-{:02}Z.db",
         now.year(),
         now.month(),
         now.day(),
@@ -277,7 +277,7 @@ async fn upload_s3(
         secret_key,
         None,
         None,
-        "tsukuyomi",
+        "dantalian",
     );
 
     let s3_config = aws_sdk_s3::Config::builder()
@@ -359,7 +359,7 @@ async fn cleanup_local(dir: &str, retention: usize, current_filename: &str) {
     let mut backups: Vec<String> = Vec::new();
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with("tsukuyomi-") && name.ends_with(".db") && name != current_filename {
+        if name.starts_with("dantalian-") && name.ends_with(".db") && name != current_filename {
             backups.push(name);
         }
     }
@@ -490,7 +490,7 @@ async fn list_webdav_backups(base_url: &str, username: &str, password: &str) -> 
         let href = &rest[..end];
         let parts: Vec<&str> = href.rsplitn(2, '/').collect();
         let filename = parts[0];
-        if filename.starts_with("tsukuyomi-")
+        if filename.starts_with("dantalian-")
             && filename.ends_with(".db")
             && !filename.is_empty()
         {
@@ -516,7 +516,7 @@ async fn cleanup_s3(
         secret_key,
         None,
         None,
-        "tsukuyomi",
+        "dantalian",
     );
 
     let s3_config = aws_sdk_s3::Config::builder()
@@ -531,9 +531,9 @@ async fn cleanup_s3(
     let client = aws_sdk_s3::Client::from_conf(s3_config);
 
     let search_prefix = match prefix {
-        p if p.is_empty() => "tsukuyomi-".to_string(),
-        p if p.ends_with('/') => format!("{}tsukuyomi-", p),
-        p => format!("{}/tsukuyomi-", p),
+        p if p.is_empty() => "dantalian-".to_string(),
+        p if p.ends_with('/') => format!("{}dantalian-", p),
+        p => format!("{}/dantalian-", p),
     };
 
     let result = client
@@ -556,7 +556,7 @@ async fn cleanup_s3(
         if let Some(key) = obj.key() {
             let parts: Vec<&str> = key.rsplitn(2, '/').collect();
             let filename = parts[0];
-            if filename.starts_with("tsukuyomi-") && filename.ends_with(".db") {
+            if filename.starts_with("dantalian-") && filename.ends_with(".db") {
                 keys.push(key.to_string());
             }
         }

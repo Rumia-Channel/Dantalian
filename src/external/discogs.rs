@@ -103,9 +103,10 @@ pub async fn lookup_cd_discogs(
     );
     debug!(search_url = %search_url, "Discogs search");
 
+    let ua = format!("Dantalian/{}", env!("CARGO_PKG_VERSION"));
     let search_resp = client
         .get(&search_url)
-        .header("User-Agent", "Tsukuyomi/0.1")
+        .header("User-Agent", &ua)
         .header("Authorization", format!("Discogs token={}", token))
         .send()
         .await
@@ -131,7 +132,7 @@ pub async fn lookup_cd_discogs(
 
     let detail_resp = client
         .get(&detail_url)
-        .header("User-Agent", "Tsukuyomi/0.1")
+        .header("User-Agent", &ua)
         .header("Authorization", format!("Discogs token={}", token))
         .send()
         .await

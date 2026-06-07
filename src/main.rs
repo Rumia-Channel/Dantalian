@@ -47,6 +47,7 @@ pub struct AppState {
     pub client_ipv4: Client,
     pub images_dir: Arc<String>,
     pub discogs_token: String,
+    pub musicbrainz_contact: String,
 }
 
 #[tokio::main]
@@ -55,7 +56,7 @@ async fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("tsukuyomi=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("dantalian=info")),
         )
         .init();
 
@@ -63,7 +64,7 @@ async fn main() {
         dirs::document_dir()
             .or_else(dirs::data_dir)
             .expect("Could not determine data directory")
-            .join("Tsukuyomi")
+            .join("Dantalian")
             .to_string_lossy()
             .to_string()
     });
@@ -72,7 +73,7 @@ async fn main() {
     std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
     std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
 
-    let db_path = format!("{}{}tsukuyomi.db", db_dir, std::path::MAIN_SEPARATOR);
+    let db_path = format!("{}{}dantalian.db", db_dir, std::path::MAIN_SEPARATOR);
     tracing::info!(%data_dir, %db_path, %images_dir, "Data directories");
 
     let db = Db::new(&db_path).expect("Failed to initialize database");
@@ -101,12 +102,21 @@ async fn main() {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| std::env::var("DISCOGS_TOKEN").unwrap_or_default());
 
+    let musicbrainz_contact = db
+        .get_setting("musicbrainz_contact")
+        .filter(|s| !s.trim().is_empty() && !s.contains("example.com"))
+        .or_else(|| std::env::var("MUSICBRAINZ_CONTACT").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.contains("example.com"))
+        .unwrap_or_else(|| "+https://github.com/Rumia-Channel/dantalian".to_string());
+
     let state = AppState {
         db,
         client,
         client_ipv4,
         images_dir: Arc::new(images_dir.clone()),
         discogs_token,
+        musicbrainz_contact,
     };
 
     let shutdown_db = state.db.clone();

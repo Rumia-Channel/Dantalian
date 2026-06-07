@@ -4,9 +4,9 @@
     var active = document.body.dataset.activeNav || "home";
 
     var header = document.createElement("div");
-    header.id = "tsukuyomi-header";
+    header.id = "dantalian-header";
     header.innerHTML =
-        '<h1>Tsukuyomi</h1>' +
+        '<h1>Dantalian</h1>' +
         '<nav>' +
             '<a href="/" id="nav-home">一覧</a>' +
             '<a href="/register/" id="nav-register">登録</a>' +

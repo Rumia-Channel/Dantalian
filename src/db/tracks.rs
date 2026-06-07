@@ -106,7 +106,7 @@ impl Db {
         let rows = stmt.query_map(params![book_id], |row| {
             Ok(Track {
                 id: row.get(0)?,
-                book_id: row.get(1)?,
+                book_id: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
                 cd_id: row.get(2)?,
                 disc_number: row.get(3)?,
                 track_number: row.get(4)?,
@@ -127,7 +127,7 @@ impl Db {
         let rows = stmt.query_map(params![cd_id], |row| {
             Ok(Track {
                 id: row.get(0)?,
-                book_id: row.get(1)?,
+                book_id: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
                 cd_id: row.get(2)?,
                 disc_number: row.get(3)?,
                 track_number: row.get(4)?,

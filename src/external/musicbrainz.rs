@@ -2,7 +2,54 @@ use crate::db::NewTrack;
 use crate::db_models::CdInfo;
 use reqwest::Client;
 use serde::Deserialize;
+use std::error::Error as StdError;
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
+use tokio::time::{Duration, Instant, sleep_until};
 use tracing::debug;
+
+const MIN_INTERVAL: Duration = Duration::from_millis(1100);
+
+fn rate_limit_gate() -> &'static Mutex<Option<Instant>> {
+    static GATE: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+    GATE.get_or_init(|| Mutex::new(None))
+}
+
+async fn wait_rate_limit() {
+    let mut guard = rate_limit_gate().lock().await;
+    let now = Instant::now();
+    if let Some(last) = *guard {
+        let next = last + MIN_INTERVAL;
+        if next > now {
+            sleep_until(next).await;
+        }
+    }
+    *guard = Some(Instant::now());
+}
+
+pub(super) async fn wait_metabrainz_rate_limit() {
+    wait_rate_limit().await;
+}
+
+fn user_agent(contact: &str) -> String {
+    let c = contact.trim();
+    let c = if c.is_empty() || c.contains("example.com") {
+        "+https://github.com/Rumia-Channel/dantalian"
+    } else {
+        c
+    };
+    format!("Dantalian/{} ({})", env!("CARGO_PKG_VERSION"), c)
+}
+
+fn format_reqwest_error(prefix: &str, err: reqwest::Error) -> String {
+    let mut msg = format!("{}: {}", prefix, err);
+    let mut source: Option<&dyn StdError> = err.source();
+    while let Some(s) = source {
+        msg.push_str(&format!(" -> {}", s));
+        source = s.source();
+    }
+    msg
+}
 
 #[derive(Debug, Deserialize)]
 struct MbSearchResponse {
@@ -78,11 +125,14 @@ pub async fn lookup_cd(
     client: &Client,
     jan: &str,
     _images_dir: &str,
+    contact: &str,
 ) -> Result<Option<CdInfo>, String> {
     let clean: String = jan.chars().filter(|c| c.is_ascii_digit()).collect();
     if clean.len() < 8 {
         return Err(format!("Invalid JAN: {}", jan));
     }
+
+    let ua = user_agent(contact);
 
     let search_url = format!(
         "https://musicbrainz.org/ws/2/release?query=barcode:{}&fmt=json&limit=1",
@@ -90,12 +140,13 @@ pub async fn lookup_cd(
     );
     debug!(search_url = %search_url, "MusicBrainz search");
 
+    wait_rate_limit().await;
     let search_resp = client
         .get(&search_url)
-        .header("User-Agent", "Tsukuyomi/0.1 (rumia@example.com)")
+        .header("User-Agent", &ua)
         .send()
         .await
-        .map_err(|e| format!("HTTP error: {}", e))?;
+        .map_err(|e| format_reqwest_error("HTTP error", e))?;
 
     if !search_resp.status().is_success() {
         return Err(format!("MusicBrainz returned {}", search_resp.status()));
@@ -121,12 +172,13 @@ pub async fn lookup_cd(
     );
     debug!(detail_url = %detail_url, "MusicBrainz detail");
 
+    wait_rate_limit().await;
     let detail_resp = client
         .get(&detail_url)
-        .header("User-Agent", "Tsukuyomi/0.1 (rumia@example.com)")
+        .header("User-Agent", &ua)
         .send()
         .await
-        .map_err(|e| format!("HTTP error: {}", e))?;
+        .map_err(|e| format_reqwest_error("HTTP error", e))?;
 
     if !detail_resp.status().is_success() {
         return Err(format!("MusicBrainz detail returned {}", detail_resp.status()));

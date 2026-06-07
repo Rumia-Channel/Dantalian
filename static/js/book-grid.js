@@ -1,14 +1,14 @@
 let currentView = "author";
-let currentSort = localStorage.getItem("tsukuyomi_sort") || "id";
-let currentTypeFilter = localStorage.getItem("tsukuyomi_type_filter") || "all";
+let currentSort = localStorage.getItem("dantalian_sort") || "id";
+let currentTypeFilter = localStorage.getItem("dantalian_type_filter") || "all";
 const authorBookGrid = document.getElementById("book-grid");
 const bookSearchInput = document.getElementById("book-search-input");
 const bookSearchClear = document.getElementById("book-search-clear");
-let currentSearchQuery = localStorage.getItem("tsukuyomi_book_search") || "";
+let currentSearchQuery = localStorage.getItem("dantalian_book_search") || "";
 
 function loadCollapsedAuthorGroups() {
     try {
-        const saved = JSON.parse(localStorage.getItem("tsukuyomi_collapsed_author_groups") || "[]");
+        const saved = JSON.parse(localStorage.getItem("dantalian_collapsed_author_groups") || "[]");
         return Array.isArray(saved) ? saved : [];
     } catch {
         return [];
@@ -18,7 +18,7 @@ function loadCollapsedAuthorGroups() {
 const collapsedAuthorGroups = new Set(loadCollapsedAuthorGroups());
 
 function saveCollapsedAuthorGroups() {
-    localStorage.setItem("tsukuyomi_collapsed_author_groups", JSON.stringify([...collapsedAuthorGroups]));
+    localStorage.setItem("dantalian_collapsed_author_groups", JSON.stringify([...collapsedAuthorGroups]));
 }
 
 function normalizeCd(cd) {
@@ -75,7 +75,7 @@ document.getElementById("sort-buttons").addEventListener("click", (e) => {
     const btn = e.target.closest(".width-btn");
     if (!btn) return;
     currentSort = btn.dataset.sort;
-    localStorage.setItem("tsukuyomi_sort", currentSort);
+    localStorage.setItem("dantalian_sort", currentSort);
     document.querySelectorAll("#sort-buttons .width-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.sort === currentSort);
     });
@@ -87,7 +87,7 @@ bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
 
 bookSearchInput.addEventListener("input", () => {
     currentSearchQuery = bookSearchInput.value.trim();
-    localStorage.setItem("tsukuyomi_book_search", currentSearchQuery);
+    localStorage.setItem("dantalian_book_search", currentSearchQuery);
     bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
     renderItems();
 });
@@ -95,7 +95,7 @@ bookSearchInput.addEventListener("input", () => {
 bookSearchClear.addEventListener("click", () => {
     bookSearchInput.value = "";
     currentSearchQuery = "";
-    localStorage.removeItem("tsukuyomi_book_search");
+    localStorage.removeItem("dantalian_book_search");
     bookSearchClear.classList.add("hidden");
     renderItems();
     bookSearchInput.focus();
@@ -591,7 +591,7 @@ document.getElementById("type-filter-buttons").addEventListener("click", (e) => 
     const btn = e.target.closest(".width-btn");
     if (!btn) return;
     currentTypeFilter = btn.dataset.type;
-    localStorage.setItem("tsukuyomi_type_filter", currentTypeFilter);
+    localStorage.setItem("dantalian_type_filter", currentTypeFilter);
     document.querySelectorAll("#type-filter-buttons .width-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.type === currentTypeFilter);
     });

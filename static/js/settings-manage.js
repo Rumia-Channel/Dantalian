@@ -196,7 +196,7 @@ function renderDestFields(destType, settings) {
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-prefix">プレフィックス</label>
-                    <input type="text" id="s-s3-prefix" value="${escapeAttr(getValue(settings, "backup.s3_prefix", ""))}" class="form-input" placeholder="tsukuyomi/">
+                    <input type="text" id="s-s3-prefix" value="${escapeAttr(getValue(settings, "backup.s3_prefix", ""))}" class="form-input" placeholder="dantalian/">
                 </div>`;
         default:
             return "";

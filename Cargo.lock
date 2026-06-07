@@ -824,6 +824,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "dantalian"
+version = "0.1.0"
+dependencies = [
+ "aws-sdk-s3",
+ "axum",
+ "axum-extra",
+ "base64",
+ "chrono",
+ "chrono-tz",
+ "dirs",
+ "dotenvy",
+ "quick-xml",
+ "reqwest",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha3",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "ua_generator",
+ "urlencoding",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3420,33 +3447,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tsukuyomi"
-version = "0.1.0"
-dependencies = [
- "aws-sdk-s3",
- "axum",
- "axum-extra",
- "base64",
- "chrono",
- "chrono-tz",
- "dirs",
- "dotenvy",
- "quick-xml",
- "reqwest",
- "rusqlite",
- "scraper",
- "serde",
- "serde_json",
- "sha3",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "ua_generator",
- "urlencoding",
-]
 
 [[package]]
 name = "typenum"

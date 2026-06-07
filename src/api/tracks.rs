@@ -1,7 +1,6 @@
 use axum::{
     Json, extract::{Multipart, Path, State},
 };
-use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 use tokio::fs;
 
@@ -41,36 +40,29 @@ pub async fn upload_track_audio(
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let audio_dir = Arc::clone(&state.images_dir);
     let audio_dir = audio_dir.replace("/images", "/audio");
-    fs::create_dir_all(&audio_dir)
-        .await
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?
+    {
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field
             .bytes()
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-        let mut hasher = Sha3_256::new();
-        hasher.update(&data);
-        let hash = hasher.finalize();
-        let hash_b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            hash.as_slice(),
-        );
-        let ext = name.rsplit('.').next().unwrap_or("mp3");
-        let save_name = format!("{}.{}", hash_b64, ext);
-        let save_path = format!("{}/{}", audio_dir, save_name);
+        let (saved_name, _ext) =
+            crate::external::save_uploaded_audio(&data, &name, &audio_dir)
+                .map_err(|e| {
+                    tracing::warn!(track_id, "Audio save failed: {}", e);
+                    axum::http::StatusCode::BAD_REQUEST
+                })?;
 
-        fs::write(&save_path, &data)
-            .await
-            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        file_hash = Some(save_name.clone());
+        file_hash = Some(saved_name);
         file_name = Some(name);
     }
 

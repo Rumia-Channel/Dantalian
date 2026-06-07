@@ -1,4 +1,4 @@
-# Tsukuyomi - Agent Guidelines
+# Dantalian - Agent Guidelines
 
 ## ライブラリ追加ルール
 

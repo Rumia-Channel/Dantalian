@@ -7,7 +7,7 @@ const WIDTH_PRESETS = [
 
 function applyContentWidth(pct) {
     document.documentElement.style.setProperty("--content-width", pct + "%");
-    localStorage.setItem("tsukuyomi_content_width", pct);
+    localStorage.setItem("dantalian_content_width", pct);
     document.querySelectorAll(".width-btn").forEach((btn) => {
         btn.classList.toggle("active", parseInt(btn.dataset.pct, 10) === pct);
     });
@@ -16,11 +16,11 @@ function applyContentWidth(pct) {
 (function initContentWidth() {
     const container = document.getElementById("width-buttons");
     if (!container) {
-        const saved = localStorage.getItem("tsukuyomi_content_width");
+        const saved = localStorage.getItem("dantalian_content_width");
         if (saved) document.documentElement.style.setProperty("--content-width", saved + "%");
         return;
     }
-    const saved = localStorage.getItem("tsukuyomi_content_width");
+    const saved = localStorage.getItem("dantalian_content_width");
     const defaultPct = saved ? parseInt(saved, 10) : 70;
 
     container.innerHTML = WIDTH_PRESETS.map((p) =>

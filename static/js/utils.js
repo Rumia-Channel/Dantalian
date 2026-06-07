@@ -143,10 +143,10 @@ function showConfirm(opts) {
 }
 
 function playAudio(url, title) {
-    let player = document.getElementById("tsukuyomi-audio-player");
+    let player = document.getElementById("dantalian-audio-player");
     if (!player) {
         player = document.createElement("audio");
-        player.id = "tsukuyomi-audio-player";
+        player.id = "dantalian-audio-player";
         player.controls = true;
         player.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:9999;width:100%;background:var(--color-bg-surface);border-top:1px solid var(--color-border-light);";
         document.body.appendChild(player);

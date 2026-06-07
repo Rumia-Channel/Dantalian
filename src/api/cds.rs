@@ -103,12 +103,12 @@ pub async fn cd_register(
         ));
     }
 
-    let cd_info = match external::lookup_cd(&state.client, &jan, &state.images_dir).await {
+    let cd_info = match external::lookup_cd(&state.client, &jan, &state.images_dir, &state.musicbrainz_contact).await {
         ok @ Ok(_) => ok,
         Err(e) => {
             tracing::warn!("MusicBrainz lookup failed: {}. Retrying...", e);
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            external::lookup_cd(&state.client_ipv4, &jan, &state.images_dir).await
+            external::lookup_cd(&state.client_ipv4, &jan, &state.images_dir, &state.musicbrainz_contact).await
         }
     };
 
@@ -167,7 +167,22 @@ pub async fn cd_register(
                 .await
         }
     };
-    let cover_url = amazon_cover.or(cd_info.cover_url);
+
+    let fallback_cover = match cd_info.cover_url.as_deref() {
+        Some(url) if url.starts_with("http://") || url.starts_with("https://") => {
+            match external::download_image(&state.client, url, &state.images_dir, &[]).await {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    tracing::warn!(jan = %jan, url = %url, "Failed to download fallback cover: {}", e);
+                    None
+                }
+            }
+        }
+        Some(url) => Some(url.to_string()),
+        None => None,
+    };
+
+    let cover_url = amazon_cover.or(fallback_cover);
 
     let new_cd = NewCd {
         jan: Some(jan),
@@ -400,36 +415,28 @@ pub async fn upload_cd_track_audio(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let audio_dir = Arc::clone(&state.images_dir);
     let audio_dir = audio_dir.replace("/images", "/audio");
-    fs::create_dir_all(&audio_dir)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field
             .bytes()
             .await
             .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-        let mut hasher = Sha3_256::new();
-        hasher.update(&data);
-        let hash = hasher.finalize();
-        let hash_b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            hash.as_slice(),
-        );
-        let ext = name.rsplit('.').next().unwrap_or("mp3");
-        let save_name = format!("{}.{}", hash_b64, ext);
-        let save_path = format!("{}/{}", audio_dir, save_name);
+        let (saved_name, _ext) = external::save_uploaded_audio(&data, &name, &audio_dir)
+            .map_err(|e| {
+                tracing::warn!(track_id, cd_id = _cd_id, "Audio save failed: {}", e);
+                StatusCode::BAD_REQUEST
+            })?;
 
-        fs::write(&save_path, &data)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        file_hash = Some(save_name.clone());
+        file_hash = Some(saved_name);
         file_name = Some(name);
     }
 

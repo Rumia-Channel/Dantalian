@@ -329,34 +329,71 @@ pub async fn lookup_amazon_cover_for_jan(
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
     let document = scraper::Html::parse_document(html);
 
-    let selector = scraper::Selector::parse(r#"[cel_widget_id^="MAIN-SEARCH_RESULTS-"]"#)
+    let card_selector = scraper::Selector::parse(r#"[data-component-type="s-search-result"]"#)
         .map_err(|e| format!("Amazon selector parse failed: {}", e))?;
-
     let a_selector = scraper::Selector::parse("a[href]").unwrap();
 
-    let widget = match document.select(&selector).next() {
-        Some(el) => el,
-        None => return Ok(None),
-    };
+    if let Some(card) = document
+        .select(&card_selector)
+        .find(|el| el.value().attr("data-asin").map(|s| !s.is_empty()).unwrap_or(false))
+    {
+        let hrefs: Vec<&str> = card
+            .select(&a_selector)
+            .filter_map(|a| a.value().attr("href"))
+            .collect();
 
-    let all_hrefs: Vec<&str> = widget
-        .select(&a_selector)
-        .filter_map(|a| a.value().attr("href"))
-        .collect();
-
-    let paper = all_hrefs
-        .iter()
-        .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"));
-    if let Some(href) = paper {
-        return Ok(Some(href.to_string()));
+        if let Some(href) = hrefs
+            .iter()
+            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
+        {
+            return Ok(Some((*href).to_string()));
+        }
+        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+            return Ok(Some((*href).to_string()));
+        }
     }
 
-    let any_dp = all_hrefs.iter().find(|h| h.contains("/dp/"));
-    if let Some(href) = any_dp {
-        return Ok(Some(href.to_string()));
+    let main_slot = scraper::Selector::parse("div.s-result-list, div.s-main-slot")
+        .ok()
+        .and_then(|sel| document.select(&sel).next());
+
+    if let Some(slot) = main_slot {
+        let hrefs: Vec<&str> = slot
+            .select(&a_selector)
+            .filter_map(|a| a.value().attr("href"))
+            .collect();
+
+        if let Some(href) = hrefs
+            .iter()
+            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
+        {
+            return Ok(Some((*href).to_string()));
+        }
+        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+            return Ok(Some((*href).to_string()));
+        }
     }
 
-    Ok(all_hrefs.first().map(|s| s.to_string()))
+    let old_selector = scraper::Selector::parse(r#"[cel_widget_id^="MAIN-SEARCH_RESULTS-"]"#)
+        .map_err(|e| format!("Amazon selector parse failed: {}", e))?;
+
+    if let Some(widget) = document.select(&old_selector).next() {
+        let hrefs: Vec<&str> = widget
+            .select(&a_selector)
+            .filter_map(|a| a.value().attr("href"))
+            .collect();
+        if let Some(href) = hrefs
+            .iter()
+            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
+        {
+            return Ok(Some((*href).to_string()));
+        }
+        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+            return Ok(Some((*href).to_string()));
+        }
+    }
+
+    Ok(None)
 }
 
 struct AmazonInfo {

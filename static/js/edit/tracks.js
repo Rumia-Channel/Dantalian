@@ -39,14 +39,19 @@ function renderTracksHtml(tracks, editType, parentId) {
                     <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
                     <div class="edit-track-audio">
                         ${t.file_hash
-                            ? `<span class="edit-track-file${hasAudio}">${escapeHtml(t.file_name || t.file_hash)}</span>
+                            ? `<span class="edit-track-file${hasAudio}" title="${escapeAttr(t.file_name || t.file_hash)}">${escapeHtml(t.file_name || t.file_hash)}</span>
                                <button class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
                                    <span class="material-icons" aria-hidden="true">play_arrow</span>
                                </button>
-                               <button class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})">消</button>`
-                            : `<label class="btn btn-xs btn-outline-success" style="cursor:pointer">
+                               <button class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
+                               <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
+                                   差替
+                                   <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                               </label>`
+                            : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
+                                   <span class="material-icons" aria-hidden="true">upload</span>
                                    音声
-                                   <input type="file" accept="audio/*" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                   <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
                                </label>`}
                     </div>
                     <div class="edit-track-reorder">
@@ -73,10 +78,11 @@ async function loadAndRenderTracks(bookId) {
     if (!list) return;
     try {
         const res = await fetch(`/api/books/${bookId}/tracks`);
-        if (!res.ok) { list.innerHTML = "<p class='series-empty'>トラックなし</p>"; return; }
+        if (!res.ok) { list.innerHTML = `<p class='series-empty'>トラック読み込み失敗 (HTTP ${res.status})</p>`; return; }
         const tracks = await res.json();
         list.innerHTML = renderTracksHtml(tracks, "book", bookId);
-    } catch {
+    } catch (err) {
+        console.error("loadAndRenderTracks failed:", err);
         list.innerHTML = "<p class='series-empty'>トラック読み込みエラー</p>";
     }
 }
@@ -86,10 +92,16 @@ async function loadAndRenderCdTracks(cdId) {
     if (!list) return;
     try {
         const res = await fetch(`/api/cds/${cdId}/tracks`);
-        if (!res.ok) { list.innerHTML = "<p class='series-empty'>トラックなし</p>"; return; }
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("loadAndRenderCdTracks failed:", res.status, errBody);
+            list.innerHTML = `<p class='series-empty'>トラック読み込み失敗 (HTTP ${res.status})</p>`;
+            return;
+        }
         const tracks = await res.json();
         list.innerHTML = renderTracksHtml(tracks, "cd", cdId);
-    } catch {
+    } catch (err) {
+        console.error("loadAndRenderCdTracks failed:", err);
         list.innerHTML = "<p class='series-empty'>トラック読み込みエラー</p>";
     }
 }
@@ -133,8 +145,15 @@ async function addTrackToDisc(parentId, discNumber, editType) {
         });
         if (res.ok) {
             loadAndRenderCdTracks(parentId);
+        } else {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("addTrack failed:", res.status, errBody);
+            alert(`トラックの追加に失敗しました (HTTP ${res.status}): ${errBody.error || ""}`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("addTrack error:", err);
+        alert("トラックの追加中に通信エラーが発生しました");
+    }
 }
 
 async function removeTrack(parentId, trackId, editType) {
@@ -143,10 +162,17 @@ async function removeTrack(parentId, trackId, editType) {
     if (!ok) return;
     try {
         const res = await fetch(`/api/cds/${parentId}/tracks/${trackId}`, { method: "DELETE" });
-        if (res.ok) {
+        if (res.ok || res.status === 204) {
             loadAndRenderCdTracks(parentId);
+        } else {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("removeTrack failed:", res.status, errBody);
+            alert(`トラックの削除に失敗しました (HTTP ${res.status}): ${errBody.error || ""}`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("removeTrack error:", err);
+        alert("トラックの削除中に通信エラーが発生しました");
+    }
 }
 
 async function moveTrack(parentId, trackId, discNumber, direction, editType) {
@@ -177,7 +203,7 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
     const swapNewNum = idx + 1;
 
     try {
-        await Promise.all([
+        const results = await Promise.all([
             fetch(`/api/cds/${parentId}/tracks/${trackId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -189,37 +215,125 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
                 body: JSON.stringify({ title: swapTitle, duration: swapDur || null, disc_number: discNumber, track_number: swapNewNum }),
             }),
         ]);
-    } catch {}
+        for (const r of results) {
+            if (!r.ok) {
+                const errBody = await r.json().catch(() => ({}));
+                console.error("moveTrack failed:", r.status, errBody);
+                alert(`トラック順の変更に失敗しました (HTTP ${r.status})`);
+                break;
+            }
+        }
+    } catch (err) {
+        console.error("moveTrack error:", err);
+        alert("トラック順の変更中に通信エラーが発生しました");
+    }
     loadAndRenderCdTracks(parentId);
 }
 
+const ALLOWED_AUDIO_EXTS = ["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"];
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+
 async function uploadTrackAudio(editType, parentId, trackId, input) {
     const file = input.files[0];
+    input.value = "";
     if (!file) return;
+
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!ALLOWED_AUDIO_EXTS.includes(ext)) {
+        alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
+        return;
+    }
+    if (file.size > MAX_AUDIO_BYTES) {
+        alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${MAX_AUDIO_BYTES / 1024 / 1024} MB`);
+        return;
+    }
+
     const fd = new FormData();
     fd.append("audio", file);
+    const url = editType === "cd"
+        ? `/api/cds/${parentId}/tracks/${trackId}/audio`
+        : `/api/books/${parentId}/tracks/${trackId}/audio`;
     try {
-        const url = editType === "cd"
-            ? `/api/cds/${parentId}/tracks/${trackId}/audio`
-            : `/api/books/${parentId}/tracks/${trackId}/audio`;
         const res = await fetch(url, { method: "POST", body: fd });
         if (res.ok) {
-            if (editType === "cd") loadAndRenderCdTracks(parentId);
-            else loadAndRenderTracks(parentId);
+            const body = await res.json().catch(() => ({}));
+            const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
+            await reloadFn(parentId);
+            if (body.file_hash) {
+                await offerToApplyAudioDuration(editType, parentId, trackId, body.file_hash, reloadFn);
+            }
+        } else {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("uploadTrackAudio failed:", res.status, errBody);
+            alert(`音声のアップロードに失敗しました (HTTP ${res.status})`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("uploadTrackAudio error:", err);
+        alert("音声のアップロード中に通信エラーが発生しました");
+    }
+}
+
+function secondsToMmSs(secs) {
+    if (!isFinite(secs) || secs <= 0) return null;
+    const total = Math.round(secs);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function probeAudioDuration(url) {
+    return new Promise((resolve) => {
+        const a = new Audio();
+        a.preload = "metadata";
+        a.src = url;
+        const cleanup = () => {
+            a.onloadedmetadata = null;
+            a.onerror = null;
+        };
+        a.onloadedmetadata = () => {
+            const d = a.duration;
+            cleanup();
+            resolve(d);
+        };
+        a.onerror = () => {
+            cleanup();
+            resolve(NaN);
+        };
+    });
+}
+
+async function offerToApplyAudioDuration(editType, parentId, trackId, fileHash, reloadFn) {
+    const secs = await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
+    const formatted = secondsToMmSs(secs);
+    if (!formatted) return;
+    const ok = await showConfirm({
+        message: `音声ファイルの長さ ${formatted} をトラックの長さに設定しますか？`,
+        okLabel: "設定する",
+        cancelLabel: "設定しない",
+        okClass: "btn btn-sm btn-outline-success",
+    });
+    if (!ok) return;
+    await saveTrackField(parentId, trackId, "duration", formatted, editType);
+    await reloadFn(parentId);
 }
 
 async function deleteTrackAudio(editType, parentId, trackId) {
     if (!await showConfirm({ message: "音声ファイルを削除しますか？", okLabel: "削除" })) return;
+    const url = editType === "cd"
+        ? `/api/cds/${parentId}/tracks/${trackId}/audio`
+        : `/api/books/${parentId}/tracks/${trackId}/audio`;
     try {
-        const url = editType === "cd"
-            ? `/api/cds/${parentId}/tracks/${trackId}/audio`
-            : `/api/books/${parentId}/tracks/${trackId}/audio`;
         const res = await fetch(url, { method: "DELETE" });
         if (res.ok) {
             if (editType === "cd") loadAndRenderCdTracks(parentId);
             else loadAndRenderTracks(parentId);
+        } else {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("deleteTrackAudio failed:", res.status, errBody);
+            alert(`音声の削除に失敗しました (HTTP ${res.status})`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("deleteTrackAudio error:", err);
+        alert("音声の削除中に通信エラーが発生しました");
+    }
 }
