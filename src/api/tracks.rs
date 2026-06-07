@@ -27,6 +27,28 @@ pub async fn get_book_track_metadata(
     Ok(Json(meta))
 }
 
+pub async fn put_book_track_metadata(
+    State(state): State<crate::AppState>,
+    Path((_book_id, track_id)): Path<(i64, i64)>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<String>, axum::http::StatusCode> {
+    let meta = crate::external::audio_meta::TrackMetadata::from_json(&body);
+    let db = state.db.clone();
+    let join_result =
+        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta)).await;
+    match join_result {
+        Ok(Ok(())) => Ok(Json("ok".into())),
+        Ok(Err(e)) => {
+            tracing::error!(track_id, "book track_metadata upsert failed: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(e) => {
+            tracing::error!(track_id, "book track_metadata task failed: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 pub async fn update_track(
     State(state): State<crate::AppState>,
     Path((_book_id, track_id)): Path<(i64, i64)>,

@@ -70,7 +70,11 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route(
             "/books/{id}/tracks/{track_id}/metadata",
-            get(tracks::get_book_track_metadata),
+            get(tracks::get_book_track_metadata).put(tracks::put_book_track_metadata),
+        )
+        .route(
+            "/cds/{id}/tracks/{tid}/metadata",
+            get(cds::get_cd_track_metadata).put(cds::put_cd_track_metadata),
         )
         .route(
             "/books/{id}/tracks/{track_id}/audio",

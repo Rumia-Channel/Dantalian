@@ -4,6 +4,7 @@ use lofty::tag::{Accessor, ItemKey, Tag, TagType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct TrackMetadata {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -34,6 +35,49 @@ pub struct TrackMetadata {
 
     pub file_type: Option<String>,
     pub raw_size_bytes: Option<i64>,
+}
+
+impl TrackMetadata {
+    pub fn from_json(body: &serde_json::Value) -> Self {
+        fn opt_str(v: &serde_json::Value, k: &str) -> Option<String> {
+            v.get(k).and_then(|x| x.as_str()).map(String::from)
+        }
+        fn opt_i64(v: &serde_json::Value, k: &str) -> Option<i64> {
+            v.get(k).and_then(|x| x.as_i64())
+        }
+        fn opt_f64(v: &serde_json::Value, k: &str) -> Option<f64> {
+            v.get(k).and_then(|x| x.as_f64())
+        }
+        Self {
+            title: opt_str(body, "title"),
+            artist: opt_str(body, "artist"),
+            album: opt_str(body, "album"),
+            album_artist: opt_str(body, "album_artist"),
+            track_number: opt_i64(body, "track_number"),
+            track_total: opt_i64(body, "track_total"),
+            disc_number: opt_i64(body, "disc_number"),
+            disc_total: opt_i64(body, "disc_total"),
+            year: opt_i64(body, "year"),
+            genre: opt_str(body, "genre"),
+            composer: opt_str(body, "composer"),
+            publisher: opt_str(body, "publisher"),
+            label: opt_str(body, "label"),
+            encoder: opt_str(body, "encoder"),
+            comment: opt_str(body, "comment"),
+            lyrics: opt_str(body, "lyrics"),
+            cover_mime: opt_str(body, "cover_mime"),
+            cover_data: body
+                .get("cover_data")
+                .and_then(|x| x.as_array())
+                .and_then(|arr| arr.iter().map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok())).collect::<Option<Vec<u8>>>()),
+            replay_gain_track_gain_db: opt_f64(body, "replay_gain_track_gain_db"),
+            replay_gain_track_peak: opt_f64(body, "replay_gain_track_peak"),
+            replay_gain_album_gain_db: opt_f64(body, "replay_gain_album_gain_db"),
+            replay_gain_album_peak: opt_f64(body, "replay_gain_album_peak"),
+            file_type: opt_str(body, "file_type"),
+            raw_size_bytes: opt_i64(body, "raw_size_bytes"),
+        }
+    }
 }
 
 pub fn extract(path: &std::path::Path) -> Result<TrackMetadata, lofty::error::LoftyError> {
