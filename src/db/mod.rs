@@ -2,6 +2,7 @@ pub mod authors;
 pub mod books;
 pub mod borrowers;
 pub mod cds;
+pub mod cd_metadata;
 pub mod copies;
 pub mod schema;
 pub mod series;

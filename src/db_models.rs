@@ -281,3 +281,27 @@ pub struct CdWithTracks {
     pub tracks: Vec<Track>,
     pub authors: Vec<BookAuthor>,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CdMetadata {
+    pub cd_id: i64,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub year: Option<i64>,
+    pub genre: Option<String>,
+    pub composer: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub catalog_number: Option<String>,
+    pub isrc: Option<String>,
+
+    #[serde(skip)]
+    pub cover_mime: Option<String>,
+    #[serde(skip)]
+    pub cover_data: Option<Vec<u8>>,
+
+    pub replay_gain_album_gain_db: Option<f64>,
+    pub replay_gain_album_peak: Option<f64>,
+}

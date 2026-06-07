@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -187,9 +187,36 @@ CREATE TABLE IF NOT EXISTS track_metadata (
 CREATE INDEX IF NOT EXISTS idx_tm_artist ON track_metadata(artist);
 CREATE INDEX IF NOT EXISTS idx_tm_album  ON track_metadata(album);
 CREATE INDEX IF NOT EXISTS idx_tm_year   ON track_metadata(year);
+
+CREATE TABLE IF NOT EXISTS cd_metadata (
+    cd_id              INTEGER PRIMARY KEY REFERENCES cds(id) ON DELETE CASCADE,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    year               INTEGER,
+    genre              TEXT,
+    composer           TEXT,
+    publisher          TEXT,
+    label              TEXT,
+    catalog_number     TEXT,
+    isrc               TEXT,
+    cover_mime         TEXT,
+    cover_data         BLOB,
+    replay_gain_album_gain_db REAL,
+    replay_gain_album_peak    REAL,
+    updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cdm_artist ON cd_metadata(artist);
+CREATE INDEX IF NOT EXISTS idx_cdm_album  ON cd_metadata(album);
+CREATE INDEX IF NOT EXISTS idx_cdm_year   ON cd_metadata(year);
 "#;
 
 const DROP_ALL_SQL: &str = r#"
+DROP TABLE IF EXISTS cd_metadata;
+DROP TABLE IF EXISTS track_metadata;
+DROP TABLE IF EXISTS cd_authors;
+DROP TABLE IF EXISTS tracks;
+DROP TABLE IF EXISTS cds;
 DROP TABLE IF EXISTS track_metadata;
 DROP TABLE IF EXISTS cd_authors;
 DROP TABLE IF EXISTS tracks;
@@ -246,6 +273,51 @@ ALTER TABLE track_metadata ADD COLUMN publisher TEXT;
 ALTER TABLE track_metadata ADD COLUMN label TEXT;
 "#;
 
+const MIGRATE_V3_TO_V4_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS cd_metadata (
+    cd_id              INTEGER PRIMARY KEY REFERENCES cds(id) ON DELETE CASCADE,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    year               INTEGER,
+    genre              TEXT,
+    composer           TEXT,
+    publisher          TEXT,
+    label              TEXT,
+    catalog_number     TEXT,
+    isrc               TEXT,
+    cover_mime         TEXT,
+    cover_data         BLOB,
+    replay_gain_album_gain_db REAL,
+    replay_gain_album_peak    REAL,
+    updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cdm_artist ON cd_metadata(artist);
+CREATE INDEX IF NOT EXISTS idx_cdm_album  ON cd_metadata(album);
+CREATE INDEX IF NOT EXISTS idx_cdm_year   ON cd_metadata(year);
+
+INSERT OR IGNORE INTO cd_metadata (
+    cd_id, artist, album, album_artist, year, genre, composer,
+    publisher, label, replay_gain_album_gain_db, replay_gain_album_peak
+)
+SELECT
+    t.cd_id,
+    MAX(tm.artist),
+    MAX(tm.album),
+    MAX(tm.album_artist),
+    MAX(tm.year),
+    MAX(tm.genre),
+    MAX(tm.composer),
+    MAX(tm.publisher),
+    MAX(tm.label),
+    MAX(tm.replay_gain_album_gain_db),
+    MAX(tm.replay_gain_album_peak)
+FROM tracks t
+JOIN track_metadata tm ON tm.track_id = t.id
+WHERE t.cd_id IS NOT NULL
+GROUP BY t.cd_id;
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -269,6 +341,9 @@ impl Db {
             }
             if current_version < 3 {
                 conn.execute_batch(MIGRATE_V2_TO_V3_SQL)?;
+            }
+            if current_version < 4 {
+                conn.execute_batch(MIGRATE_V3_TO_V4_SQL)?;
             }
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
