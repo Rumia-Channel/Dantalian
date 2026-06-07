@@ -608,11 +608,33 @@ async function submitManualCd(e) {
                 await fetch(`/api/cds/${cdId}/authors/${aid}`, { method: "POST" }).catch(() => {});
             }
             for (const t of manualCdTracks) {
-                await fetch(`/api/cds/${cdId}/tracks`, {
+                const { title, disc_number, track_number, duration, ...metaFields } = t;
+                const trackBody = {
+                    title: title || "",
+                    disc_number: disc_number || 1,
+                    track_number: track_number || 1,
+                    duration: duration || null,
+                };
+                const trackRes = await fetch(`/api/cds/${cdId}/tracks`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(t),
-                }).catch(() => {});
+                    body: JSON.stringify(trackBody),
+                }).catch(() => null);
+                let trackId = null;
+                if (trackRes && trackRes.ok) {
+                    try {
+                        const tj = await trackRes.json();
+                        trackId = tj.id;
+                    } catch {}
+                }
+                const hasMeta = Object.values(metaFields).some((v) => v != null && v !== "");
+                if (trackId && hasMeta) {
+                    await fetch(`/api/cds/${cdId}/tracks/${trackId}/metadata`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(metaFields),
+                    }).catch(() => {});
+                }
             }
         }
 
@@ -641,34 +663,103 @@ function renderManualCdTracks() {
     const list = document.getElementById("manual-cd-tracks-list");
     if (!list) return;
     if (manualCdTracks.length === 0) {
-        list.innerHTML = "<p class='series-empty'>トラックなし</p>";
+        list.innerHTML = "<p class='series-empty'>トラックなし (下の「+ トラック追加」で追加してください)</p>";
         return;
     }
-    list.innerHTML = manualCdTracks.map((t, idx) => `
-        <div class="edit-track-row">
-            <span class="edit-track-num">${String(t.track_number).padStart(2, "0")}</span>
-            <span class="edit-track-title-text">${escapeHtml(t.title)}</span>
-            ${t.duration ? `<span class="edit-track-dur">${escapeHtml(t.duration)}</span>` : ""}
-            <button type="button" class="btn btn-xs btn-outline-danger" style="margin-left:auto" onclick="removeManualCdTrack(${idx})">&#10005;</button>
-        </div>
-    `).join("");
+    const groups = {};
+    for (const t of manualCdTracks) {
+        const d = Number(t.disc_number) || 1;
+        if (!groups[d]) groups[d] = [];
+        groups[d].push(t);
+    }
+    const discKeys = Object.keys(groups).sort((a, b) => a - b);
+    let html = "";
+    for (const d of discKeys) {
+        const tracks = groups[d].slice().sort((a, b) => (a.track_number || 0) - (b.track_number || 0));
+        const header = discKeys.length > 1
+            ? `<div class="manual-disc-header">Disc ${d} <span class="edit-disc-count">(${tracks.length} トラック)</span></div>`
+            : "";
+        html += header;
+        html += tracks.map((t, idx) => {
+            const realIdx = manualCdTracks.indexOf(t);
+            const numLabel = discKeys.length > 1
+                ? `${d}-${String(t.track_number).padStart(2, "0")}`
+                : String(t.track_number).padStart(2, "0");
+            return `
+                <div class="manual-cd-track-card" data-idx="${realIdx}">
+                    <div class="manual-cd-track-head">
+                        <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
+                        <input type="text" class="manual-cd-track-input manual-cd-track-disc" value="${escapeAttr(t.disc_number || 1)}" min="1" step="1" title="ディスク番号" onchange="updateManualTrack(${realIdx}, 'disc_number', this.value)">
+                        <input type="text" class="manual-cd-track-input manual-cd-track-num" value="${escapeAttr(t.track_number)}" min="1" step="1" title="トラック番号" onchange="updateManualTrack(${realIdx}, 'track_number', this.value)">
+                        <input type="text" class="manual-cd-track-input manual-cd-track-title" value="${escapeAttr(t.title || '')}" placeholder="タイトル" onchange="updateManualTrack(${realIdx}, 'title', this.value)">
+                        <input type="text" class="manual-cd-track-input manual-cd-track-dur" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" onchange="updateManualTrack(${realIdx}, 'duration', this.value)">
+                        <button type="button" class="btn btn-xs btn-outline-danger manual-cd-track-del" onclick="removeManualCdTrack(${realIdx})" title="削除">&#10005;</button>
+                    </div>
+                    <details class="manual-cd-track-meta">
+                        <summary>メタデータ</summary>
+                        <div class="manual-cd-track-meta-grid">
+                            <label>アーティスト<input type="text" value="${escapeAttr(t.artist || '')}" onchange="updateManualTrack(${realIdx}, 'artist', this.value)"></label>
+                            <label>アルバム<input type="text" value="${escapeAttr(t.album || '')}" onchange="updateManualTrack(${realIdx}, 'album', this.value)"></label>
+                            <label>作曲<input type="text" value="${escapeAttr(t.composer || '')}" onchange="updateManualTrack(${realIdx}, 'composer', this.value)"></label>
+                            <label>ジャンル<input type="text" value="${escapeAttr(t.genre || '')}" onchange="updateManualTrack(${realIdx}, 'genre', this.value)"></label>
+                            <label>年<input type="number" value="${escapeAttr(t.year != null ? t.year : '')}" min="1000" max="9999" onchange="updateManualTrack(${realIdx}, 'year', this.value)"></label>
+                            <label>トラック総数<input type="number" value="${escapeAttr(t.track_total != null ? t.track_total : '')}" min="1" onchange="updateManualTrack(${realIdx}, 'track_total', this.value)"></label>
+                            <label>ディスク総数<input type="number" value="${escapeAttr(t.disc_total != null ? t.disc_total : '')}" min="1" onchange="updateManualTrack(${realIdx}, 'disc_total', this.value)"></label>
+                            <label>ISRC<input type="text" value="${escapeAttr(t.isrc || '')}" onchange="updateManualTrack(${realIdx}, 'isrc', this.value)"></label>
+                        </div>
+                    </details>
+                </div>
+            `;
+        }).join("");
+    }
+    list.innerHTML = html;
+}
+
+function updateManualTrack(idx, field, value) {
+    const t = manualCdTracks[idx];
+    if (!t) return;
+    if (["disc_number", "track_number", "track_total", "disc_total", "year"].includes(field)) {
+        const n = parseInt(value, 10);
+        t[field] = isNaN(n) ? null : n;
+    } else {
+        t[field] = value ? value.trim() : null;
+    }
+    if (field === "disc_number" || field === "track_number") {
+        renderManualCdTracks();
+    }
 }
 
 function addManualCdTrack() {
-    const title = prompt("トラック名を入力:");
-    if (!title || !title.trim()) return;
-    const dur = prompt("時間 (MM:SS, 省略可):") || null;
+    const inDisc = manualCdTracks.filter(t => (Number(t.disc_number) || 1) === 1);
+    const nextNum = inDisc.length + 1;
     manualCdTracks.push({
         disc_number: 1,
-        track_number: manualCdTracks.length + 1,
-        title: title.trim(),
-        duration: dur,
+        track_number: nextNum,
+        title: "",
+        duration: null,
+        artist: null,
+        album: null,
+        composer: null,
+        genre: null,
+        year: null,
+        track_total: null,
+        disc_total: null,
+        isrc: null,
     });
     renderManualCdTracks();
+    setTimeout(() => {
+        const list = document.getElementById("manual-cd-tracks-list");
+        if (list) {
+            const last = list.querySelector(`.manual-cd-track-card[data-idx="${manualCdTracks.length - 1}"]`);
+            if (last) {
+                const titleInput = last.querySelector(".manual-cd-track-title");
+                if (titleInput) titleInput.focus();
+            }
+        }
+    }, 0);
 }
 
 function removeManualCdTrack(idx) {
     manualCdTracks.splice(idx, 1);
-    manualCdTracks.forEach((t, i) => { t.track_number = i + 1; });
     renderManualCdTracks();
 }
