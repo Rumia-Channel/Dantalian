@@ -239,6 +239,34 @@ pub async fn list_cds(
     Ok(Json(result))
 }
 
+#[derive(serde::Deserialize)]
+pub struct MetadataSearchQuery {
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub year: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+pub async fn search_track_metadata(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<MetadataSearchQuery>,
+) -> Result<Json<Vec<crate::db::track_metadata_search::MetadataSearchResult>>, StatusCode> {
+    let db = state.db.clone();
+    let limit = q.limit.unwrap_or(100).clamp(1, 1000);
+    let result = tokio::task::spawn_blocking(move || {
+        db.search_tracks_by_metadata(
+            q.artist.as_deref(),
+            q.album.as_deref(),
+            q.year,
+            limit,
+        )
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(result))
+}
+
 pub async fn delete_cd(
     State(state): State<AppState>,
     Path(id): Path<i64>,
