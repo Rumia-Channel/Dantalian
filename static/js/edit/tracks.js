@@ -262,6 +262,9 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             if (body.file_hash) {
                 await offerToApplyAudioDuration(editType, parentId, trackId, body.file_hash, reloadFn);
             }
+            if (body.metadata) {
+                await showExtractedMetadataModal(editType, parentId, trackId, body.metadata, reloadFn);
+            }
         } else {
             const errBody = await res.json().catch(() => ({}));
             console.error("uploadTrackAudio failed:", res.status, errBody);
@@ -271,6 +274,65 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         console.error("uploadTrackAudio error:", err);
         alert("音声のアップロード中に通信エラーが発生しました");
     }
+}
+
+async function showExtractedMetadataModal(editType, parentId, trackId, meta, reloadFn) {
+    if (!meta || typeof meta !== "object") return;
+    const fields = [
+        ["タイトル", meta.title],
+        ["アーティスト", meta.artist],
+        ["アルバム", meta.album],
+        ["アルバムアーティスト", meta.album_artist],
+        ["作曲者", meta.composer],
+        ["ジャンル", meta.genre],
+        ["年", meta.year],
+        ["トラック番号", meta.track_number],
+        ["ディスク番号", meta.disc_number],
+        ["出版社", meta.publisher],
+        ["レーベル", meta.label],
+    ];
+    const rows = fields
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`)
+        .join("");
+    if (!rows) return;
+
+    const html = `
+        <div class="confirm-box" style="max-width:520px;text-align:left">
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">抽出したメタデータ</div>
+            <table class="edit-meta-table">${rows}</table>
+            <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
+                <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-skip">閉じる</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">${meta.title ? "タイトルを反映" : "閉じる"}</button>
+            </div>
+        </div>
+    `;
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+
+    await new Promise((resolve) => {
+        const close = () => {
+            overlay.classList.add("hidden");
+            setTimeout(() => overlay.remove(), 200);
+            resolve();
+        };
+        overlay.querySelector("#meta-modal-skip").addEventListener("click", close);
+        const applyBtn = overlay.querySelector("#meta-modal-apply-title");
+        if (meta.title) {
+            applyBtn.addEventListener("click", async () => {
+                await saveTrackField(parentId, trackId, "title", meta.title, editType);
+                close();
+                await reloadFn(parentId);
+            });
+        } else {
+            applyBtn.style.display = "none";
+        }
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) close();
+        });
+    });
 }
 
 function secondsToMmSs(secs) {
