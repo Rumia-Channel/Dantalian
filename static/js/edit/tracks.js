@@ -303,8 +303,6 @@ async function showTrackMetadata(editType, parentId, trackId) {
 
     const isCd = editType === "cd";
     const cdLevelFields = [
-        { key: "artist", label: "アーティスト" },
-        { key: "album_artist", label: "アルバムアーティスト" },
         { key: "composer", label: "作曲" },
         { key: "genre", label: "ジャンル" },
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
@@ -333,20 +331,41 @@ async function showTrackMetadata(editType, parentId, trackId) {
     const cdLevelRows = cdLevelFields.map((f) => rowFor(f, "cd")).join("");
     const trackLevelRows = trackLevelFields.map((f) => rowFor(f, "track")).join("");
 
+    const albumArtists = Array.isArray(meta.album_artists) ? meta.album_artists : [];
+    const albumArtistListHtml = albumArtists.length > 0
+        ? albumArtists.map((a) => `<span class="meta-pill">${escapeHtml(a.name)}${a.transcription ? ` <span class="meta-pill-yomi">(${escapeHtml(a.transcription)})</span>` : ""}</span>`).join("")
+        : `<span style="color:var(--color-text-dim);font-size:0.85rem">CD 基本情報の「アーティスト」セクションで追加してください</span>`;
+
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay";
     overlay.innerHTML = `
-        <div class="confirm-box" style="max-width:560px;text-align:left;max-height:80vh;overflow-y:auto">
+        <div class="confirm-box" style="max-width:620px;text-align:left;max-height:80vh;overflow-y:auto">
             <div class="confirm-message" style="font-weight:600;margin-bottom:0.4rem">トラックメタデータ編集</div>
-            <div style="font-size:0.75rem;color:var(--color-text-dim);margin-bottom:0.4rem">
-                「<strong>${isCd ? 'アルバム情報' : 'トラック情報'}</strong>」を編集すると${isCd ? '全トラック / CD 側' : 'このトラック'}に反映されます。
-            </div>
-            <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">${isCd ? 'アルバム情報 (CD レベル・全トラック共有)' : 'アルバム情報 (トラックレベル)'}</div>
-            <table class="edit-meta-table">${isCd ? cdLevelRows : trackLevelRows}</table>
             ${isCd ? `
+            <div style="font-size:0.75rem;color:var(--color-text-dim);margin-bottom:0.4rem">
+                「<strong>アルバム情報</strong>」を編集すると CD 全体に反映されます。「<strong>トラック情報</strong>」はこのトラックのみ。
+            </div>
+            <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">アルバムアーティスト (CD 基本情報と共有・編集は CD 編集画面で)</div>
+            <div id="meta-album-artists" style="margin:0.3rem 0 0.5rem 0;line-height:1.8">${albumArtistListHtml}</div>
+            <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">アルバム情報 (audio 固有・全トラックで共有)</div>
+            <table class="edit-meta-table">${cdLevelRows}</table>
             <div style="font-size:0.85rem;font-weight:600;margin-top:0.8rem">トラック情報 (このトラックのみ)</div>
-            <table class="edit-meta-table">${trackLevelRows}</table>
-            ` : ''}
+            <div style="font-size:0.75rem;color:var(--color-text-dim);margin-bottom:0.2rem">複数可・登録済みアーティストから選択 (未登録も新規追加可)</div>
+            <div id="meta-track-artists-list" class="meta-author-list"></div>
+            <div class="meta-author-add">
+                <div id="meta-track-artists-select"></div>
+                <button type="button" class="btn btn-xs btn-outline-success" id="meta-track-artists-add">追加</button>
+            </div>
+            <table class="edit-meta-table" style="margin-top:0.5rem">${trackLevelRows}</table>
+            ` : `
+            <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">トラック情報 (このトラックのみ)</div>
+            <div id="meta-track-artists-list" class="meta-author-list"></div>
+            <div class="meta-author-add">
+                <div id="meta-track-artists-select"></div>
+                <button type="button" class="btn btn-xs btn-outline-success" id="meta-track-artists-add">追加</button>
+            </div>
+            <table class="edit-meta-table" style="margin-top:0.5rem">${trackLevelRows}</table>
+            `}
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end;gap:0.4rem">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-close">キャンセル</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="meta-modal-clear">クリア</button>
@@ -355,6 +374,58 @@ async function showTrackMetadata(editType, parentId, trackId) {
         </div>
     `;
     document.body.appendChild(overlay);
+
+    const trackAuthorIds = (Array.isArray(meta.artists) ? meta.artists : []).map((a) => a.id);
+    const trackAuthorNames = new Map((Array.isArray(meta.artists) ? meta.artists : []).map((a) => [a.id, a.name]));
+    const trackArtistsList = document.getElementById("meta-track-artists-list");
+    function renderTrackAuthorList() {
+        if (!trackArtistsList) return;
+        if (trackAuthorIds.length === 0) {
+            trackArtistsList.innerHTML = `<p class="series-empty" style="margin:0.2rem 0">アーティスト未登録</p>`;
+            return;
+        }
+        trackArtistsList.innerHTML = trackAuthorIds.map((id, idx) => `
+            <div class="meta-author-item" data-author-id="${id}">
+                <span class="meta-author-name">${escapeHtml(trackAuthorNames.get(id) || `ID:${id}`)}</span>
+                <button type="button" class="btn btn-xs btn-outline-danger" data-rm="${id}">削除</button>
+                <input type="number" class="meta-author-order" value="${idx}" min="0" step="1" data-ord="${id}" title="並び順">
+            </div>
+        `).join("");
+        trackArtistsList.querySelectorAll("[data-rm]").forEach((b) => {
+            b.addEventListener("click", () => {
+                const id = parseInt(b.getAttribute("data-rm"), 10);
+                trackAuthorIds.splice(trackAuthorIds.indexOf(id), 1);
+                trackAuthorNames.delete(id);
+                renderTrackAuthorList();
+            });
+        });
+    }
+    renderTrackAuthorList();
+
+    let trackAuthorSelect = null;
+    const selectContainer = document.getElementById("meta-track-artists-select");
+    if (selectContainer && typeof createSearchableSelect === "function") {
+        trackAuthorSelect = createSearchableSelect(selectContainer, {
+            options: (typeof allAuthors !== "undefined" ? allAuthors : []).map((a) => ({ value: a.id, label: a.name })),
+            value: null,
+            placeholder: "アーティストを追加...",
+            clearable: false,
+        });
+    }
+    const addBtn = document.getElementById("meta-track-artists-add");
+    if (addBtn) {
+        addBtn.addEventListener("click", () => {
+            if (!trackAuthorSelect) return;
+            const id = trackAuthorSelect.getValue();
+            if (!id) return;
+            if (trackAuthorIds.includes(id)) return;
+            trackAuthorIds.push(id);
+            const a = (typeof allAuthors !== "undefined" ? allAuthors : []).find((x) => x.id === id);
+            if (a) trackAuthorNames.set(id, a.name);
+            trackAuthorSelect.setValue(null);
+            renderTrackAuthorList();
+        });
+    }
 
     await new Promise((resolve) => {
         const close = () => {
@@ -365,10 +436,13 @@ async function showTrackMetadata(editType, parentId, trackId) {
         overlay.querySelector("#meta-modal-close").addEventListener("click", close);
         overlay.querySelector("#meta-modal-clear").addEventListener("click", () => {
             overlay.querySelectorAll("input[data-meta-key]").forEach((i) => { i.value = ""; });
+            trackAuthorIds.length = 0;
+            trackAuthorNames.clear();
+            renderTrackAuthorList();
         });
         overlay.querySelector("#meta-modal-save").addEventListener("click", async () => {
             const cdBody = {};
-            const trackBody = {};
+            const trackBody = { artists: trackAuthorIds.slice() };
             overlay.querySelectorAll("input[data-meta-key]").forEach((i) => {
                 const k = i.dataset.metaKey;
                 const scope = i.dataset.metaScope;
@@ -402,7 +476,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
                     alert("アルバム情報の通信エラーが発生しました");
                 }
             }
-            if (allOk && Object.keys(trackBody).length > 0) {
+            if (allOk) {
                 const saveUrl = editType === "cd"
                     ? `/api/cds/${parentId}/tracks/${trackId}/metadata`
                     : `/api/books/${parentId}/tracks/${trackId}/metadata`;
@@ -424,7 +498,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
                 }
             }
             if (allOk) {
-                if (Object.keys(cdBody).length > 0 || Object.keys(trackBody).length > 0) {
+                if (Object.keys(cdBody).length > 0 || trackAuthorIds.length > 0 || Object.keys(trackBody).length > 1) {
                     alert("メタデータを保存しました");
                 }
                 close();

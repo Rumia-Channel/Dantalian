@@ -269,16 +269,6 @@ async function renderManualForm() {
                 <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有)</span></h3>
                 <div class="edit-row">
                     <div class="edit-field">
-                        <label>アーティスト</label>
-                        <input type="text" name="cd_meta_artist">
-                    </div>
-                    <div class="edit-field">
-                        <label>アルバムアーティスト</label>
-                        <input type="text" name="cd_meta_album_artist">
-                    </div>
-                </div>
-                <div class="edit-row">
-                    <div class="edit-field">
                         <label>作曲</label>
                         <input type="text" name="cd_meta_composer">
                     </div>
@@ -642,7 +632,7 @@ async function submitManualCd(e) {
             }
 
             const cdMetaBody = {};
-            for (const f of ["cd_meta_artist", "cd_meta_album_artist", "cd_meta_composer", "cd_meta_genre", "cd_meta_isrc"]) {
+            for (const f of ["cd_meta_composer", "cd_meta_genre", "cd_meta_isrc"]) {
                 const v = document.querySelector(`input[name=${f}]`)?.value?.trim();
                 if (v) cdMetaBody[f.replace(/^cd_meta_/, "")] = v;
             }

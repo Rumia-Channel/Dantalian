@@ -657,8 +657,6 @@ async function loadAndRenderCdMetadata(cdId) {
     }
 
     const fields = [
-        { key: "artist", label: "アーティスト", type: "text", placeholder: "例: 凛として時雨" },
-        { key: "album_artist", label: "アルバムアーティスト", type: "text" },
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
         { key: "genre", label: "ジャンル", type: "text" },
         { key: "composer", label: "作曲", type: "text" },
