@@ -47,7 +47,10 @@ function renderTracksHtml(tracks, editType, parentId) {
                                <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
                                    差替
                                    <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
-                               </label>`
+                               </label>
+                               <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
+                                   <span class="material-icons" aria-hidden="true">info</span>
+                               </button>`
                             : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
                                    <span class="material-icons" aria-hidden="true">upload</span>
                                    音声
@@ -276,7 +279,82 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
     }
 }
 
-async function showExtractedMetadataModal(editType, parentId, trackId, meta, reloadFn) {
+async function showTrackMetadata(editType, parentId, trackId) {
+    const url = editType === "cd"
+        ? `/api/cds/${parentId}/tracks/${trackId}/metadata`
+        : `/api/books/${parentId}/tracks/${trackId}/metadata`;
+    let meta = null;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            if (res.status === 404) {
+                alert("このトラックのメタデータはまだありません。音声をアップロードすると自動で抽出されます。");
+                return;
+            }
+            alert(`メタデータの取得に失敗しました (HTTP ${res.status})`);
+            return;
+        }
+        meta = await res.json();
+    } catch (err) {
+        console.error("showTrackMetadata failed:", err);
+        alert("メタデータ取得中に通信エラーが発生しました");
+        return;
+    }
+    if (!meta || Object.keys(meta).length === 0) {
+        alert("このトラックのメタデータはまだありません。");
+        return;
+    }
+    const fields = [
+        ["タイトル", meta.title],
+        ["アーティスト", meta.artist],
+        ["アルバム", meta.album],
+        ["アルバムアーティスト", meta.album_artist],
+        ["作曲", meta.composer],
+        ["ジャンル", meta.genre],
+        ["年", meta.year],
+        ["トラック番号 / 総数", meta.track_number != null ? `${meta.track_number}${meta.track_total ? "/" + meta.track_total : ""}` : null],
+        ["ディスク番号 / 総数", meta.disc_number != null ? `${meta.disc_number}${meta.disc_total ? "/" + meta.disc_total : ""}` : null],
+        ["出版社", meta.publisher],
+        ["レーベル", meta.label],
+        ["エンコーダ", meta.encoder],
+        ["コメント", meta.comment],
+        ["ファイル形式", meta.file_type],
+        ["ファイルサイズ (bytes)", meta.raw_size_bytes],
+    ];
+    const rows = fields
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`)
+        .join("");
+    if (!rows) {
+        alert("メタデータは保存済みですが表示できるフィールドがありません。");
+        return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+        <div class="confirm-box" style="max-width:520px;text-align:left">
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">トラックメタデータ</div>
+            <table class="edit-meta-table">${rows}</table>
+            <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
+                <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-close">閉じる</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    await new Promise((resolve) => {
+        const close = () => {
+            overlay.classList.add("hidden");
+            setTimeout(() => overlay.remove(), 200);
+            resolve();
+        };
+        overlay.querySelector("#meta-modal-close").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) close();
+        });
+    });
+}
     if (!meta || typeof meta !== "object") return;
     const fields = [
         ["タイトル", meta.title],
@@ -377,6 +455,64 @@ async function offerToApplyAudioDuration(editType, parentId, trackId, fileHash, 
     if (!ok) return;
     await saveTrackField(parentId, trackId, "duration", formatted, editType);
     await reloadFn(parentId);
+}
+
+async function showExtractedMetadataModal(editType, parentId, trackId, meta, reloadFn) {
+    if (!meta || typeof meta !== "object") return;
+    const fields = [
+        ["タイトル", meta.title],
+        ["アーティスト", meta.artist],
+        ["アルバム", meta.album],
+        ["アルバムアーティスト", meta.album_artist],
+        ["作曲者", meta.composer],
+        ["ジャンル", meta.genre],
+        ["年", meta.year],
+        ["トラック番号", meta.track_number],
+        ["ディスク番号", meta.disc_number],
+        ["出版社", meta.publisher],
+        ["レーベル", meta.label],
+    ];
+    const rows = fields
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`)
+        .join("");
+    if (!rows) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+        <div class="confirm-box" style="max-width:520px;text-align:left">
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">抽出したメタデータ</div>
+            <table class="edit-meta-table">${rows}</table>
+            <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
+                <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-skip">閉じる</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">${meta.title ? "タイトルを反映" : "閉じる"}</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    await new Promise((resolve) => {
+        const close = () => {
+            overlay.classList.add("hidden");
+            setTimeout(() => overlay.remove(), 200);
+            resolve();
+        };
+        overlay.querySelector("#meta-modal-skip").addEventListener("click", close);
+        const applyBtn = overlay.querySelector("#meta-modal-apply-title");
+        if (meta.title) {
+            applyBtn.addEventListener("click", async () => {
+                await saveTrackField(parentId, trackId, "title", meta.title, editType);
+                close();
+                await reloadFn(parentId);
+            });
+        } else {
+            applyBtn.style.display = "none";
+        }
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) close();
+        });
+    });
 }
 
 async function deleteTrackAudio(editType, parentId, trackId) {
