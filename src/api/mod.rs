@@ -7,7 +7,11 @@ pub mod series;
 pub mod settings;
 pub mod tracks;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
+
+const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
+const AUDIO_MAX_BYTES: usize = 100 * 1024 * 1024;
 
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
@@ -26,7 +30,9 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route(
             "/books/{id}/cover",
-            post(books::upload_cover).delete(books::delete_cover),
+            post(books::upload_cover)
+                .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
+                .delete(books::delete_cover),
         )
         .route("/authors", get(books::list_authors))
         .route("/authors", post(books::create_author))
@@ -64,16 +70,25 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route(
             "/books/{id}/tracks/{track_id}/audio",
-            post(tracks::upload_track_audio).delete(tracks::delete_track_audio),
+            post(tracks::upload_track_audio)
+                .layer(DefaultBodyLimit::max(AUDIO_MAX_BYTES))
+                .delete(tracks::delete_track_audio),
         )
         .route("/cds", get(cds::list_cds).post(cds::cd_register))
         .route("/cds/{id}", put(cds::update_cd).delete(cds::delete_cd))
-        .route("/cds/{id}/cover", post(cds::upload_cd_cover).delete(cds::delete_cd_cover))
+        .route(
+            "/cds/{id}/cover",
+            post(cds::upload_cd_cover)
+                .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
+                .delete(cds::delete_cd_cover),
+        )
         .route("/cds/{id}/tracks", get(cds::list_cd_tracks).post(cds::add_cd_track))
         .route("/cds/{id}/tracks/{tid}", put(cds::update_cd_track).delete(cds::delete_cd_track))
         .route(
             "/cds/{id}/tracks/{tid}/audio",
-            post(cds::upload_cd_track_audio).delete(cds::delete_cd_track_audio),
+            post(cds::upload_cd_track_audio)
+                .layer(DefaultBodyLimit::max(AUDIO_MAX_BYTES))
+                .delete(cds::delete_cd_track_audio),
         )
         .route(
             "/cds/{id}/authors/{author_id}",
