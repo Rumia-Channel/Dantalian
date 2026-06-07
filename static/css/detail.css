@@ -732,8 +732,14 @@
 .edit-track-num {
     color: var(--color-text-dim);
     font-variant-numeric: tabular-nums;
-    min-width: 1.5rem;
+    min-width: 2.5rem;
     text-align: right;
+}
+
+.edit-disc-count {
+    color: var(--color-text-dim);
+    font-size: 0.8rem;
+    margin-left: 0.3rem;
 }
 
 .edit-track-title-text {

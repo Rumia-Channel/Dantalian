@@ -23,7 +23,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         const discTracks = discGroups[d].sort((a, b) => a.track_number - b.track_number);
         if (discKeys.length > 1) {
             html += `<div class="detail-tracks-disc" style="display:flex;justify-content:space-between;align-items:center">
-                <span>Disc ${d}</span>
+                <span>Disc ${d} <span class="edit-disc-count">(${discTracks.length} トラック)</span></span>
                 <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${d},'${editType}')">+ トラック追加</button>
             </div>`;
         }
@@ -32,9 +32,12 @@ function renderTracksHtml(tracks, editType, parentId) {
             const isLast = idx === discTracks.length - 1;
             const discId = parseInt(d, 10);
             const hasAudio = t.file_hash ? ' has-audio' : '';
+            const numLabel = discKeys.length > 1
+                ? `${d}-${String(t.track_number).padStart(2, "0")}`
+                : String(t.track_number).padStart(2, "0");
             return `
-                <div class="edit-track-row" data-track-id="${t.id}">
-                    <span class="edit-track-num">${String(t.track_number).padStart(2, "0")}</span>
+                <div class="edit-track-row" data-track-id="${t.id}" data-disc-number="${discId}">
+                    <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
                     <input type="text" class="edit-track-title-input" value="${escapeAttr(t.title)}" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'title',this.value,'${editType}')">
                     <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
                     <div class="edit-track-audio">
@@ -54,7 +57,7 @@ function renderTracksHtml(tracks, editType, parentId) {
                             : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
                                    <span class="material-icons" aria-hidden="true">upload</span>
                                    音声
-                                   <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                   <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
                                </label>`}
                     </div>
                     <div class="edit-track-reorder">
@@ -68,7 +71,9 @@ function renderTracksHtml(tracks, editType, parentId) {
 
     if (discKeys.length === 1) {
         const dVal = discKeys[0];
-        html += `<div style="margin-top:0.4rem">
+        const discCount = discGroups[dVal].length;
+        html += `<div style="margin-top:0.4rem;display:flex;justify-content:space-between;align-items:center">
+            <span class="edit-disc-count">Disc ${dVal} / ${discCount} トラック</span>
             <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${dVal},'${editType}')">+ トラック追加</button>
         </div>`;
     }
@@ -133,8 +138,10 @@ async function addTrackToDisc(parentId, discNumber, editType) {
     const title = prompt("トラック名を入力:");
     if (!title || !title.trim()) return;
 
-    const existing = [...document.querySelectorAll("#edit-tracks-list .edit-track-row")];
-    const nextNum = existing.length + 1;
+    const inDisc = [...document.querySelectorAll(
+        `#edit-tracks-list .edit-track-row[data-disc-number="${discNumber}"]`
+    )];
+    const nextNum = inDisc.length + 1;
 
     try {
         const res = await fetch(`/api/cds/${parentId}/tracks`, {

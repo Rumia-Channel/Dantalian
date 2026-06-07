@@ -171,13 +171,18 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         }
         const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
         for (const d of discKeys) {
-            const discTracks = discGroups[d];
-            const discLabel = discKeys.length > 1 ? `<div class="detail-tracks-disc">Disc ${d}</div>` : "";
+            const discTracks = discGroups[d].slice().sort((a, b) => a.track_number - b.track_number);
+            const numLabel = (n) => discKeys.length > 1
+                ? `${d}-${String(n).padStart(2, "0")}`
+                : String(n).padStart(2, "0");
+            const discLabel = discKeys.length > 1
+                ? `<div class="detail-tracks-disc">Disc ${d} <span class="detail-tracks-disc-count">(${discTracks.length} トラック)</span></div>`
+                : "";
             tracksHtml += `<div class="detail-tracks">${discLabel}
                 <div class="detail-tracks-list">
                     ${discTracks.map((t) => `
                         <div class="detail-track-item${hasAudio && t.file_hash ? ' detail-track-has-audio' : ''}">
-                            <span class="detail-track-num">${String(t.track_number).padStart(2, "0")}</span>
+                            <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
                             ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
@@ -369,13 +374,18 @@ function renderCdDetail(cd, currentSeries, tracks) {
         }
         const discKeys = Object.keys(discGroups).sort((a, b) => a - b);
         for (const d of discKeys) {
-            const discTracks = discGroups[d];
-            const discLabel = discKeys.length > 1 ? `<div class="detail-tracks-disc">Disc ${d}</div>` : "";
+            const discTracks = discGroups[d].slice().sort((a, b) => a.track_number - b.track_number);
+            const numLabel = (n) => discKeys.length > 1
+                ? `${d}-${String(n).padStart(2, "0")}`
+                : String(n).padStart(2, "0");
+            const discLabel = discKeys.length > 1
+                ? `<div class="detail-tracks-disc">Disc ${d} <span class="detail-tracks-disc-count">(${discTracks.length} トラック)</span></div>`
+                : "";
             tracksHtml += `<div class="detail-tracks">${discLabel}
                 <div class="detail-tracks-list">
                     ${discTracks.map((t) => `
                         <div class="detail-track-item${hasAudio && t.file_hash ? ' detail-track-has-audio' : ''}">
-                            <span class="detail-track-num">${String(t.track_number).padStart(2, "0")}</span>
+                            <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
                             ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
