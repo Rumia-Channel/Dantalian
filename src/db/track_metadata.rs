@@ -1,4 +1,6 @@
 use super::Db;
+use crate::db_models::BookAuthor;
+use crate::db_models::TrackMetadataResponse;
 use crate::external::audio_meta::TrackMetadata;
 use rusqlite::params;
 
@@ -124,7 +126,7 @@ impl Db {
     pub fn get_track_metadata_with_cd_inheritance(
         &self,
         track_id: i64,
-    ) -> Result<Option<TrackMetadata>, rusqlite::Error> {
+    ) -> Result<Option<TrackMetadataResponse>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let cd_id: Option<i64> = conn
             .query_row(
@@ -135,8 +137,7 @@ impl Db {
             .ok();
 
         let mut stmt = conn.prepare(
-            "SELECT title, artist, album, album_artist, track_number, track_total,
-                    disc_number, disc_total, year, genre, composer, publisher, label,
+            "SELECT title, track_number, track_total, disc_number, disc_total,
                     encoder, comment, lyrics, cover_mime, cover_data,
                     replay_gain_track_gain_db, replay_gain_track_peak,
                     replay_gain_album_gain_db, replay_gain_album_peak,
@@ -145,71 +146,101 @@ impl Db {
         )?;
         let mut rows = stmt.query(params![track_id])?;
         let track_row = rows.next()?;
-        let mut meta = match track_row {
-            Some(r) => TrackMetadata {
+        let mut resp = match track_row {
+            Some(r) => TrackMetadataResponse {
+                track_id,
                 title: r.get(0)?,
-                artist: r.get(1)?,
-                album: r.get(2)?,
-                album_artist: r.get(3)?,
-                track_number: r.get(4)?,
-                track_total: r.get(5)?,
-                disc_number: r.get(6)?,
-                disc_total: r.get(7)?,
-                year: r.get(8)?,
-                genre: r.get(9)?,
-                composer: r.get(10)?,
-                publisher: r.get(11)?,
-                label: r.get(12)?,
-                encoder: r.get(13)?,
-                comment: r.get(14)?,
-                lyrics: r.get(15)?,
-                cover_mime: r.get(16)?,
-                cover_data: r.get(17)?,
-                replay_gain_track_gain_db: r.get(18)?,
-                replay_gain_track_peak: r.get(19)?,
-                replay_gain_album_gain_db: r.get(20)?,
-                replay_gain_album_peak: r.get(21)?,
-                file_type: r.get(22)?,
-                raw_size_bytes: r.get(23)?,
+                track_number: r.get(1)?,
+                track_total: r.get(2)?,
+                disc_number: r.get(3)?,
+                disc_total: r.get(4)?,
+                comment: None,
+                encoder: r.get(5)?,
+                lyrics: r.get(6)?,
+                cover_mime: r.get(7)?,
+                cover_data: r.get(8)?,
+                replay_gain_track_gain_db: r.get(9)?,
+                replay_gain_track_peak: r.get(10)?,
+                replay_gain_album_gain_db: r.get(11)?,
+                replay_gain_album_peak: r.get(12)?,
+                file_type: r.get(13)?,
+                raw_size_bytes: r.get(14)?,
+                ..Default::default()
             },
-            None => return Ok(None),
+            None => {
+                return Ok(Some(TrackMetadataResponse {
+                    track_id,
+                    ..Default::default()
+                }));
+            }
         };
 
         if let Some(cd_id) = cd_id {
             let mut cstmt = conn.prepare(
-                "SELECT title, artist, album_artist, publisher, label
-                 FROM cds WHERE id = ?1",
+                "SELECT title, publisher, label FROM cds WHERE id = ?1",
             )?;
             let mut crows = cstmt.query(params![cd_id])?;
             if let Some(cr) = crows.next()? {
-                if meta.album.is_none() { meta.album = cr.get(0)?; }
-                if meta.artist.is_none() { meta.artist = cr.get(1)?; }
-                if meta.album_artist.is_none() { meta.album_artist = cr.get(2)?; }
-                if meta.publisher.is_none() { meta.publisher = cr.get(3)?; }
-                if meta.label.is_none() { meta.label = cr.get(4)?; }
+                if resp.album.is_none() { resp.album = cr.get(0)?; }
+                if resp.publisher.is_none() { resp.publisher = cr.get(1)?; }
+                if resp.label.is_none() { resp.label = cr.get(2)?; }
             }
 
             let mut mstmt = conn.prepare(
-                "SELECT artist, album_artist, year, genre, composer, isrc,
+                "SELECT year, genre, composer, isrc,
                         cover_mime, cover_data,
                         replay_gain_album_gain_db, replay_gain_album_peak
                  FROM cd_metadata WHERE cd_id = ?1",
             )?;
             let mut mrows = mstmt.query(params![cd_id])?;
             if let Some(mr) = mrows.next()? {
-                if meta.artist.is_none() { meta.artist = mr.get(0)?; }
-                if meta.album_artist.is_none() { meta.album_artist = mr.get(1)?; }
-                if meta.year.is_none() { meta.year = mr.get(2)?; }
-                if meta.genre.is_none() { meta.genre = mr.get(3)?; }
-                if meta.composer.is_none() { meta.composer = mr.get(4)?; }
-                if meta.cover_mime.is_none() { meta.cover_mime = mr.get(5)?; }
-                if meta.cover_data.is_none() { meta.cover_data = mr.get(6)?; }
-                if meta.replay_gain_album_gain_db.is_none() { meta.replay_gain_album_gain_db = mr.get(7)?; }
-                if meta.replay_gain_album_peak.is_none() { meta.replay_gain_album_peak = mr.get(8)?; }
+                if resp.year.is_none() { resp.year = mr.get(0)?; }
+                if resp.genre.is_none() { resp.genre = mr.get(1)?; }
+                if resp.composer.is_none() { resp.composer = mr.get(2)?; }
+                if resp.cover_mime.is_none() { resp.cover_mime = mr.get(4)?; }
+                if resp.cover_data.is_none() { resp.cover_data = mr.get(5)?; }
+                if resp.replay_gain_album_gain_db.is_none() { resp.replay_gain_album_gain_db = mr.get(6)?; }
+                if resp.replay_gain_album_peak.is_none() { resp.replay_gain_album_peak = mr.get(7)?; }
             }
+
+            let mut astmt = conn.prepare(
+                "SELECT a.id, a.name, a.transcription, a.ndl_id, ca.sort_order
+                 FROM cd_authors ca
+                 JOIN authors a ON a.id = ca.author_id
+                 WHERE ca.cd_id = ?1
+                 ORDER BY ca.sort_order ASC, a.id ASC",
+            )?;
+            let arows = astmt.query_map(params![cd_id], |row| {
+                Ok(BookAuthor {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    transcription: row.get(2)?,
+                    ndl_id: row.get(3)?,
+                    sort_order: row.get(4)?,
+                })
+            })?;
+            resp.album_artists = arows.filter_map(|r| r.ok()).collect();
         }
 
-        Ok(Some(meta))
+        let mut tstmt = conn.prepare(
+            "SELECT a.id, a.name, a.transcription, a.ndl_id, ta.sort_order
+             FROM track_authors ta
+             JOIN authors a ON a.id = ta.author_id
+             WHERE ta.track_id = ?1
+             ORDER BY ta.sort_order ASC, a.id ASC",
+        )?;
+        let trows = tstmt.query_map(params![track_id], |row| {
+            Ok(BookAuthor {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                transcription: row.get(2)?,
+                ndl_id: row.get(3)?,
+                sort_order: row.get(4)?,
+            })
+        })?;
+        resp.artists = trows.filter_map(|r| r.ok()).collect();
+
+        Ok(Some(resp))
     }
 
     pub fn delete_track_metadata(&self, track_id: i64) -> Result<(), rusqlite::Error> {

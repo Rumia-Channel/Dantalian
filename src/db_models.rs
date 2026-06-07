@@ -286,8 +286,6 @@ pub struct CdWithTracks {
 #[serde(rename_all = "snake_case")]
 pub struct CdMetadata {
     pub cd_id: i64,
-    pub artist: Option<String>,
-    pub album_artist: Option<String>,
     pub year: Option<i64>,
     pub genre: Option<String>,
     pub composer: Option<String>,
@@ -300,4 +298,44 @@ pub struct CdMetadata {
 
     pub replay_gain_album_gain_db: Option<f64>,
     pub replay_gain_album_peak: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TrackMetadataResponse {
+    pub track_id: i64,
+
+    pub title: Option<String>,
+    pub track_number: Option<i64>,
+    pub track_total: Option<i64>,
+    pub disc_number: Option<i64>,
+    pub disc_total: Option<i64>,
+    pub comment: Option<String>,
+    pub encoder: Option<String>,
+    pub lyrics: Option<String>,
+
+    pub album: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+
+    pub year: Option<i64>,
+    pub genre: Option<String>,
+    pub composer: Option<String>,
+    pub isrc: Option<String>,
+
+    pub file_type: Option<String>,
+    pub raw_size_bytes: Option<i64>,
+
+    pub replay_gain_track_gain_db: Option<f64>,
+    pub replay_gain_track_peak: Option<f64>,
+    pub replay_gain_album_gain_db: Option<f64>,
+    pub replay_gain_album_peak: Option<f64>,
+
+    #[serde(skip)]
+    pub cover_mime: Option<String>,
+    #[serde(skip)]
+    pub cover_data: Option<Vec<u8>>,
+
+    pub artists: Vec<BookAuthor>,
+    pub album_artists: Vec<BookAuthor>,
 }

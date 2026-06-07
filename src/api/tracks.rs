@@ -18,13 +18,17 @@ pub async fn list_tracks(
 pub async fn get_book_track_metadata(
     State(state): State<crate::AppState>,
     Path((_book_id, track_id)): Path<(i64, i64)>,
-) -> Result<Json<Option<crate::external::audio_meta::TrackMetadata>>, axum::http::StatusCode> {
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let db = state.db.clone();
-    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata(track_id))
+    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata_with_cd_inheritance(track_id))
         .await
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(meta))
+    let json = serde_json::to_value(&meta).map_err(|e| {
+        tracing::error!(track_id, "book track_metadata serialize failed: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(json))
 }
 
 pub async fn put_book_track_metadata(
@@ -36,17 +40,46 @@ pub async fn put_book_track_metadata(
     let db = state.db.clone();
     let join_result =
         tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta)).await;
-    match join_result {
-        Ok(Ok(())) => Ok(Json("ok".into())),
-        Ok(Err(e)) => {
-            tracing::error!(track_id, "book track_metadata upsert failed: {}", e);
-            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+    if let Err(e) = join_result.as_ref() {
+        tracing::error!(track_id, "book track_metadata task failed: {}", e);
+        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    if let Err(e) = join_result.as_ref().unwrap().as_ref() {
+        tracing::error!(track_id, "book track_metadata upsert failed: {}", e);
+        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    if let Some(artists_v) = body.get("artists") {
+        let names: Vec<String> = if let Some(arr) = artists_v.as_array() {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let db = state.db.clone();
+        let assign = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+            if names.is_empty() {
+                db.replace_track_authors(track_id, &[])?;
+            } else {
+                let ids = db.ensure_authors_for_names(&names)?;
+                db.replace_track_authors(track_id, &ids)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = assign.as_ref() {
+            tracing::error!(track_id, "book track authors assign task failed: {}", e);
+            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
         }
-        Err(e) => {
-            tracing::error!(track_id, "book track_metadata task failed: {}", e);
-            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        if let Err(e) = assign.as_ref().unwrap().as_ref() {
+            tracing::error!(track_id, "book track authors assign failed: {}", e);
+            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
+
+    Ok(Json("ok".into()))
 }
 
 pub async fn update_track(

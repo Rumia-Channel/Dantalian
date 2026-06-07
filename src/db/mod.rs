@@ -8,6 +8,7 @@ pub mod schema;
 pub mod series;
 pub mod settings;
 pub mod tracks;
+pub mod track_authors;
 pub mod track_metadata;
 pub mod track_metadata_search;
 

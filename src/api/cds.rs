@@ -410,17 +410,46 @@ pub async fn put_cd_track_metadata(
     let db = state.db.clone();
     let join_result =
         tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta)).await;
-    match join_result {
-        Ok(Ok(())) => Ok(Json("ok".into())),
-        Ok(Err(e)) => {
-            tracing::error!(track_id, "track_metadata upsert failed: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+    if let Err(e) = join_result.as_ref() {
+        tracing::error!(track_id, "track_metadata task failed: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    if let Err(e) = join_result.as_ref().unwrap().as_ref() {
+        tracing::error!(track_id, "track_metadata upsert failed: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    if let Some(artists_v) = body.get("artists") {
+        let names: Vec<String> = if let Some(arr) = artists_v.as_array() {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let db = state.db.clone();
+        let assign = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+            if names.is_empty() {
+                db.replace_track_authors(track_id, &[])?;
+            } else {
+                let ids = db.ensure_authors_for_names(&names)?;
+                db.replace_track_authors(track_id, &ids)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = assign.as_ref() {
+            tracing::error!(track_id, "track authors assign task failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-        Err(e) => {
-            tracing::error!(track_id, "track_metadata task failed: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        if let Err(e) = assign.as_ref().unwrap().as_ref() {
+            tracing::error!(track_id, "track authors assign failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
+
+    Ok(Json("ok".into()))
 }
 
 pub async fn get_cd_metadata(
@@ -653,6 +682,23 @@ async fn extract_and_save_metadata(
         tracing::warn!(cd_id, "CD metadata save task failed: {}", e);
     } else if let Err(e) = cd_save.as_ref().unwrap().as_ref() {
         tracing::warn!(cd_id, "CD metadata upsert failed: {}", e);
+    }
+
+    if let Some(artist_str) = extracted.artist.clone() {
+        let names = crate::external::audio_meta::split_artist_names(&artist_str);
+        if !names.is_empty() {
+            let db = state.db.clone();
+            let _ = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+                if let Ok(existing) = db.list_track_authors(track_id) {
+                    if existing.is_empty() {
+                        let ids = db.ensure_authors_for_names(&names)?;
+                        db.replace_track_authors(track_id, &ids)?;
+                    }
+                }
+                Ok(())
+            })
+            .await;
+        }
     }
 
     serde_json::to_value(&extracted).ok()

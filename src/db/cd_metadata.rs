@@ -13,15 +13,12 @@ impl Db {
         conn.execute(
             r#"
             INSERT INTO cd_metadata (
-                cd_id, artist, album_artist,
-                year, genre, composer, isrc,
+                cd_id, year, genre, composer, isrc,
                 cover_mime, cover_data,
                 replay_gain_album_gain_db, replay_gain_album_peak,
                 updated_at
-            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11, CURRENT_TIMESTAMP)
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9, CURRENT_TIMESTAMP)
             ON CONFLICT(cd_id) DO UPDATE SET
-                artist=excluded.artist,
-                album_artist=excluded.album_artist,
                 year=excluded.year,
                 genre=excluded.genre,
                 composer=excluded.composer,
@@ -34,8 +31,6 @@ impl Db {
             "#,
             params![
                 cd_id,
-                m.artist,
-                m.album_artist,
                 m.year,
                 m.genre,
                 m.composer,
@@ -52,7 +47,7 @@ impl Db {
     pub fn get_cd_metadata(&self, cd_id: i64) -> Result<Option<CdMetadata>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT artist, album_artist, year, genre, composer, isrc,
+            "SELECT year, genre, composer, isrc,
                     cover_mime, cover_data,
                     replay_gain_album_gain_db, replay_gain_album_peak
              FROM cd_metadata WHERE cd_id = ?1",
@@ -61,16 +56,14 @@ impl Db {
         let Some(row) = rows.next()? else { return Ok(None) };
         Ok(Some(CdMetadata {
             cd_id,
-            artist: row.get(0)?,
-            album_artist: row.get(1)?,
-            year: row.get(2)?,
-            genre: row.get(3)?,
-            composer: row.get(4)?,
-            isrc: row.get(5)?,
-            cover_mime: row.get(6)?,
-            cover_data: row.get(7)?,
-            replay_gain_album_gain_db: row.get(8)?,
-            replay_gain_album_peak: row.get(9)?,
+            year: row.get(0)?,
+            genre: row.get(1)?,
+            composer: row.get(2)?,
+            isrc: row.get(3)?,
+            cover_mime: row.get(4)?,
+            cover_data: row.get(5)?,
+            replay_gain_album_gain_db: row.get(6)?,
+            replay_gain_album_peak: row.get(7)?,
         }))
     }
 

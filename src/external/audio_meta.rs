@@ -43,8 +43,6 @@ impl TrackMetadata {
     pub fn into_cd_metadata(self, cd_id: i64) -> CdMetadata {
         CdMetadata {
             cd_id,
-            artist: self.artist,
-            album_artist: self.album_artist,
             year: self.year,
             genre: self.genre,
             composer: self.composer,
@@ -70,8 +68,6 @@ impl CdMetadata {
         }
         Self {
             cd_id,
-            artist: opt_str(body, "artist"),
-            album_artist: opt_str(body, "album_artist"),
             year: opt_i64(body, "year"),
             genre: opt_str(body, "genre"),
             composer: opt_str(body, "composer"),
@@ -226,4 +222,40 @@ fn parse_gain_db(s: Option<&str>) -> Option<f64> {
 
 fn parse_double(s: Option<&str>) -> Option<f64> {
     s.and_then(|v| v.trim().parse::<f64>().ok())
+}
+
+pub fn split_artist_names(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for token in raw.split(|c: char| {
+        matches!(c, ',' | ';' | '/') || c == '&' || c == '\n'
+    }) {
+        let cleaned = token
+            .trim()
+            .trim_start_matches("feat.")
+            .trim_start_matches("feat")
+            .trim_start_matches("Feat.")
+            .trim_start_matches("Feat")
+            .trim_start_matches("ft.")
+            .trim_start_matches("FT.")
+            .trim_start_matches("ft")
+            .trim_start_matches("FT")
+            .trim_start_matches("with")
+            .trim_start_matches("With")
+            .trim_start_matches("vs.")
+            .trim_start_matches("VS.")
+            .trim_start_matches("vs")
+            .trim_start_matches("VS")
+            .trim()
+            .to_string();
+        if !cleaned.is_empty() && !out.iter().any(|x| x == &cleaned) {
+            out.push(cleaned);
+        }
+    }
+    if out.is_empty() {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            out.push(trimmed.to_string());
+        }
+    }
+    out
 }
