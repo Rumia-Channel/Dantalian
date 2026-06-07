@@ -1,0 +1,135 @@
+use lofty::file::FileType;
+use lofty::prelude::TaggedFileExt;
+use lofty::tag::{Accessor, ItemKey, Tag, TagType};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TrackMetadata {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub track_number: Option<i64>,
+    pub track_total: Option<i64>,
+    pub disc_number: Option<i64>,
+    pub disc_total: Option<i64>,
+    pub year: Option<i64>,
+    pub genre: Option<String>,
+    pub composer: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub encoder: Option<String>,
+    pub comment: Option<String>,
+    pub lyrics: Option<String>,
+
+    #[serde(skip)]
+    pub cover_mime: Option<String>,
+    #[serde(skip)]
+    pub cover_data: Option<Vec<u8>>,
+
+    pub replay_gain_track_gain_db: Option<f64>,
+    pub replay_gain_track_peak: Option<f64>,
+    pub replay_gain_album_gain_db: Option<f64>,
+    pub replay_gain_album_peak: Option<f64>,
+
+    pub file_type: Option<String>,
+    pub raw_size_bytes: Option<i64>,
+}
+
+pub fn extract(path: &std::path::Path) -> Result<TrackMetadata, lofty::error::LoftyError> {
+    let raw_size_bytes = std::fs::metadata(path).ok().map(|m| m.len() as i64);
+
+    let tagged = lofty::read_from_path(path)?;
+    let file_type = Some(format!("{:?}", tagged.file_type()));
+
+    let mut meta = match tagged.file_type() {
+        FileType::Mpeg | FileType::Mp4 | FileType::Wav | FileType::Aiff => {
+            extract_universal(tagged.primary_tag())
+        }
+        FileType::Flac | FileType::Vorbis | FileType::Speex => {
+            extract_vorbis_like(tagged.primary_tag())
+        }
+        FileType::Opus => extract_vorbis_like(tagged.primary_tag()),
+        FileType::Aac => extract_universal(tagged.tag(TagType::Id3v2)),
+        FileType::Ape => extract_universal(tagged.primary_tag()),
+        FileType::Mpc | FileType::WavPack => extract_universal(tagged.primary_tag()),
+        _ => extract_universal(tagged.primary_tag()),
+    };
+
+    if let Some(pic) = tagged.primary_tag().and_then(|t| t.pictures().first()) {
+        if let Some(mime) = pic.mime_type() {
+            meta.cover_mime = Some(mime.as_str().to_string());
+        }
+        meta.cover_data = Some(pic.data().to_vec());
+    }
+
+    meta.file_type = file_type;
+    meta.raw_size_bytes = raw_size_bytes;
+    Ok(meta)
+}
+
+fn extract_universal(tag: Option<&Tag>) -> TrackMetadata {
+    let mut m = TrackMetadata::default();
+    let Some(tag) = tag else { return m };
+
+    m.title = cow_to_string(tag.title());
+    m.artist = cow_to_string(tag.artist());
+    m.album = cow_to_string(tag.album());
+    m.album_artist = tag.get_string(ItemKey::AlbumArtist).map(String::from);
+    m.genre = cow_to_string(tag.genre());
+    m.composer = tag.get_string(ItemKey::Composer).map(String::from);
+    m.publisher = tag.get_string(ItemKey::Publisher).map(String::from);
+    m.label = tag.get_string(ItemKey::Label).map(String::from);
+    m.encoder = tag.get_string(ItemKey::EncodedBy).map(String::from);
+    m.comment = cow_to_string(tag.comment());
+    m.lyrics = tag.get_string(ItemKey::Lyrics).map(String::from);
+
+    if let Some(t) = tag.track() {
+        m.track_number = Some(t as i64);
+    }
+    if let Some(t) = tag.track_total() {
+        m.track_total = Some(t as i64);
+    }
+    if let Some(d) = tag.disk() {
+        m.disc_number = Some(d as i64);
+    }
+    if let Some(d) = tag.disk_total() {
+        m.disc_total = Some(d as i64);
+    }
+    if let Some(ts) = tag.date() {
+        m.year = Some(ts.year as i64);
+    } else if let Some(y) = tag.get_string(ItemKey::Year) {
+        if let Ok(n) = y.trim().chars().take(4).collect::<String>().parse::<i64>() {
+            m.year = Some(n);
+        }
+    }
+    m
+}
+
+fn extract_vorbis_like(tag: Option<&Tag>) -> TrackMetadata {
+    let mut m = extract_universal(tag);
+    let Some(tag) = tag else { return m };
+
+    m.replay_gain_track_gain_db =
+        parse_gain_db(tag.get_string(ItemKey::ReplayGainTrackGain));
+    m.replay_gain_track_peak = parse_double(tag.get_string(ItemKey::ReplayGainTrackPeak));
+    m.replay_gain_album_gain_db =
+        parse_gain_db(tag.get_string(ItemKey::ReplayGainAlbumGain));
+    m.replay_gain_album_peak = parse_double(tag.get_string(ItemKey::ReplayGainAlbumPeak));
+    m
+}
+
+fn cow_to_string(v: Option<std::borrow::Cow<'_, str>>) -> Option<String> {
+    v.map(|s| s.into_owned())
+}
+
+fn parse_gain_db(s: Option<&str>) -> Option<f64> {
+    s.and_then(|v| {
+        let trimmed = v.trim().trim_end_matches(" dB").trim();
+        trimmed.parse::<f64>().ok()
+    })
+}
+
+fn parse_double(s: Option<&str>) -> Option<f64> {
+    s.and_then(|v| v.trim().parse::<f64>().ok())
+}
