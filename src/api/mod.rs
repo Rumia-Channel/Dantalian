@@ -3,6 +3,7 @@ pub mod borrowers;
 pub mod cds;
 pub mod copies;
 pub mod grand_series;
+pub mod media_sync;
 pub mod series;
 pub mod settings;
 pub mod tracks;
@@ -122,4 +123,5 @@ pub fn routes() -> axum::Router<crate::AppState> {
                 .delete(cds::remove_cd_author)
                 .put(cds::update_cd_author_order),
         )
+        .route("/media-sync/run", post(media_sync::run_media_sync))
 }

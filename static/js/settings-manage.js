@@ -15,6 +15,16 @@ const SETTINGS_KEYS = [
     "backup.s3_access_key",
     "backup.s3_secret_key",
     "backup.s3_prefix",
+    "media_sync.enabled",
+    "media_sync.types",
+    "media_sync.schedule_time",
+    "media_sync.schedule_tz",
+    "media_sync.s3_endpoint",
+    "media_sync.s3_region",
+    "media_sync.s3_bucket",
+    "media_sync.s3_access_key",
+    "media_sync.s3_secret_key",
+    "media_sync.s3_prefix",
 ];
 
 const TZ_OPTIONS = [
@@ -83,8 +93,20 @@ async function renderSettingsForm() {
     const retention = getValue(settings, "backup.retention", "7");
     const destType = getValue(settings, "backup.dest_type", "local");
 
+    const msEnabled = getValue(settings, "media_sync.enabled", "false");
+    const msTypesStr = getValue(settings, "media_sync.types", "epubs,audio");
+    const msScheduleTime = getValue(settings, "media_sync.schedule_time", "");
+    const msScheduleTz = getValue(settings, "media_sync.schedule_tz", "Asia/Tokyo");
+    const msTypesSet = new Set(
+        msTypesStr.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    );
+
     const tzOptionsHtml = TZ_OPTIONS.map((tz) =>
         `<option value="${escapeAttr(tz.value)}" ${tz.value === scheduleTz ? "selected" : ""}>${escapeHtml(tz.label)}</option>`
+    ).join("");
+
+    const msTzOptionsHtml = TZ_OPTIONS.map((tz) =>
+        `<option value="${escapeAttr(tz.value)}" ${tz.value === msScheduleTz ? "selected" : ""}>${escapeHtml(tz.label)}</option>`
     ).join("");
 
     const destOptions = [
@@ -137,10 +159,77 @@ async function renderSettingsForm() {
             </div>
 
             <div id="dest-fields">${renderDestFields(destType, settings)}</div>
+        </div>
+
+        <div class="settings-form-section">
+            <h3>メディア同期 (S3 upload-only)</h3>
 
             <div class="settings-form-row">
-                <button class="btn btn-primary" onclick="submitSettings()">保存</button>
+                <label class="settings-form-label">
+                    <input type="checkbox" id="s-media-sync-enabled" ${msEnabled === "true" ? "checked" : ""}>
+                    メディア同期を有効にする
+                </label>
             </div>
+
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline">対象メディア</label>
+                <div class="settings-form-group">
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-images" ${msTypesSet.has("images") ? "checked" : ""}> 画像 (cover)</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-audio" ${msTypesSet.has("audio") ? "checked" : ""}> 音声 (audio)</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-epubs" ${msTypesSet.has("epubs") ? "checked" : ""}> EPUB</label>
+                </div>
+            </div>
+
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline">定時同期時刻</label>
+                <div class="settings-form-group">
+                    <input type="time" id="s-media-sync-schedule-time" value="${escapeAttr(msScheduleTime)}" class="form-input" style="width:auto">
+                    <span class="settings-label">at</span>
+                    <select id="s-media-sync-schedule-tz" class="form-input" style="width:auto">${msTzOptionsHtml}</select>
+                </div>
+            </div>
+
+            <div class="settings-form-row">
+                <span class="settings-label" style="font-size:0.78rem;color:var(--color-text-dim)">
+                    S3 設定が空の場合はバックアップの S3 設定を流用します。
+                </span>
+            </div>
+
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-endpoint">エンドポイント</label>
+                <input type="url" id="s-media-sync-s3-endpoint" value="${escapeAttr(getValue(settings, "media_sync.s3_endpoint", ""))}" class="form-input" placeholder="https://s3.example.com (未入力ならバックアップの S3 設定を使用)">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-region">リージョン</label>
+                <input type="text" id="s-media-sync-s3-region" value="${escapeAttr(getValue(settings, "media_sync.s3_region", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定 / us-east-1">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-bucket">バケット</label>
+                <input type="text" id="s-media-sync-s3-bucket" value="${escapeAttr(getValue(settings, "media_sync.s3_bucket", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定を使用">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-access-key">アクセスキー</label>
+                <input type="text" id="s-media-sync-s3-access-key" value="${escapeAttr(getValue(settings, "media_sync.s3_access_key", ""))}" class="form-input">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-secret-key">シークレットキー</label>
+                <input type="password" id="s-media-sync-s3-secret-key" value="${escapeAttr(getValue(settings, "media_sync.s3_secret_key", ""))}" class="form-input">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-media-sync-s3-prefix">プレフィックス</label>
+                <input type="text" id="s-media-sync-s3-prefix" value="${escapeAttr(getValue(settings, "media_sync.s3_prefix", ""))}" class="form-input" placeholder="dantalian (未入力ならバックアップの S3 設定を使用)">
+            </div>
+
+            <div class="settings-form-row">
+                <button class="btn btn-secondary" type="button" onclick="runMediaSyncNow()">今すぐ同期</button>
+                <span class="settings-label" style="font-size:0.75rem;color:var(--color-text-dim)">※ upload-only。S3 側の削除は行いません。</span>
+            </div>
+
+            <div id="media-sync-result"></div>
+        </div>
+
+        <div class="settings-form-row">
+            <button class="btn btn-primary" onclick="submitSettings()">保存</button>
         </div>
     `;
 
@@ -232,5 +321,67 @@ async function submitSettings() {
             break;
     }
 
+    settings["media_sync.enabled"] = document.getElementById("s-media-sync-enabled").checked ? "true" : "false";
+    const msTypes = [];
+    if (document.getElementById("s-media-sync-type-images").checked) msTypes.push("images");
+    if (document.getElementById("s-media-sync-type-audio").checked) msTypes.push("audio");
+    if (document.getElementById("s-media-sync-type-epubs").checked) msTypes.push("epubs");
+    if (msTypes.length === 0) {
+        alert("メディア同期の「対象メディア」が1つも選択されていません。最低1つをチェックしてください。");
+        return;
+    }
+    settings["media_sync.types"] = msTypes.join(",");
+    settings["media_sync.schedule_time"] = document.getElementById("s-media-sync-schedule-time").value;
+    settings["media_sync.schedule_tz"] = document.getElementById("s-media-sync-schedule-tz").value;
+    settings["media_sync.s3_endpoint"] = document.getElementById("s-media-sync-s3-endpoint").value;
+    settings["media_sync.s3_region"] = document.getElementById("s-media-sync-s3-region").value;
+    settings["media_sync.s3_bucket"] = document.getElementById("s-media-sync-s3-bucket").value;
+    settings["media_sync.s3_access_key"] = document.getElementById("s-media-sync-s3-access-key").value;
+    settings["media_sync.s3_secret_key"] = document.getElementById("s-media-sync-s3-secret-key").value;
+    settings["media_sync.s3_prefix"] = document.getElementById("s-media-sync-s3-prefix").value;
+
     await saveSettings(settings);
+}
+
+function renderMediaSyncResult(container, data, isError) {
+    if (!data) {
+        container.innerHTML = "";
+        return;
+    }
+    const lines = [];
+    if (isError) {
+        lines.push(`<div style="color:var(--color-danger,#c0392b);font-size:0.85rem;">エラー: ${escapeHtml(data.error || "unknown")}</div>`);
+    } else {
+        const failed = data.failed ?? 0;
+        const ok = data.ok === true && failed === 0;
+        const headerColor = ok ? "var(--color-text-secondary)" : "var(--color-danger,#c0392b)";
+        const headerText = ok ? "同期完了" : (failed > 0 ? `同期失敗 (${failed}件)` : "同期に失敗しました");
+        const message = data.message ? ` — ${escapeHtml(String(data.message))}` : "";
+        lines.push(`<div style="font-size:0.85rem;color:${headerColor};">${headerText}: scanned=${data.scanned ?? 0}, uploaded=${data.uploaded ?? 0}, skipped=${data.skipped ?? 0}, failed=${failed}, missing_local=${data.missing_local ?? 0}${message}</div>`);
+        if (data.per_type && typeof data.per_type === "object") {
+            const rows = Object.keys(data.per_type).map((k) => {
+                const r = data.per_type[k];
+                return `<li>${escapeHtml(k)}: scanned=${r.scanned ?? 0}, uploaded=${r.uploaded ?? 0}, skipped=${r.skipped ?? 0}, failed=${r.failed ?? 0}, missing_local=${r.missing_local ?? 0}</li>`;
+            }).join("");
+            if (rows) lines.push(`<ul style="margin:0.25rem 0 0 1rem;font-size:0.8rem;">${rows}</ul>`);
+        }
+    }
+    container.innerHTML = lines.join("");
+}
+
+async function runMediaSyncNow() {
+    const container = document.getElementById("media-sync-result");
+    if (container) container.innerHTML = '<div style="font-size:0.85rem;color:var(--color-text-dim);">同期中...</div>';
+    try {
+        const res = await fetch("/api/media-sync/run", { method: "POST" });
+        let body = null;
+        try { body = await res.json(); } catch {}
+        if (!res.ok) {
+            renderMediaSyncResult(container, body || { error: `HTTP ${res.status}` }, true);
+            return;
+        }
+        renderMediaSyncResult(container, body, false);
+    } catch (e) {
+        renderMediaSyncResult(container, { error: String(e) }, true);
+    }
 }

@@ -3,6 +3,7 @@ mod backup;
 mod db;
 mod db_models;
 mod external;
+mod media_sync;
 
 use axum::{Router, response::Html};
 use db::Db;
@@ -92,6 +93,32 @@ async fn main() {
         );
         backup::start_scheduled_backup(db.clone());
     }
+
+    let media_sync_config = media_sync::MediaSyncConfig::load(
+        &db,
+        images_dir.clone(),
+        audio_dir.clone(),
+        epubs_dir.clone(),
+    );
+    if media_sync_config.enabled {
+        tracing::info!(
+            "Media sync enabled (types: {})",
+            media_sync_config
+                .types
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    }
+    // Always start the worker; it idles when media_sync.enabled is false and
+    // re-reads configuration on every iteration.
+    media_sync::start_scheduled_media_sync(
+        db.clone(),
+        images_dir.clone(),
+        audio_dir.clone(),
+        epubs_dir.clone(),
+    );
 
     let client = Client::builder()
         .cookie_store(true)
