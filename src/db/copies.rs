@@ -99,7 +99,9 @@ impl Db {
             |row| row.get::<_, i64>(0),
         )?;
         if existing > 0 {
-            return Err(rusqlite::Error::from(rusqlite::types::FromSqlError::InvalidType));
+            return Err(rusqlite::Error::from(
+                rusqlite::types::FromSqlError::InvalidType,
+            ));
         }
         conn.execute(
             "INSERT INTO lending_history (copy_id, borrower_id, lent_date, due_date, notes) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -117,10 +119,7 @@ impl Db {
         Ok(affected > 0)
     }
 
-    pub fn get_lending_history(
-        &self,
-        copy_id: i64,
-    ) -> Result<Vec<LendingRecord>, rusqlite::Error> {
+    pub fn get_lending_history(&self, copy_id: i64) -> Result<Vec<LendingRecord>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT lh.id, lh.copy_id, lh.borrower_id, b.name, lh.lent_date, lh.due_date, lh.returned_date, lh.notes

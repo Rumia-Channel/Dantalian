@@ -12,6 +12,7 @@ use axum::routing::{delete, get, post, put};
 
 const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
 const AUDIO_MAX_BYTES: usize = 100 * 1024 * 1024;
+const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
 
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
@@ -33,6 +34,12 @@ pub fn routes() -> axum::Router<crate::AppState> {
             post(books::upload_cover)
                 .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
                 .delete(books::delete_cover),
+        )
+        .route(
+            "/books/{id}/epub",
+            post(books::upload_epub)
+                .layer(DefaultBodyLimit::max(EPUB_MAX_BYTES))
+                .delete(books::delete_epub),
         )
         .route("/authors", get(books::list_authors))
         .route("/authors", post(books::create_author))
@@ -62,12 +69,12 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/borrowers", post(borrowers::create))
         .route("/borrowers/{id}", put(borrowers::update))
         .route("/borrowers/{id}", delete(borrowers::delete))
-        .route("/settings", get(settings::get_settings).put(settings::update_settings))
-        .route("/books/{id}/tracks", get(tracks::list_tracks))
         .route(
-            "/books/{id}/tracks/{track_id}",
-            put(tracks::update_track),
+            "/settings",
+            get(settings::get_settings).put(settings::update_settings),
         )
+        .route("/books/{id}/tracks", get(tracks::list_tracks))
+        .route("/books/{id}/tracks/{track_id}", put(tracks::update_track))
         .route(
             "/books/{id}/tracks/{track_id}/metadata",
             get(tracks::get_book_track_metadata).put(tracks::put_book_track_metadata),
@@ -95,8 +102,14 @@ pub fn routes() -> axum::Router<crate::AppState> {
                 .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
                 .delete(cds::delete_cd_cover),
         )
-        .route("/cds/{id}/tracks", get(cds::list_cd_tracks).post(cds::add_cd_track))
-        .route("/cds/{id}/tracks/{tid}", put(cds::update_cd_track).delete(cds::delete_cd_track))
+        .route(
+            "/cds/{id}/tracks",
+            get(cds::list_cd_tracks).post(cds::add_cd_track),
+        )
+        .route(
+            "/cds/{id}/tracks/{tid}",
+            put(cds::update_cd_track).delete(cds::delete_cd_track),
+        )
         .route(
             "/cds/{id}/tracks/{tid}/audio",
             post(cds::upload_cd_track_audio)

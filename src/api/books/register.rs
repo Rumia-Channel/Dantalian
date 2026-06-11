@@ -1,11 +1,7 @@
 use crate::AppState;
 use crate::db::{BookAuthor, BookWithAuthors, NewBook};
 use crate::external;
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 
 use super::ApiError;
@@ -67,12 +63,12 @@ pub async fn register(
             external::lookup_isbn(&state.client_ipv4, &isbn, &state.images_dir).await
         }
     }
-        .map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({"error": e})),
-            )
-        })?;
+    .map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": e})),
+        )
+    })?;
 
     let Some(mut new_book) = new_book else {
         return Err((
@@ -136,7 +132,12 @@ pub async fn register(
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
-            book: BookWithAuthors { book, authors, copies_count: 0, lent_count: 0 },
+            book: BookWithAuthors {
+                book,
+                authors,
+                copies_count: 0,
+                lent_count: 0,
+            },
             source,
         }),
     ))
@@ -183,12 +184,12 @@ pub async fn isdn_register(
             external::lookup_isdn(&state.client_ipv4, &isdn).await
         }
     }
-        .map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({"error": e})),
-            )
-        })?;
+    .map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": e})),
+        )
+    })?;
 
     let Some(new_book) = new_book else {
         return Err((
@@ -455,7 +456,12 @@ pub async fn manual_register(
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {
-            book: BookWithAuthors { book, authors, copies_count: 0, lent_count: 0 },
+            book: BookWithAuthors {
+                book,
+                authors,
+                copies_count: 0,
+                lent_count: 0,
+            },
             source: "manual".to_string(),
         }),
     ))

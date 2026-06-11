@@ -188,7 +188,10 @@ pub async fn lookup_cd(
         .map_err(|e| format_reqwest_error("HTTP error", e))?;
 
     if !detail_resp.status().is_success() {
-        return Err(format!("MusicBrainz detail returned {}", detail_resp.status()));
+        return Err(format!(
+            "MusicBrainz detail returned {}",
+            detail_resp.status()
+        ));
     }
 
     let detail_body = detail_resp
@@ -199,17 +202,14 @@ pub async fn lookup_cd(
     let release: MbRelease =
         serde_json::from_slice(&detail_body).map_err(|e| format!("JSON parse: {}", e))?;
 
-    let artist = release
-        .artist_credit
-        .as_ref()
-        .and_then(|ac| {
-            let names: Vec<&str> = ac.iter().map(|c| c.name.as_str()).collect();
-            if names.is_empty() {
-                None
-            } else {
-                Some(names.join(" & "))
-            }
-        });
+    let artist = release.artist_credit.as_ref().and_then(|ac| {
+        let names: Vec<&str> = ac.iter().map(|c| c.name.as_str()).collect();
+        if names.is_empty() {
+            None
+        } else {
+            Some(names.join(" & "))
+        }
+    });
 
     let (label, catalog_number) = release
         .label_info
@@ -223,11 +223,7 @@ pub async fn lookup_cd(
         })
         .unwrap_or((None, None));
 
-    let disc_count = release
-        .media
-        .as_ref()
-        .map(|m| m.len() as i64)
-        .or(Some(1));
+    let disc_count = release.media.as_ref().map(|m| m.len() as i64).or(Some(1));
 
     let mut tracks = Vec::new();
     if let Some(media_list) = &release.media {
@@ -247,12 +243,10 @@ pub async fn lookup_cd(
     }
 
     let cover_url = match &release.cover_art_archive {
-        Some(archive) if archive.front == Some(true) => {
-            Some(format!(
-                "https://coverartarchive.org/release/{}/front",
-                mbid
-            ))
-        }
+        Some(archive) if archive.front == Some(true) => Some(format!(
+            "https://coverartarchive.org/release/{}/front",
+            mbid
+        )),
         _ => None,
     };
 

@@ -35,8 +35,7 @@ pub enum BackupDestination {
 
 impl BackupConfig {
     pub fn load(db: &Db) -> Self {
-        let enabled = Self::setting(db, "backup.enabled", "BACKUP_ENABLED", "false")
-            .to_lowercase();
+        let enabled = Self::setting(db, "backup.enabled", "BACKUP_ENABLED", "false").to_lowercase();
         let enabled = enabled == "true" || enabled == "1";
 
         let schedule_time = Self::setting(db, "backup.schedule_time", "BACKUP_SCHEDULE_TIME", "")
@@ -63,18 +62,8 @@ impl BackupConfig {
                 endpoint: Self::setting(db, "backup.s3_endpoint", "BACKUP_S3_ENDPOINT", ""),
                 region: Self::setting(db, "backup.s3_region", "BACKUP_S3_REGION", "us-east-1"),
                 bucket: Self::setting(db, "backup.s3_bucket", "BACKUP_S3_BUCKET", ""),
-                access_key: Self::setting(
-                    db,
-                    "backup.s3_access_key",
-                    "BACKUP_S3_ACCESS_KEY",
-                    "",
-                ),
-                secret_key: Self::setting(
-                    db,
-                    "backup.s3_secret_key",
-                    "BACKUP_S3_SECRET_KEY",
-                    "",
-                ),
+                access_key: Self::setting(db, "backup.s3_access_key", "BACKUP_S3_ACCESS_KEY", ""),
+                secret_key: Self::setting(db, "backup.s3_secret_key", "BACKUP_S3_SECRET_KEY", ""),
                 prefix: Self::setting(db, "backup.s3_prefix", "BACKUP_S3_PREFIX", ""),
             },
             _ => {
@@ -229,9 +218,7 @@ async fn upload_webdav(
         }
     };
 
-    let client = reqwest::Client::builder()
-        .build()
-        .unwrap_or_default();
+    let client = reqwest::Client::builder().build().unwrap_or_default();
 
     match client
         .put(&url)
@@ -272,13 +259,8 @@ async fn upload_s3(
         format!("{}/{}", prefix, filename)
     };
 
-    let credentials = aws_sdk_s3::config::Credentials::new(
-        access_key,
-        secret_key,
-        None,
-        None,
-        "dantalian",
-    );
+    let credentials =
+        aws_sdk_s3::config::Credentials::new(access_key, secret_key, None, None, "dantalian");
 
     let s3_config = aws_sdk_s3::Config::builder()
         .endpoint_url(endpoint)
@@ -397,9 +379,7 @@ async fn cleanup_webdav(
     sorted.sort();
 
     let to_delete = sorted.len().saturating_sub(retention);
-    let client = reqwest::Client::builder()
-        .build()
-        .unwrap_or_default();
+    let client = reqwest::Client::builder().build().unwrap_or_default();
 
     for name in sorted.iter().take(to_delete) {
         if name == current_filename {
@@ -448,9 +428,7 @@ async fn list_webdav_backups(base_url: &str, username: &str, password: &str) -> 
   </D:prop>
 </D:propfind>"#;
 
-    let client = reqwest::Client::builder()
-        .build()
-        .unwrap_or_default();
+    let client = reqwest::Client::builder().build().unwrap_or_default();
 
     let resp = match client
         .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), &url)
@@ -490,10 +468,7 @@ async fn list_webdav_backups(base_url: &str, username: &str, password: &str) -> 
         let href = &rest[..end];
         let parts: Vec<&str> = href.rsplitn(2, '/').collect();
         let filename = parts[0];
-        if filename.starts_with("dantalian-")
-            && filename.ends_with(".db")
-            && !filename.is_empty()
-        {
+        if filename.starts_with("dantalian-") && filename.ends_with(".db") && !filename.is_empty() {
             backups.push(filename.to_string());
         }
     }
@@ -511,13 +486,8 @@ async fn cleanup_s3(
     retention: usize,
     current_filename: &str,
 ) {
-    let credentials = aws_sdk_s3::config::Credentials::new(
-        access_key,
-        secret_key,
-        None,
-        None,
-        "dantalian",
-    );
+    let credentials =
+        aws_sdk_s3::config::Credentials::new(access_key, secret_key, None, None, "dantalian");
 
     let s3_config = aws_sdk_s3::Config::builder()
         .endpoint_url(endpoint)
@@ -573,13 +543,7 @@ async fn cleanup_s3(
         if key.ends_with(current_filename) {
             continue;
         }
-        match client
-            .delete_object()
-            .bucket(bucket)
-            .key(key)
-            .send()
-            .await
-        {
+        match client.delete_object().bucket(bucket).key(key).send().await {
             Ok(_) => {
                 tracing::info!("Deleted old backup from S3: {}/{}", bucket, key);
             }

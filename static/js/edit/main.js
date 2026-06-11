@@ -267,6 +267,30 @@ function renderBookEdit(id) {
                     </div>
                 </div>
             </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">EPUB</h3>
+                <div class="edit-epub-info" id="edit-epub-info">
+                    ${
+                        book.epub_file_hash
+                            ? `<div class="edit-epub-current">
+                                <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
+                                <a class="btn btn-xs btn-ghost" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
+                            </div>`
+                            : `<div class="edit-epub-empty">EPUB 未登録</div>`
+                    }
+                </div>
+                <div class="edit-epub-actions">
+                    <label class="btn btn-xs btn-outline-success edit-epub-upload-label">
+                        ${book.epub_file_hash ? "差し替え" : "アップロード"}
+                        <input type="file" id="edit-epub-input" accept=".epub,application/epub+zip" hidden>
+                    </label>
+                    ${
+                        book.epub_file_hash
+                            ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteEpub(${book.id})">削除</button>`
+                            : ""
+                    }
+                </div>
+            </div>
             <div class="edit-section" id="edit-tracks-section">
                 <h3 class="edit-section-title">トラック</h3>
                 <div id="edit-tracks-list"><p class="series-empty">読み込み中...</p></div>
@@ -434,7 +458,7 @@ async function saveBook(e, bookId) {
 }
 
 document.getElementById("edit-content").addEventListener("change", async (e) => {
-    if (e.target.id !== "edit-cover-input") return;
+    if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -444,6 +468,35 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const params = new URLSearchParams(window.location.search);
     const bid = parseInt(params.get("book"), 10);
     const cid = parseInt(params.get("cd"), 10);
+
+    if (e.target.id === "edit-epub-input") {
+        if (!bid) {
+            e.target.value = "";
+            if (coverDisplay) coverDisplay.style.opacity = "1";
+            return;
+        }
+        const fd = new FormData();
+        fd.append("epub", file);
+        try {
+            const res = await fetch(`/api/books/${bid}/epub`, {
+                method: "POST",
+                body: fd,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error("EPUB upload failed:", res.status, err);
+                alert(`EPUBのアップロードに失敗しました (${res.status}): ${err.error || ""}`);
+            }
+            await loadBooks();
+            renderBookEdit(bid);
+        } catch (err) {
+            console.error("EPUB upload error:", err);
+            alert("EPUBのアップロード中に通信エラーが発生しました");
+        }
+        e.target.value = "";
+        if (coverDisplay) coverDisplay.style.opacity = "1";
+        return;
+    }
 
     const fd = new FormData();
     fd.append("cover", file);
@@ -493,6 +546,19 @@ async function deleteCover(bookId) {
 
     try {
         const res = await fetch(`/api/books/${bookId}/cover`, { method: "DELETE" });
+        if (res.ok) {
+            await loadBooks();
+            renderBookEdit(bookId);
+        }
+    } catch {}
+}
+
+async function deleteEpub(bookId) {
+    const ok = await showConfirm({ message: "EPUBを削除しますか？", okLabel: "削除" });
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/books/${bookId}/epub`, { method: "DELETE" });
         if (res.ok) {
             await loadBooks();
             renderBookEdit(bookId);

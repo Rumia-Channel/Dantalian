@@ -836,3 +836,74 @@
 .edit-track-file.has-audio {
     color: var(--color-success);
 }
+
+.detail-epub {
+    margin: 1rem 0 1.5rem 0;
+    padding: 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.5rem;
+}
+
+.detail-epub-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.detail-epub-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.detail-epub-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+
+.detail-epub-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-dim);
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.edit-epub-info {
+    margin-bottom: 0.5rem;
+}
+
+.edit-epub-current {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.edit-epub-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+
+.edit-epub-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-dim);
+    padding: 0.4rem 0;
+}
+
+.edit-epub-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.edit-epub-upload-label {
+    cursor: pointer;
+}

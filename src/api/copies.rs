@@ -50,17 +50,15 @@ pub async fn create_copy(
     Path(book_id): Path<i64>,
     Json(req): Json<CreateCopyRequest>,
 ) -> Result<(StatusCode, Json<crate::db::Copy>), ApiError> {
-    let copy_type = req.copy_type.clone().unwrap_or_else(|| "physical".to_string());
+    let copy_type = req
+        .copy_type
+        .clone()
+        .unwrap_or_else(|| "physical".to_string());
     let location = req.location.clone();
     let notes = req.notes.clone();
     let db = state.db.clone();
     let copy = tokio::task::spawn_blocking(move || {
-        db.insert_copy(
-            book_id,
-            &copy_type,
-            location.as_deref(),
-            notes.as_deref(),
-        )
+        db.insert_copy(book_id, &copy_type, location.as_deref(), notes.as_deref())
     })
     .await
     .map_err(|_| {
@@ -158,7 +156,13 @@ pub async fn lend_copy(
     let db = state.db.clone();
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     tokio::task::spawn_blocking(move || {
-        db.lend_copy(id, borrower_id, &today, due_date.as_deref(), notes.as_deref())
+        db.lend_copy(
+            id,
+            borrower_id,
+            &today,
+            due_date.as_deref(),
+            notes.as_deref(),
+        )
     })
     .await
     .map_err(|_| {

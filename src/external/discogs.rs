@@ -147,13 +147,14 @@ pub async fn lookup_cd_discogs(
         .await
         .map_err(|e| format!("Discogs detail JSON parse: {}", e))?;
 
-    let artist = release
-        .artists
-        .as_ref()
-        .and_then(|a| {
-            let names: Vec<&str> = a.iter().map(|x| x.name.as_str()).collect();
-            if names.is_empty() { None } else { Some(names.join(" & ")) }
-        });
+    let artist = release.artists.as_ref().and_then(|a| {
+        let names: Vec<&str> = a.iter().map(|x| x.name.as_str()).collect();
+        if names.is_empty() {
+            None
+        } else {
+            Some(names.join(" & "))
+        }
+    });
 
     let default_disc_count: Option<i64> = release.formats.as_ref().and_then(|fmts| {
         fmts.iter().find_map(|f| {

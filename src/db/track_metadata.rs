@@ -82,7 +82,10 @@ impl Db {
         Ok(())
     }
 
-    pub fn get_track_metadata(&self, track_id: i64) -> Result<Option<TrackMetadata>, rusqlite::Error> {
+    pub fn get_track_metadata(
+        &self,
+        track_id: i64,
+    ) -> Result<Option<TrackMetadata>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT title, artist, album, album_artist, track_number, track_total,
@@ -94,7 +97,9 @@ impl Db {
              FROM track_metadata WHERE track_id = ?1",
         )?;
         let mut rows = stmt.query(params![track_id])?;
-        let Some(row) = rows.next()? else { return Ok(None) };
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
         Ok(Some(TrackMetadata {
             title: row.get(0)?,
             artist: row.get(1)?,
@@ -176,14 +181,19 @@ impl Db {
         };
 
         if let Some(cd_id) = cd_id {
-            let mut cstmt = conn.prepare(
-                "SELECT title, publisher, label FROM cds WHERE id = ?1",
-            )?;
+            let mut cstmt =
+                conn.prepare("SELECT title, publisher, label FROM cds WHERE id = ?1")?;
             let mut crows = cstmt.query(params![cd_id])?;
             if let Some(cr) = crows.next()? {
-                if resp.album.is_none() { resp.album = cr.get(0)?; }
-                if resp.publisher.is_none() { resp.publisher = cr.get(1)?; }
-                if resp.label.is_none() { resp.label = cr.get(2)?; }
+                if resp.album.is_none() {
+                    resp.album = cr.get(0)?;
+                }
+                if resp.publisher.is_none() {
+                    resp.publisher = cr.get(1)?;
+                }
+                if resp.label.is_none() {
+                    resp.label = cr.get(2)?;
+                }
             }
 
             let mut mstmt = conn.prepare(
@@ -194,13 +204,27 @@ impl Db {
             )?;
             let mut mrows = mstmt.query(params![cd_id])?;
             if let Some(mr) = mrows.next()? {
-                if resp.year.is_none() { resp.year = mr.get(0)?; }
-                if resp.genre.is_none() { resp.genre = mr.get(1)?; }
-                if resp.composer.is_none() { resp.composer = mr.get(2)?; }
-                if resp.cover_mime.is_none() { resp.cover_mime = mr.get(4)?; }
-                if resp.cover_data.is_none() { resp.cover_data = mr.get(5)?; }
-                if resp.replay_gain_album_gain_db.is_none() { resp.replay_gain_album_gain_db = mr.get(6)?; }
-                if resp.replay_gain_album_peak.is_none() { resp.replay_gain_album_peak = mr.get(7)?; }
+                if resp.year.is_none() {
+                    resp.year = mr.get(0)?;
+                }
+                if resp.genre.is_none() {
+                    resp.genre = mr.get(1)?;
+                }
+                if resp.composer.is_none() {
+                    resp.composer = mr.get(2)?;
+                }
+                if resp.cover_mime.is_none() {
+                    resp.cover_mime = mr.get(4)?;
+                }
+                if resp.cover_data.is_none() {
+                    resp.cover_data = mr.get(5)?;
+                }
+                if resp.replay_gain_album_gain_db.is_none() {
+                    resp.replay_gain_album_gain_db = mr.get(6)?;
+                }
+                if resp.replay_gain_album_peak.is_none() {
+                    resp.replay_gain_album_peak = mr.get(7)?;
+                }
             }
 
             let mut astmt = conn.prepare(

@@ -3,11 +3,7 @@ use crate::db_models::BookAuthor;
 use rusqlite::params;
 
 impl Db {
-    pub fn add_track_author(
-        &self,
-        track_id: i64,
-        author_id: i64,
-    ) -> Result<(), rusqlite::Error> {
+    pub fn add_track_author(&self, track_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let sort_order: i64 = conn
             .query_row(
@@ -50,10 +46,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn list_track_authors(
-        &self,
-        track_id: i64,
-    ) -> Result<Vec<BookAuthor>, rusqlite::Error> {
+    pub fn list_track_authors(&self, track_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT a.id, a.name, a.transcription, a.ndl_id, ta.sort_order
@@ -99,10 +92,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn ensure_authors_for_names(
-        &self,
-        names: &[String],
-    ) -> Result<Vec<i64>, rusqlite::Error> {
+    pub fn ensure_authors_for_names(&self, names: &[String]) -> Result<Vec<i64>, rusqlite::Error> {
         let mut conn = self.0.lock().unwrap();
         let tx = conn.transaction()?;
         let mut ids = Vec::with_capacity(names.len());
@@ -121,10 +111,7 @@ impl Db {
             let id = match existing {
                 Some(id) => id,
                 None => {
-                    tx.execute(
-                        "INSERT INTO authors (name) VALUES (?1)",
-                        params![trimmed],
-                    )?;
+                    tx.execute("INSERT INTO authors (name) VALUES (?1)", params![trimmed])?;
                     tx.last_insert_rowid()
                 }
             };

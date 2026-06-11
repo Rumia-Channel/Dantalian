@@ -47,6 +47,7 @@ pub struct AppState {
     pub client_ipv4: Client,
     pub images_dir: Arc<String>,
     pub audio_dir: Arc<String>,
+    pub epubs_dir: Arc<String>,
     pub discogs_token: String,
     pub musicbrainz_contact: String,
 }
@@ -72,18 +73,23 @@ async fn main() {
     let db_dir = format!("{}{}db", data_dir, std::path::MAIN_SEPARATOR);
     let images_dir = format!("{}{}images", data_dir, std::path::MAIN_SEPARATOR);
     let audio_dir = format!("{}{}audio", data_dir, std::path::MAIN_SEPARATOR);
+    let epubs_dir = format!("{}{}epubs", data_dir, std::path::MAIN_SEPARATOR);
     std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
     std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
     std::fs::create_dir_all(&audio_dir).expect("Failed to create audio directory");
+    std::fs::create_dir_all(&epubs_dir).expect("Failed to create epubs directory");
 
     let db_path = format!("{}{}dantalian.db", db_dir, std::path::MAIN_SEPARATOR);
-    tracing::info!(%data_dir, %db_path, %images_dir, %audio_dir, "Data directories");
+    tracing::info!(%data_dir, %db_path, %images_dir, %audio_dir, %epubs_dir, "Data directories");
 
     let db = Db::new(&db_path).expect("Failed to initialize database");
 
     let backup_config = backup::BackupConfig::load(&db);
     if backup_config.enabled {
-        tracing::info!("Backup enabled (retention: {} files)", backup_config.retention);
+        tracing::info!(
+            "Backup enabled (retention: {} files)",
+            backup_config.retention
+        );
         backup::start_scheduled_backup(db.clone());
     }
 
@@ -115,6 +121,7 @@ async fn main() {
 
     let images_dir_arc = Arc::new(images_dir);
     let audio_dir_arc = Arc::new(audio_dir);
+    let epubs_dir_arc = Arc::new(epubs_dir);
 
     let state = AppState {
         db,
@@ -122,6 +129,7 @@ async fn main() {
         client_ipv4,
         images_dir: images_dir_arc.clone(),
         audio_dir: audio_dir_arc.clone(),
+        epubs_dir: epubs_dir_arc.clone(),
         discogs_token,
         musicbrainz_contact,
     };
@@ -141,6 +149,7 @@ async fn main() {
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .nest_service("/audio", ServeDir::new(audio_dir_arc.as_ref()))
+        .nest_service("/epubs", ServeDir::new(epubs_dir_arc.as_ref()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
         .with_state(state);
 

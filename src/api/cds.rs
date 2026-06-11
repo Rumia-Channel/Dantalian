@@ -37,20 +37,39 @@ pub async fn cd_register(
     State(state): State<AppState>,
     Json(req): Json<CdRegisterRequest>,
 ) -> Result<(StatusCode, Json<CdWithTracks>), ApiError> {
-    let is_manual = req.manual.unwrap_or(false) || req.title.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+    let is_manual = req.manual.unwrap_or(false)
+        || req
+            .title
+            .as_ref()
+            .map(|t| !t.trim().is_empty())
+            .unwrap_or(false);
 
     if is_manual {
         let title = req.title.ok_or_else(|| {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Title is required for manual registration"})))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Title is required for manual registration"})),
+            )
         })?;
-        let jan = req.jan.as_ref().map(|j| j.replace('-', "").replace(' ', "")).filter(|j| !j.is_empty());
+        let jan = req
+            .jan
+            .as_ref()
+            .map(|j| j.replace('-', "").replace(' ', ""))
+            .filter(|j| !j.is_empty());
 
         if let Some(ref j) = jan {
             if j.len() >= 8 {
                 if let Ok(Some(existing)) = state.db.find_by_cd_jan(j) {
                     let tracks = state.db.list_tracks_for_cd(existing.id).unwrap_or_default();
                     let authors = state.db.get_cd_authors(existing.id).unwrap_or_default();
-                    return Ok((StatusCode::OK, Json(CdWithTracks { cd: existing, tracks, authors })));
+                    return Ok((
+                        StatusCode::OK,
+                        Json(CdWithTracks {
+                            cd: existing,
+                            tracks,
+                            authors,
+                        }),
+                    ));
                 }
             }
         }
@@ -74,15 +93,29 @@ pub async fn cd_register(
         };
 
         let cd = state.db.insert_cd(&new_cd).map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
         })?;
 
         let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
         let authors = state.db.get_cd_authors(cd.id).unwrap_or_default();
-        return Ok((StatusCode::CREATED, Json(CdWithTracks { cd, tracks, authors })));
+        return Ok((
+            StatusCode::CREATED,
+            Json(CdWithTracks {
+                cd,
+                tracks,
+                authors,
+            }),
+        ));
     }
 
-    let jan = req.jan.unwrap_or_default().replace('-', "").replace(' ', "");
+    let jan = req
+        .jan
+        .unwrap_or_default()
+        .replace('-', "")
+        .replace(' ', "");
     if jan.len() < 8 || jan.len() > 14 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -103,12 +136,25 @@ pub async fn cd_register(
         ));
     }
 
-    let cd_info = match external::lookup_cd(&state.client, &jan, &state.images_dir, &state.musicbrainz_contact).await {
+    let cd_info = match external::lookup_cd(
+        &state.client,
+        &jan,
+        &state.images_dir,
+        &state.musicbrainz_contact,
+    )
+    .await
+    {
         ok @ Ok(_) => ok,
         Err(e) => {
             tracing::warn!("MusicBrainz lookup failed: {}. Retrying...", e);
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            external::lookup_cd(&state.client_ipv4, &jan, &state.images_dir, &state.musicbrainz_contact).await
+            external::lookup_cd(
+                &state.client_ipv4,
+                &jan,
+                &state.images_dir,
+                &state.musicbrainz_contact,
+            )
+            .await
         }
     };
 
@@ -152,21 +198,16 @@ pub async fn cd_register(
         }
     };
 
-    let amazon_cover = match external::lookup_amazon_cover_for_jan(
-        &state.client,
-        &jan,
-        &state.images_dir,
-    )
-    .await
-    {
-        Some(c) => Some(c),
-        None => {
-            tracing::warn!(jan = %jan, "Amazon cover not found, retrying with IPv4");
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            external::lookup_amazon_cover_for_jan(&state.client_ipv4, &jan, &state.images_dir)
-                .await
-        }
-    };
+    let amazon_cover =
+        match external::lookup_amazon_cover_for_jan(&state.client, &jan, &state.images_dir).await {
+            Some(c) => Some(c),
+            None => {
+                tracing::warn!(jan = %jan, "Amazon cover not found, retrying with IPv4");
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                external::lookup_amazon_cover_for_jan(&state.client_ipv4, &jan, &state.images_dir)
+                    .await
+            }
+        };
 
     let fallback_cover = match cd_info.cover_url.as_deref() {
         Some(url) if url.starts_with("http://") || url.starts_with("https://") => {
@@ -216,7 +257,11 @@ pub async fn cd_register(
     let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
     Ok((
         StatusCode::CREATED,
-        Json(CdWithTracks { cd, tracks, authors: vec![] }),
+        Json(CdWithTracks {
+            cd,
+            tracks,
+            authors: vec![],
+        }),
     ))
 }
 
@@ -230,7 +275,11 @@ pub async fn list_cds(
         for cd in cds {
             let tracks = db.list_tracks_for_cd(cd.id).unwrap_or_default();
             let authors = db.get_cd_authors(cd.id).unwrap_or_default();
-            result.push(CdWithTracks { cd, tracks, authors });
+            result.push(CdWithTracks {
+                cd,
+                tracks,
+                authors,
+            });
         }
         Ok::<_, rusqlite::Error>(result)
     })
@@ -255,12 +304,7 @@ pub async fn search_track_metadata(
     let db = state.db.clone();
     let limit = q.limit.unwrap_or(100).clamp(1, 1000);
     let result = tokio::task::spawn_blocking(move || {
-        db.search_tracks_by_metadata(
-            q.artist.as_deref(),
-            q.album.as_deref(),
-            q.year,
-            limit,
-        )
+        db.search_tracks_by_metadata(q.artist.as_deref(), q.album.as_deref(), q.year, limit)
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -272,16 +316,12 @@ pub async fn delete_cd(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
-    if state
-        .db
-        .delete_cd(id)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?
-    {
+    if state.db.delete_cd(id).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err((
@@ -320,17 +360,31 @@ pub async fn update_cd(
             )
         })?;
 
-    let jan = body["jan"].as_str().or(existing.jan.as_deref()).map(|s| s.to_string());
+    let jan = body["jan"]
+        .as_str()
+        .or(existing.jan.as_deref())
+        .map(|s| s.to_string());
     let artist = body["artist"].as_str().or(existing.artist.as_deref());
     let publisher = body["publisher"].as_str().or(existing.publisher.as_deref());
     let label = body["label"].as_str().or(existing.label.as_deref());
-    let catalog_number = body["catalog_number"].as_str().or(existing.catalog_number.as_deref());
-    let publish_date = body["publish_date"].as_str().or(existing.publish_date.as_deref());
-    let description = body["description"].as_str().or(existing.description.as_deref());
+    let catalog_number = body["catalog_number"]
+        .as_str()
+        .or(existing.catalog_number.as_deref());
+    let publish_date = body["publish_date"]
+        .as_str()
+        .or(existing.publish_date.as_deref());
+    let description = body["description"]
+        .as_str()
+        .or(existing.description.as_deref());
     let disc_count = body["disc_count"].as_i64().or(existing.disc_count);
-    let volume = body["volume"].as_str().or(existing.volume.as_deref()).map(|s| s.to_string());
+    let volume = body["volume"]
+        .as_str()
+        .or(existing.volume.as_deref())
+        .map(|s| s.to_string());
     let parent_book_id = body["parent_book_id"].as_i64().or(existing.parent_book_id);
-    let media_type = body["media_type"].as_str().or(existing.media_type.as_deref());
+    let media_type = body["media_type"]
+        .as_str()
+        .or(existing.media_type.as_deref());
     let series_id = body["series_id"].as_i64().or(existing.series_id);
 
     state
@@ -506,8 +560,14 @@ pub async fn update_cd_track(
     Path((_cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
-    let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let duration = body.get("duration").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let title = body
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let duration = body
+        .get("duration")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     if title.is_none() && duration.is_none() && body.get("disc_number").is_none() {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -520,14 +580,15 @@ pub async fn update_cd_track(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(disc) = body.get("disc_number").and_then(|v| v.as_i64()) {
-        let tn = body.get("track_number").and_then(|v| v.as_i64()).unwrap_or(1);
+        let tn = body
+            .get("track_number")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(1);
         let db2 = state.db.clone();
-        tokio::task::spawn_blocking(move || {
-            db2.update_track_position(track_id, disc, tn)
-        })
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        tokio::task::spawn_blocking(move || db2.update_track_position(track_id, disc, tn))
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
     Ok(Json("ok".into()))
@@ -584,13 +645,10 @@ pub async fn upload_cd_track_audio(
         .map_err(|_| StatusCode::BAD_REQUEST)?
     {
         let name = field.file_name().unwrap_or("unknown").to_string();
-        let data = field
-            .bytes()
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
 
-        let (saved_name, _ext) = external::save_uploaded_audio(&data, &name, &audio_dir)
-            .map_err(|e| {
+        let (saved_name, _ext) =
+            external::save_uploaded_audio(&data, &name, &audio_dir).map_err(|e| {
                 tracing::warn!(track_id, cd_id = _cd_id, "Audio save failed: {}", e);
                 StatusCode::BAD_REQUEST
             })?;
@@ -642,28 +700,30 @@ async fn extract_and_save_metadata(
     let path = std::path::PathBuf::from(state.audio_dir.as_str()).join(file_hash);
     let path_for_task = path.clone();
 
-    let extracted = match tokio::task::spawn_blocking(move || {
-        external::audio_meta::extract(&path_for_task)
-    })
-    .await
-    {
-        Ok(Ok(meta)) => meta,
-        Ok(Err(e)) => {
-            tracing::debug!(track_id, file_hash, "Audio metadata extraction failed: {}", e);
-            return None;
-        }
-        Err(e) => {
-            tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
-            return None;
-        }
-    };
+    let extracted =
+        match tokio::task::spawn_blocking(move || external::audio_meta::extract(&path_for_task))
+            .await
+        {
+            Ok(Ok(meta)) => meta,
+            Ok(Err(e)) => {
+                tracing::debug!(
+                    track_id,
+                    file_hash,
+                    "Audio metadata extraction failed: {}",
+                    e
+                );
+                return None;
+            }
+            Err(e) => {
+                tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
+                return None;
+            }
+        };
 
     let db = state.db.clone();
     let track_meta = extracted.clone();
-    let track_save = tokio::task::spawn_blocking(move || {
-        db.upsert_track_metadata(track_id, &track_meta)
-    })
-    .await;
+    let track_save =
+        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &track_meta)).await;
 
     if let Err(e) = track_save.as_ref() {
         tracing::warn!(track_id, "Track metadata save task failed: {}", e);
@@ -673,10 +733,7 @@ async fn extract_and_save_metadata(
 
     let db = state.db.clone();
     let cd_meta = extracted.clone().into_cd_metadata(cd_id);
-    let cd_save = tokio::task::spawn_blocking(move || {
-        db.upsert_cd_metadata(cd_id, &cd_meta)
-    })
-    .await;
+    let cd_save = tokio::task::spawn_blocking(move || db.upsert_cd_metadata(cd_id, &cd_meta)).await;
 
     if let Err(e) = cd_save.as_ref() {
         tracing::warn!(cd_id, "CD metadata save task failed: {}", e);
@@ -712,37 +769,39 @@ async fn extract_and_save_track_only(
     let path = std::path::PathBuf::from(state.audio_dir.as_str()).join(file_hash);
     let path_for_task = path.clone();
 
-    let extracted = match tokio::task::spawn_blocking(move || {
-        external::audio_meta::extract(&path_for_task)
-    })
-    .await
-    {
-        Ok(Ok(meta)) => meta,
-        Ok(Err(e)) => {
-            tracing::debug!(track_id, file_hash, "Audio metadata extraction failed: {}", e);
-            return None;
-        }
-        Err(e) => {
-            tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
-            return None;
-        }
-    };
+    let extracted =
+        match tokio::task::spawn_blocking(move || external::audio_meta::extract(&path_for_task))
+            .await
+        {
+            Ok(Ok(meta)) => meta,
+            Ok(Err(e)) => {
+                tracing::debug!(
+                    track_id,
+                    file_hash,
+                    "Audio metadata extraction failed: {}",
+                    e
+                );
+                return None;
+            }
+            Err(e) => {
+                tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
+                return None;
+            }
+        };
 
     let db = state.db.clone();
     let meta_clone = extracted.clone();
-    if tokio::task::spawn_blocking(move || {
-        db.upsert_track_metadata(track_id, &meta_clone)
-    })
-    .await
-    .map_err(|e| {
-        tracing::warn!(track_id, "Metadata save task failed: {}", e);
-    })
-    .and_then(|r| {
-        r.map_err(|e| {
-            tracing::warn!(track_id, "Metadata upsert failed: {}", e);
+    if tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta_clone))
+        .await
+        .map_err(|e| {
+            tracing::warn!(track_id, "Metadata save task failed: {}", e);
         })
-    })
-    .is_err()
+        .and_then(|r| {
+            r.map_err(|e| {
+                tracing::warn!(track_id, "Metadata upsert failed: {}", e);
+            })
+        })
+        .is_err()
     {
         return None;
     }

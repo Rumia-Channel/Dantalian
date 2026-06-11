@@ -1,5 +1,6 @@
 use axum::{
-    Json, extract::{Multipart, Path, State},
+    Json,
+    extract::{Multipart, Path, State},
 };
 use tokio::fs;
 
@@ -20,10 +21,11 @@ pub async fn get_book_track_metadata(
     Path((_book_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let db = state.db.clone();
-    let meta = tokio::task::spawn_blocking(move || db.get_track_metadata_with_cd_inheritance(track_id))
-        .await
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let meta =
+        tokio::task::spawn_blocking(move || db.get_track_metadata_with_cd_inheritance(track_id))
+            .await
+            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let json = serde_json::to_value(&meta).map_err(|e| {
         tracing::error!(track_id, "book track_metadata serialize failed: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
@@ -87,8 +89,14 @@ pub async fn update_track(
     Path((_book_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
-    let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let duration = body.get("duration").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let title = body
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let duration = body
+        .get("duration")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     if title.is_none() && duration.is_none() {
         return Err(axum::http::StatusCode::BAD_REQUEST);
     }
@@ -123,12 +131,11 @@ pub async fn upload_track_audio(
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-        let (saved_name, _ext) =
-            crate::external::save_uploaded_audio(&data, &name, &audio_dir)
-                .map_err(|e| {
-                    tracing::warn!(track_id, "Audio save failed: {}", e);
-                    axum::http::StatusCode::BAD_REQUEST
-                })?;
+        let (saved_name, _ext) = crate::external::save_uploaded_audio(&data, &name, &audio_dir)
+            .map_err(|e| {
+                tracing::warn!(track_id, "Audio save failed: {}", e);
+                axum::http::StatusCode::BAD_REQUEST
+            })?;
 
         file_hash = Some(saved_name);
         file_name = Some(name);
@@ -173,7 +180,12 @@ async fn extract_and_save_metadata(
     {
         Ok(Ok(meta)) => meta,
         Ok(Err(e)) => {
-            tracing::debug!(track_id, file_hash, "Audio metadata extraction failed: {}", e);
+            tracing::debug!(
+                track_id,
+                file_hash,
+                "Audio metadata extraction failed: {}",
+                e
+            );
             return None;
         }
         Err(e) => {
@@ -184,19 +196,17 @@ async fn extract_and_save_metadata(
 
     let db = state.db.clone();
     let meta_clone = extracted.clone();
-    if tokio::task::spawn_blocking(move || {
-        db.upsert_track_metadata(track_id, &meta_clone)
-    })
-    .await
-    .map_err(|e| {
-        tracing::warn!(track_id, "Metadata save task failed: {}", e);
-    })
-    .and_then(|r| {
-        r.map_err(|e| {
-            tracing::warn!(track_id, "Metadata upsert failed: {}", e);
+    if tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta_clone))
+        .await
+        .map_err(|e| {
+            tracing::warn!(track_id, "Metadata save task failed: {}", e);
         })
-    })
-    .is_err()
+        .and_then(|r| {
+            r.map_err(|e| {
+                tracing::warn!(track_id, "Metadata upsert failed: {}", e);
+            })
+        })
+        .is_err()
     {
         return None;
     }

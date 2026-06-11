@@ -76,7 +76,11 @@ impl CdMetadata {
             cover_data: body
                 .get("cover_data")
                 .and_then(|x| x.as_array())
-                .and_then(|arr| arr.iter().map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok())).collect::<Option<Vec<u8>>>()),
+                .and_then(|arr| {
+                    arr.iter()
+                        .map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok()))
+                        .collect::<Option<Vec<u8>>>()
+                }),
             replay_gain_album_gain_db: opt_f64(body, "replay_gain_album_gain_db"),
             replay_gain_album_peak: opt_f64(body, "replay_gain_album_peak"),
         }
@@ -115,7 +119,11 @@ impl TrackMetadata {
             cover_data: body
                 .get("cover_data")
                 .and_then(|x| x.as_array())
-                .and_then(|arr| arr.iter().map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok())).collect::<Option<Vec<u8>>>()),
+                .and_then(|arr| {
+                    arr.iter()
+                        .map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok()))
+                        .collect::<Option<Vec<u8>>>()
+                }),
             replay_gain_track_gain_db: opt_f64(body, "replay_gain_track_gain_db"),
             replay_gain_track_peak: opt_f64(body, "replay_gain_track_peak"),
             replay_gain_album_gain_db: opt_f64(body, "replay_gain_album_gain_db"),
@@ -200,11 +208,9 @@ fn extract_vorbis_like(tag: Option<&Tag>) -> TrackMetadata {
     let mut m = extract_universal(tag);
     let Some(tag) = tag else { return m };
 
-    m.replay_gain_track_gain_db =
-        parse_gain_db(tag.get_string(ItemKey::ReplayGainTrackGain));
+    m.replay_gain_track_gain_db = parse_gain_db(tag.get_string(ItemKey::ReplayGainTrackGain));
     m.replay_gain_track_peak = parse_double(tag.get_string(ItemKey::ReplayGainTrackPeak));
-    m.replay_gain_album_gain_db =
-        parse_gain_db(tag.get_string(ItemKey::ReplayGainAlbumGain));
+    m.replay_gain_album_gain_db = parse_gain_db(tag.get_string(ItemKey::ReplayGainAlbumGain));
     m.replay_gain_album_peak = parse_double(tag.get_string(ItemKey::ReplayGainAlbumPeak));
     m
 }
@@ -226,9 +232,7 @@ fn parse_double(s: Option<&str>) -> Option<f64> {
 
 pub fn split_artist_names(raw: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for token in raw.split(|c: char| {
-        matches!(c, ',' | ';' | '/') || c == '&' || c == '\n'
-    }) {
+    for token in raw.split(|c: char| matches!(c, ',' | ';' | '/') || c == '&' || c == '\n') {
         let cleaned = token
             .trim()
             .trim_start_matches("feat.")

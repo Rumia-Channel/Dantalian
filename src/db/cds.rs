@@ -42,9 +42,12 @@ impl Db {
                     return row;
                 }
             }
-            return Err(rusqlite::Error::ToSqlConversionFailure(
-                Box::new(std::io::Error::new(std::io::ErrorKind::Other, "INSERT was ignored but existing CD not found"))
-            ));
+            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "INSERT was ignored but existing CD not found",
+                ),
+            )));
         }
         let id = conn.last_insert_rowid();
         Ok(Cd {

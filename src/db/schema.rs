@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 6;
+const SCHEMA_VERSION: u32 = 7;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS books (
     artist TEXT,
     label TEXT,
     disc_count INTEGER,
+    epub_file_hash TEXT,
+    epub_file_name TEXT,
     created_at TEXT,
     updated_at TEXT
 );
@@ -390,13 +392,17 @@ CREATE INDEX IF NOT EXISTS idx_ta_track ON track_authors(track_id);
 CREATE INDEX IF NOT EXISTS idx_ta_author ON track_authors(author_id);
 "#;
 
+const MIGRATE_V6_TO_V7_SQL: &str = r#"
+ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
+ALTER TABLE books ADD COLUMN epub_file_name TEXT;
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
-        let current_version: u32 =
-            conn.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
+        let current_version: u32 = conn.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
 
         if current_version == 0 {
             conn.execute_batch(SCHEMA_SQL)?;
@@ -422,6 +428,9 @@ impl Db {
             }
             if current_version < 6 {
                 conn.execute_batch(MIGRATE_V5_TO_V6_SQL)?;
+            }
+            if current_version < 7 {
+                conn.execute_batch(MIGRATE_V6_TO_V7_SQL)?;
             }
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");

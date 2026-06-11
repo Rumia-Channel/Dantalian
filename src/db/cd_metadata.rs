@@ -3,11 +3,7 @@ use crate::db_models::CdMetadata;
 use rusqlite::params;
 
 impl Db {
-    pub fn upsert_cd_metadata(
-        &self,
-        cd_id: i64,
-        m: &CdMetadata,
-    ) -> Result<(), rusqlite::Error> {
+    pub fn upsert_cd_metadata(&self, cd_id: i64, m: &CdMetadata) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let cover_blob: Option<&[u8]> = m.cover_data.as_deref();
         conn.execute(
@@ -53,7 +49,9 @@ impl Db {
              FROM cd_metadata WHERE cd_id = ?1",
         )?;
         let mut rows = stmt.query(params![cd_id])?;
-        let Some(row) = rows.next()? else { return Ok(None) };
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
         Ok(Some(CdMetadata {
             cd_id,
             year: row.get(0)?,
@@ -69,10 +67,7 @@ impl Db {
 
     pub fn delete_cd_metadata(&self, cd_id: i64) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        conn.execute(
-            "DELETE FROM cd_metadata WHERE cd_id = ?1",
-            params![cd_id],
-        )?;
+        conn.execute("DELETE FROM cd_metadata WHERE cd_id = ?1", params![cd_id])?;
         Ok(())
     }
 }

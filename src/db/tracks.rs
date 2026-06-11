@@ -22,7 +22,11 @@ impl Db {
         })
     }
 
-    pub fn insert_track_for_cd(&self, cd_id: i64, track: &NewTrack) -> Result<Track, rusqlite::Error> {
+    pub fn insert_track_for_cd(
+        &self,
+        cd_id: i64,
+        track: &NewTrack,
+    ) -> Result<Track, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute(
             "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (NULL, ?1, ?2, ?3, ?4, ?5)",

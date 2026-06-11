@@ -17,13 +17,7 @@ pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
         return None;
     }
     let formats = [
-        "%Y-%m-%d",
-        "%Y-%m",
-        "%Y/%m/%d",
-        "%Y/%m",
-        "%Y.%m.%d",
-        "%Y.%m",
-        "%Y%m%d",
+        "%Y-%m-%d", "%Y-%m", "%Y/%m/%d", "%Y/%m", "%Y.%m.%d", "%Y.%m", "%Y%m%d",
     ];
     for fmt in formats {
         if let Ok(d) = chrono::NaiveDate::parse_from_str(s, fmt) {
@@ -43,8 +37,16 @@ pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
         if !(1900..=2999).contains(&y) {
             return None;
         }
-        let m: i32 = if digits.len() >= 6 { digits[4..6].parse().unwrap_or(1) } else { 1 };
-        let d: i32 = if digits.len() >= 8 { digits[6..8].parse().unwrap_or(1) } else { 1 };
+        let m: i32 = if digits.len() >= 6 {
+            digits[4..6].parse().unwrap_or(1)
+        } else {
+            1
+        };
+        let d: i32 = if digits.len() >= 8 {
+            digits[6..8].parse().unwrap_or(1)
+        } else {
+            1
+        };
         if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
             return None;
         }
@@ -54,6 +56,7 @@ pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
 }
 
 pub(crate) use self::save_uploaded_audio::save_uploaded_audio;
+pub(crate) use self::save_uploaded_epub::save_uploaded_epub;
 
 mod save_uploaded_audio {
     use base64::Engine;
@@ -78,7 +81,12 @@ mod save_uploaded_audio {
             .extension()
             .and_then(|s| s.to_str())
             .map(|s| s.to_ascii_lowercase())
-            .filter(|s| matches!(s.as_str(), "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "webm"))
+            .filter(|s| {
+                matches!(
+                    s.as_str(),
+                    "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "webm"
+                )
+            })
             .ok_or_else(|| format!("Unsupported audio extension: {}", original_name))?;
 
         let hash = Sha3_256::digest(bytes);
@@ -90,6 +98,55 @@ mod save_uploaded_audio {
 
         let save_path = std::path::Path::new(audio_dir).join(&save_name);
         std::fs::write(&save_path, bytes).map_err(|e| format!("Failed to save audio: {}", e))?;
+
+        Ok((save_name, ext.to_string()))
+    }
+}
+
+mod save_uploaded_epub {
+    use base64::Engine;
+    use sha3::{Digest, Sha3_256};
+
+    pub(crate) const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
+
+    pub(crate) fn save_uploaded_epub(
+        bytes: &[u8],
+        original_name: &str,
+        epubs_dir: &str,
+    ) -> Result<(String, String), String> {
+        if bytes.len() > EPUB_MAX_BYTES {
+            return Err(format!(
+                "EPUB too large: {} bytes (max {} MB)",
+                bytes.len(),
+                EPUB_MAX_BYTES / 1024 / 1024
+            ));
+        }
+
+        let ext = std::path::Path::new(original_name)
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase())
+            .filter(|s| s == "epub")
+            .ok_or_else(|| format!("Unsupported EPUB extension: {}", original_name))?;
+
+        // Light ZIP magic check: "PK\x03\x04" or "PK\x05\x06" (empty) or "PK\x07\x08" (spanned)
+        if bytes.len() < 4 || &bytes[0..2] != b"PK" {
+            return Err("EPUB file is not a valid ZIP archive".to_string());
+        }
+        let ok_signature = matches!(&bytes[2..4], [0x03, 0x04] | [0x05, 0x06] | [0x07, 0x08]);
+        if !ok_signature {
+            return Err("EPUB file is not a valid ZIP archive".to_string());
+        }
+
+        let hash = Sha3_256::digest(bytes);
+        let hash_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash);
+        let save_name = format!("{}.{}", hash_b64, ext);
+
+        std::fs::create_dir_all(epubs_dir)
+            .map_err(|e| format!("Failed to create epubs dir: {}", e))?;
+
+        let save_path = std::path::Path::new(epubs_dir).join(&save_name);
+        std::fs::write(&save_path, bytes).map_err(|e| format!("Failed to save EPUB: {}", e))?;
 
         Ok((save_name, ext.to_string()))
     }
@@ -161,4 +218,3 @@ pub(crate) async fn download_image(
 
     Ok(filename)
 }
-

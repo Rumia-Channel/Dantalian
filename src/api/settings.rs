@@ -1,9 +1,7 @@
 use axum::{Json, extract::State};
 use std::collections::HashMap;
 
-pub async fn get_settings(
-    State(state): State<crate::AppState>,
-) -> Json<HashMap<String, String>> {
+pub async fn get_settings(State(state): State<crate::AppState>) -> Json<HashMap<String, String>> {
     let settings = state.db.get_all_settings();
     Json(settings)
 }

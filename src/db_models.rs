@@ -60,6 +60,8 @@ pub struct Book {
     pub artist: Option<String>,
     pub label: Option<String>,
     pub disc_count: Option<i64>,
+    pub epub_file_hash: Option<String>,
+    pub epub_file_name: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }

@@ -21,9 +21,7 @@ pub struct UpdateBorrowerRequest {
     pub notes: Option<String>,
 }
 
-pub async fn list(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Borrower>>, ApiError> {
+pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Borrower>>, ApiError> {
     let db = state.db.clone();
     let borrowers = tokio::task::spawn_blocking(move || db.list_borrowers())
         .await
@@ -55,22 +53,20 @@ pub async fn create(
     let name = req.name.trim().to_string();
     let notes = req.notes.clone();
     let db = state.db.clone();
-    let borrower = tokio::task::spawn_blocking(move || {
-        db.insert_borrower(&name, notes.as_deref())
-    })
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": "Internal error"})),
-        )
-    })?
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
+    let borrower = tokio::task::spawn_blocking(move || db.insert_borrower(&name, notes.as_deref()))
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Internal error"})),
+            )
+        })?
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
     Ok((StatusCode::CREATED, Json(borrower)))
 }
 
@@ -90,20 +86,22 @@ pub async fn update(
     let name = req.name.clone();
     let notes = req.notes.clone();
     let db = state.db.clone();
-    let ok = tokio::task::spawn_blocking(move || db.update_borrower(id, name.as_deref(), notes.as_deref()))
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "Internal error"})),
-            )
-        })?
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
+    let ok = tokio::task::spawn_blocking(move || {
+        db.update_borrower(id, name.as_deref(), notes.as_deref())
+    })
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Internal error"})),
+        )
+    })?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
     if ok {
         Ok(StatusCode::NO_CONTENT)
     } else {

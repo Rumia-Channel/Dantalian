@@ -217,6 +217,18 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         ${copiesHtml}
         ${tracksHtml}
         ${renderChildrenInDetail(book.id)}
+        <div class="detail-epub">
+            <div class="detail-epub-title">EPUB</div>
+            ${
+                book.epub_file_hash
+                    ? `<div class="detail-epub-info">
+                        <span class="detail-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
+                        <a class="btn btn-xs btn-outline-success detail-epub-open" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
+                        <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
+                    </div>`
+                    : `<div class="detail-epub-empty">EPUB 未登録</div>`
+            }
+        </div>
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url

@@ -345,10 +345,12 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
         .map_err(|e| format!("Amazon selector parse failed: {}", e))?;
     let a_selector = scraper::Selector::parse("a[href]").unwrap();
 
-    if let Some(card) = document
-        .select(&card_selector)
-        .find(|el| el.value().attr("data-asin").map(|s| !s.is_empty()).unwrap_or(false))
-    {
+    if let Some(card) = document.select(&card_selector).find(|el| {
+        el.value()
+            .attr("data-asin")
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    }) {
         let hrefs: Vec<&str> = card
             .select(&a_selector)
             .filter_map(|a| a.value().attr("href"))
@@ -425,46 +427,45 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
 
-            hires.or_else(|| {
-                el.value()
-                    .attr("data-a-dynamic-image")
-                    .and_then(|dynamic| {
-                        serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(
-                            dynamic,
-                        )
-                        .ok()
-                    })
-                    .and_then(|map| {
-                        map.keys()
-                            .filter(|k| !k.is_empty())
-                            .max_by_key(|k| k.len())
-                            .cloned()
-                    })
-            })
-            .or_else(|| {
-                el.value()
-                    .attr("src")
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && !s.starts_with("data:"))
-                    .map(|s| s.to_string())
-            })
+            hires
+                .or_else(|| {
+                    el.value()
+                        .attr("data-a-dynamic-image")
+                        .and_then(|dynamic| {
+                            serde_json::from_str::<
+                                std::collections::HashMap<String, serde_json::Value>,
+                            >(dynamic)
+                            .ok()
+                        })
+                        .and_then(|map| {
+                            map.keys()
+                                .filter(|k| !k.is_empty())
+                                .max_by_key(|k| k.len())
+                                .cloned()
+                        })
+                })
+                .or_else(|| {
+                    el.value()
+                        .attr("src")
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty() && !s.starts_with("data:"))
+                        .map(|s| s.to_string())
+                })
         })
     } else {
         None
     };
 
-    let cover_url = cover_url
-        .filter(|u| !u.is_empty())
-        .or_else(|| {
-            scraper::Selector::parse(r#"img#imgBlkFront"#)
-                .ok()
-                .and_then(|selector| {
-                    document
-                        .select(&selector)
-                        .next()
-                        .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
-                })
-        });
+    let cover_url = cover_url.filter(|u| !u.is_empty()).or_else(|| {
+        scraper::Selector::parse(r#"img#imgBlkFront"#)
+            .ok()
+            .and_then(|selector| {
+                document
+                    .select(&selector)
+                    .next()
+                    .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
+            })
+    });
 
     let cover_url = cover_url.filter(|u| is_valid_cover_url(u));
 

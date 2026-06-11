@@ -28,3 +28,10 @@
 
 - バージョン 1.0.0 未満の場合、DB の構造が大きく変わる際は後方互換性を気にせず大幅な変更を加えてよい。
 - バージョン 1.0.0 以降では、DB スキーマの大幅な変更（既存データの破棄を伴うもの）は加えてはならない。
+
+## コミット前フォーマット規約
+
+- コミット（および PR 作成）前は、必ずリポジトリ全体に対して `cargo fmt` を実行すること。
+- こまめに `cargo fmt` をかけたり戻したりすると、不要な commit が増えるため避ける。
+- 自動 pre-commit hook として `.githooks/pre-commit` が用意されている場合は、それを活用してよい（ローカルで `git config core.hooksPath .githooks` 設定済みであることが望ましい）。
+- pre-commit hook は `cargo fmt --all` を実行し、その前後で unstaged diff (`git diff --`) を比較する。**cargo fmt によって working tree の unstaged diff が変わった場合のみ abort** し、ユーザに整形済み差分を確認させてから `git add` して再 commit させる運用である（自動 `git add` はしない）。ユーザがもともと持っていた unrelated な unstaged 変更は、cargo fmt で書き換えられなければそのまま通る。

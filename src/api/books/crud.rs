@@ -20,7 +20,12 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<BookWithAuth
         for book in books {
             let authors = db.get_book_authors(book.id).unwrap_or_default();
             let (copies_count, lent_count) = db.get_book_copy_counts(book.id).unwrap_or((0, 0));
-            result.push(BookWithAuthors { book, authors, copies_count, lent_count });
+            result.push(BookWithAuthors {
+                book,
+                authors,
+                copies_count,
+                lent_count,
+            });
         }
         Ok::<_, rusqlite::Error>(result)
     })
@@ -35,15 +40,40 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, StatusCode> {
-    if state
+    let old_hash = state
+        .db
+        .find_by_id(id)
+        .ok()
+        .flatten()
+        .and_then(|b| b.epub_file_hash);
+
+    let deleted = state
         .db
         .delete_book(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !deleted {
+        return Err(StatusCode::NOT_FOUND);
     }
+
+    if let Some(hash) = old_hash {
+        match state.db.count_books_by_epub_hash(&hash) {
+            Ok(0) => {
+                let path = std::path::Path::new(state.epubs_dir.as_str()).join(&hash);
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::warn!(book_id = id, %hash, "Failed to remove orphaned EPUB file: {}", e);
+                }
+            }
+            Ok(n) => {
+                tracing::debug!(book_id = id, %hash, remaining = n, "EPUB file kept (still referenced)");
+            }
+            Err(e) => {
+                tracing::warn!(book_id = id, %hash, "Failed to count EPUB references: {}", e);
+            }
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -460,6 +490,207 @@ pub async fn delete_cover(
             Json(serde_json::json!({"error": e.to_string()})),
         )
     })?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn upload_epub(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let book = state
+        .db
+        .find_by_id(id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Book not found"})),
+            )
+        })?;
+
+    let mut data: Option<Vec<u8>> = None;
+    let mut original_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })? {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "epub" {
+            let file_name = field
+                .file_name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "upload.epub".to_string());
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": e.to_string()})),
+                    )
+                })?
+                .to_vec();
+            data = Some(bytes);
+            original_name = Some(file_name);
+        }
+    }
+
+    let bytes = data.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No file uploaded"})),
+        )
+    })?;
+    let original_name = original_name.unwrap_or_else(|| "upload.epub".to_string());
+
+    let (saved_name, _ext) =
+        crate::external::save_uploaded_epub(&bytes, &original_name, state.epubs_dir.as_str())
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e})),
+                )
+            })?;
+
+    // Update DB first; only delete the old file after a successful update,
+    // and only when no other book still references it.
+    let db_result = state
+        .db
+        .set_book_epub(id, Some(&saved_name), Some(&original_name));
+
+    if let Err(e) = db_result {
+        // Best-effort rollback: remove the just-saved file if it is otherwise
+        // unreferenced (e.g. brand-new content hash).
+        if let Ok(referenced) = state.db.count_books_by_epub_hash(&saved_name) {
+            if referenced == 0 {
+                let path = std::path::Path::new(state.epubs_dir.as_str()).join(&saved_name);
+                if let Err(rm_err) = std::fs::remove_file(&path) {
+                    tracing::warn!(
+                        book_id = id,
+                        %saved_name,
+                        "Failed to remove EPUB after DB update failure: {}",
+                        rm_err
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    book_id = id,
+                    %saved_name,
+                    referenced,
+                    "EPUB file kept (referenced by other books) after DB update failure"
+                );
+            }
+        }
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ));
+    }
+
+    // DB updated successfully. Clean up the previous EPUB file if it differs
+    // from the new one and is no longer referenced by any book.
+    if let Some(old) = &book.epub_file_hash {
+        if old != &saved_name {
+            match state.db.count_books_by_epub_hash(old) {
+                Ok(0) => {
+                    let old_path = std::path::Path::new(state.epubs_dir.as_str()).join(old);
+                    if let Err(e) = std::fs::remove_file(&old_path) {
+                        tracing::warn!(
+                            book_id = id,
+                            %old,
+                            "Failed to remove old EPUB file: {}",
+                            e
+                        );
+                    }
+                }
+                Ok(n) => {
+                    tracing::debug!(
+                        book_id = id,
+                        %old,
+                        remaining = n,
+                        "Old EPUB file kept (still referenced by other books)"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(book_id = id, %old, "Failed to count old EPUB references: {}", e);
+                }
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "epub_file_hash": saved_name,
+        "epub_file_name": original_name,
+    })))
+}
+
+pub async fn delete_epub(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let book = state
+        .db
+        .find_by_id(id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Book not found"})),
+            )
+        })?;
+
+    let old_hash = book.epub_file_hash.clone();
+
+    // Update DB first; only delete the file after a successful update, and
+    // only when no other book still references it.
+    state.db.set_book_epub(id, None, None).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
+
+    if let Some(hash) = old_hash {
+        match state.db.count_books_by_epub_hash(&hash) {
+            Ok(0) => {
+                let path = std::path::Path::new(state.epubs_dir.as_str()).join(&hash);
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::warn!(
+                        book_id = id,
+                        %hash,
+                        "Failed to remove EPUB file after delete: {}",
+                        e
+                    );
+                }
+            }
+            Ok(n) => {
+                tracing::debug!(
+                    book_id = id,
+                    %hash,
+                    remaining = n,
+                    "EPUB file kept (still referenced by other books)"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(book_id = id, %hash, "Failed to count EPUB references: {}", e);
+            }
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

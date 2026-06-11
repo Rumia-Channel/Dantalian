@@ -1,6 +1,8 @@
 use super::*;
 use rusqlite::{Connection, Row, params};
 
+const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, created_at, updated_at";
+
 impl Db {
     fn row_to_book(row: &Row<'_>) -> rusqlite::Result<Book> {
         Ok(Book {
@@ -47,15 +49,20 @@ impl Db {
             artist: row.get(40)?,
             label: row.get(41)?,
             disc_count: row.get(42)?,
-            created_at: row.get(43)?,
-            updated_at: row.get(44)?,
+            epub_file_hash: row.get(43)?,
+            epub_file_name: row.get(44)?,
+            created_at: row.get(45)?,
+            updated_at: row.get(46)?,
         })
     }
 
     pub fn insert_book(&self, book: &NewBook) -> Result<Book, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        let media_type = book.media_type.clone().unwrap_or_else(|| "book".to_string());
+        let media_type = book
+            .media_type
+            .clone()
+            .unwrap_or_else(|| "book".to_string());
         let changes = conn.execute(
              "INSERT OR IGNORE INTO books (isbn, isdn, jan, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, media_type, catalog_number, artist, label, disc_count, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41)",
@@ -63,24 +70,29 @@ impl Db {
         )?;
         if changes == 0 {
             if let Some(isbn) = &book.isbn {
-                let mut stmt = conn.prepare(
-                    "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isbn = ?1",
-                )?;
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {} FROM books WHERE isbn = ?1",
+                    BOOK_SELECT_COLUMNS
+                ))?;
                 if let Some(row) = stmt.query_map(params![isbn], Self::row_to_book)?.next() {
                     return row;
                 }
             }
             if let Some(isdn) = &book.isdn {
-                let mut stmt = conn.prepare(
-                    "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isdn = ?1",
-                )?;
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {} FROM books WHERE isdn = ?1",
+                    BOOK_SELECT_COLUMNS
+                ))?;
                 if let Some(row) = stmt.query_map(params![isdn], Self::row_to_book)?.next() {
                     return row;
                 }
             }
-            return Err(rusqlite::Error::ToSqlConversionFailure(
-                Box::new(std::io::Error::new(std::io::ErrorKind::Other, "INSERT was ignored but existing book not found"))
-            ));
+            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "INSERT was ignored but existing book not found",
+                ),
+            )));
         }
         let id = conn.last_insert_rowid();
         Ok(Book {
@@ -127,6 +139,8 @@ impl Db {
             artist: book.artist.clone(),
             label: book.label.clone(),
             disc_count: book.disc_count,
+            epub_file_hash: None,
+            epub_file_name: None,
             created_at: Some(now),
             updated_at: None,
         })
@@ -178,18 +192,20 @@ impl Db {
 
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books ORDER BY id DESC",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books ORDER BY id DESC",
+            BOOK_SELECT_COLUMNS
+        ))?;
         let rows = stmt.query_map([], Self::row_to_book)?;
         rows.collect()
     }
 
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isbn = ?1",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books WHERE isbn = ?1",
+            BOOK_SELECT_COLUMNS
+        ))?;
         let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
@@ -199,9 +215,10 @@ impl Db {
 
     pub fn find_by_isdn(&self, isdn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE isdn = ?1",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books WHERE isdn = ?1",
+            BOOK_SELECT_COLUMNS
+        ))?;
         let mut rows = stmt.query_map(params![isdn], Self::row_to_book)?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
@@ -211,9 +228,10 @@ impl Db {
 
     pub fn find_by_id(&self, id: i64) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE id = ?1",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books WHERE id = ?1",
+            BOOK_SELECT_COLUMNS
+        ))?;
         let mut rows = stmt.query_map(params![id], Self::row_to_book)?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
@@ -223,9 +241,10 @@ impl Db {
 
     pub fn find_by_jan(&self, jan: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, created_at, updated_at FROM books WHERE jan = ?1",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books WHERE jan = ?1",
+            BOOK_SELECT_COLUMNS
+        ))?;
         let mut rows = stmt.query_map(params![jan], Self::row_to_book)?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
@@ -344,6 +363,31 @@ impl Db {
             params![cover_url, id],
         )?;
         Ok(affected > 0)
+    }
+
+    pub fn set_book_epub(
+        &self,
+        id: i64,
+        file_hash: Option<&str>,
+        file_name: Option<&str>,
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let affected = conn.execute(
+            "UPDATE books SET epub_file_hash = ?1, epub_file_name = ?2, updated_at = ?3 WHERE id = ?4",
+            params![file_hash, file_name, now, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn count_books_by_epub_hash(&self, hash: &str) -> Result<i64, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM books WHERE epub_file_hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )?;
+        Ok(n)
     }
 
     pub fn get_book_grand_series(
