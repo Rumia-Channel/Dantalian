@@ -1,5 +1,6 @@
 #book-count {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 500;
     color: var(--color-text-secondary);
 }
 
@@ -7,25 +8,48 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
     border-bottom: 0.0625rem solid var(--color-border);
-    padding-bottom: 0.5rem;
+    padding-bottom: 0.75rem;
 }
 
 .booklist-header h2 {
     border: none;
     padding: 0;
     margin: 0;
+    font-weight: 600;
 }
 
 .book-search {
     position: relative;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
 }
 
 .book-search input {
     width: 100%;
-    padding-right: 2.5rem;
+    padding-left: 2.5rem;
+    padding-right: 2.25rem;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-surface);
+    border: 0.0625rem solid var(--color-border);
+}
+
+.book-search::before {
+    content: "search";
+    position: absolute;
+    top: 50%;
+    left: 0.9rem;
+    transform: translateY(-50%);
+    font-family: "Material Icons";
+    font-feature-settings: "liga";
+    -webkit-font-feature-settings: "liga";
+    font-size: 1rem;
+    color: var(--color-text-dim);
+    pointer-events: none;
+}
+
+.book-search input:focus {
+    border-color: var(--color-primary);
 }
 
 .book-search input::-webkit-search-cancel-button {
@@ -43,12 +67,12 @@
 .book-search-clear {
     position: absolute;
     top: 50%;
-    right: 0.5rem;
+    right: 0.4rem;
     transform: translateY(-50%);
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 1.65rem;
+    height: 1.65rem;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary);
     cursor: pointer;
@@ -56,14 +80,15 @@
     align-items: center;
     justify-content: center;
     line-height: 1;
+    transition: background 0.15s, color 0.15s;
 }
 
 .book-search-clear .material-icons {
-    font-size: 1.05rem;
+    font-size: 1rem;
 }
 
 .book-search-clear:hover {
-    background: var(--color-bg-surface);
+    background: rgba(255, 255, 255, 0.14);
     color: var(--color-text-primary);
 }
 
@@ -74,19 +99,21 @@
 .view-tabs {
     display: flex;
     gap: 0;
+    border-bottom: 0.0625rem solid var(--color-border);
 }
 
 .view-tab {
     font-family: inherit;
-    padding: 0.3rem 0.9rem;
+    padding: 0.4rem 1rem;
     font-size: 0.8rem;
+    font-weight: 500;
     background: transparent;
     border: none;
     border-bottom: 0.125rem solid transparent;
+    margin-bottom: -0.0625rem;
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: color 0.2s, border-color 0.2s;
-    margin-bottom: -0.0625rem;
 }
 
 .view-tab:hover {
@@ -99,7 +126,7 @@
 }
 
 .author-group {
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
 }
 
 .author-group:last-child {
@@ -115,17 +142,18 @@
     background: transparent;
     border: none;
     border-bottom: 0.0625rem solid var(--color-border);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.85rem;
     font: inherit;
     color: inherit;
     text-align: left;
     text-decoration: none;
     cursor: pointer;
-    transition: color 0.15s;
+    transition: color 0.15s, border-color 0.15s;
 }
 
 .author-group-header:hover {
     color: var(--color-success);
+    border-bottom-color: rgba(78, 204, 163, 0.4);
 }
 
 .author-group-header::before {
@@ -153,7 +181,7 @@
 }
 
 .author-group-header--none {
-    color: var(--color-muted);
+    color: var(--color-text-secondary);
 }
 
 .author-group-header--none:hover {
@@ -162,17 +190,21 @@
 
 .author-group-name {
     font-size: 1.1rem;
-    font-weight: bold;
+    font-weight: 600;
     color: var(--color-text-primary);
 }
 
 .author-group-header--none .author-group-name {
-    color: var(--color-muted);
+    color: var(--color-text-secondary);
 }
 
 .author-group-count {
     font-size: 0.75rem;
+    font-weight: 500;
     color: var(--color-text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-sm);
 }
 
 .author-group-grid {
@@ -204,19 +236,22 @@
 
 .book-card {
     background: var(--color-bg-surface);
-    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
     overflow: hidden;
-    transition: transform 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     cursor: pointer;
     position: relative;
+    backdrop-filter: blur(0.4rem);
+    box-shadow: var(--shadow-sm);
 }
 
 .media-badge {
     position: absolute;
-    top: 0.35rem;
-    left: 0.35rem;
+    top: 0.4rem;
+    left: 0.4rem;
     padding: 0.15rem 0.35rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.03em;
@@ -226,15 +261,17 @@
 }
 
 .media-badge--cd {
-    background: #8b5cf6;
+    background: var(--color-success);
 }
 
 .media-badge--audiobook {
-    background: #06b6d4;
+    background: var(--color-primary);
 }
 
 .book-card:hover {
     transform: translateY(-0.125rem);
+    border-color: var(--color-border-light);
+    box-shadow: var(--shadow-md);
 }
 
 .book-cover {
@@ -252,7 +289,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-muted);
+    color: var(--color-text-dim);
     font-size: 0.8rem;
 }
 
@@ -262,7 +299,7 @@
 
 .book-title {
     font-size: 0.9rem;
-    font-weight: bold;
+    font-weight: 600;
     margin-bottom: 0.3rem;
     display: -webkit-box;
     -webkit-line-clamp: 2;
