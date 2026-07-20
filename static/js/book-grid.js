@@ -182,12 +182,6 @@ function getFilteredItems() {
     return items;
 }
 
-function getFilteredBooks() {
-    const query = normalizeSearchText(currentSearchQuery);
-    if (!query) return allBooks;
-    return allBooks.filter((book) => getBookSearchText(book).includes(query));
-}
-
 function getGrandSeriesItemIds(gs) {
     const ids = { books: new Set(), cds: new Set() };
     const allItems = getAllItems();
@@ -304,7 +298,7 @@ function renderBookCard(item) {
     <div class="book-card" onclick="${clickHandler}">
         ${
             item.cover_url
-                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeHtml(item.title)}" loading="lazy">`
+                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
         ${mediaBadge}
@@ -361,7 +355,7 @@ function renderCdCard(item) {
     <div class="book-card cd-card-v" onclick="showCdDetail(${item.originalId})">
         ${
             item.cover_url
-                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeHtml(item.title)}" loading="lazy">`
+                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
         ${mediaBadge}

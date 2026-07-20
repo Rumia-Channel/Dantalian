@@ -1,3 +1,10 @@
+// href 用 URL サニタイザ: http/https/相対パスのみ許可し javascript: 等を遮断
+function safeUrl(url) {
+    const s = String(url == null ? "" : url).trim();
+    if (/^(https?:)?\/\//i.test(s) || s.startsWith("/") || s.startsWith("#")) return s;
+    return "";
+}
+
 function showGrandSeriesModal(gsId) {
     const gs = allGrandSeries.find((g) => g.id === gsId);
     if (!gs) return;
@@ -185,7 +192,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                             <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
-                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
                                 <span class="material-icons" aria-hidden="true">play_arrow</span>
                             </button>` : ""}
                         </div>
@@ -200,7 +207,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
             <div class="detail-cover">
                 ${
                     book.cover_url
-                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeHtml(book.title)}">`
+                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeAttr(book.title)}">`
                         : '<div class="book-cover-placeholder">No Image</div>'
                 }
             </div>
@@ -232,7 +239,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
             book.ndl_url
-                ? `<a href="${escapeHtml(book.ndl_url)}" target="_blank" rel="noopener" class="detail-ndl-link">国立国会図書館で見る</a>`
+                ? `<a href="${escapeAttr(safeUrl(book.ndl_url))}" target="_blank" rel="noopener" class="detail-ndl-link">国立国会図書館で見る</a>`
                 : ""
         }
         <div class="detail-series-assign">
@@ -400,7 +407,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
                             <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
-                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
                                 <span class="material-icons" aria-hidden="true">play_arrow</span>
                             </button>` : ""}
                         </div>
@@ -414,7 +421,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
         <div class="detail-header">
             <div class="detail-cover">
                 ${cd.cover_url
-                    ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="${escapeHtml(cd.title)}">`
+                    ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="${escapeAttr(cd.title)}">`
                     : '<div class="book-cover-placeholder">No Image</div>'}
             </div>
             <div class="detail-title-block">

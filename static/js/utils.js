@@ -12,7 +12,28 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
     if (text == null) return "";
-    return String(text).replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    // HTML 属性コンテキスト用。& " ' を実体参照化（バックスラッシュは使わない）。
+    // 二重引用符で囲んだ属性 (value="...") でも、onclick="fn('...')" のような
+    // JS 文字列コンテキストでも正しく復号される (&#39; / &quot; は HTML パーサが ' " に戻す)。
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+// インラインイベントハンドラ内の JS 文字列リテラル用 (onclick="fn('${escapeJs(x)}')")。
+// \ と引用符・改行をバックスラッシュエスケープする。value="..." のような通常属性には
+// 使わないこと (\\ がリテラルとして残る)。通常属性には escapeAttr を使う。
+function escapeJs(text) {
+    if (text == null) return "";
+    return String(text)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
 }
 
 async function loadSeries() {

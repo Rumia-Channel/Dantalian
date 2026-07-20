@@ -46,7 +46,7 @@ function renderTracksHtml(tracks, editType, parentId) {
                         <div class="edit-track-audio">
                             ${t.file_hash
                                 ? `<span class="edit-track-file${hasAudio}" title="${escapeAttr(t.file_name || t.file_hash)}">${escapeHtml(t.file_name || t.file_hash)}</span>
-                                   <button type="button" class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                                   <button type="button" class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
                                        <span class="material-icons" aria-hidden="true">play_arrow</span>
                                    </button>
                                    <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>

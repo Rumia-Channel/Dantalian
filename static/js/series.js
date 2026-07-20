@@ -25,9 +25,9 @@ function renderSeriesManager() {
         const gsLabel = gs ? ` <span class="series-belong-grand">→ ${escapeHtml(gs.name)}</span>` : "";
         return `
         <div class="series-list-item" id="series-item-${s.id}">
-            <span class="series-list-name" ondblclick="startRenameSeries(${s.id}, '${escapeAttr(s.name)}')">${escapeHtml(s.name)}${gsLabel}</span>
+            <span class="series-list-name" ondblclick="startRenameSeries(${s.id}, '${escapeJs(s.name)}')">${escapeHtml(s.name)}${gsLabel}</span>
             <div class="series-list-actions">
-                <button class="btn btn-xs btn-outline-success" onclick="startRenameSeries(${s.id}, '${escapeAttr(s.name)}')">改名</button>
+                <button class="btn btn-xs btn-outline-success" onclick="startRenameSeries(${s.id}, '${escapeJs(s.name)}')">改名</button>
                 <button class="btn btn-xs btn-outline-danger" onclick="deleteSeries(${s.id})">削除</button>
             </div>
         </div>`;
@@ -133,9 +133,9 @@ function renderGrandSeriesManager() {
         return `
         <div class="gs-list-item" id="gs-item-${gs.id}">
             <div class="gs-list-header">
-                <span class="gs-list-name" ondblclick="startRenameGrandSeries(${gs.id}, '${escapeAttr(gs.name)}')">${escapeHtml(gs.name)}</span>
+                <span class="gs-list-name" ondblclick="startRenameGrandSeries(${gs.id}, '${escapeJs(gs.name)}')">${escapeHtml(gs.name)}</span>
                 <div class="series-list-actions">
-                    <button class="btn btn-xs btn-outline-success" onclick="startRenameGrandSeries(${gs.id}, '${escapeAttr(gs.name)}')">改名</button>
+                    <button class="btn btn-xs btn-outline-success" onclick="startRenameGrandSeries(${gs.id}, '${escapeJs(gs.name)}')">改名</button>
                     <button class="btn btn-xs btn-outline-danger" onclick="deleteGrandSeries(${gs.id})">削除</button>
                 </div>
             </div>

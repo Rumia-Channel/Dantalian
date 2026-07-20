@@ -8,7 +8,7 @@ const WIDTH_PRESETS = [
 function applyContentWidth(pct) {
     document.documentElement.style.setProperty("--content-width", pct + "%");
     localStorage.setItem("dantalian_content_width", pct);
-    document.querySelectorAll(".width-btn").forEach((btn) => {
+    document.querySelectorAll(".width-btn[data-pct]").forEach((btn) => {
         btn.classList.toggle("active", parseInt(btn.dataset.pct, 10) === pct);
     });
 }
