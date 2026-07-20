@@ -11,7 +11,8 @@ function escapeHtml(text) {
 }
 
 function escapeAttr(text) {
-    return text.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    if (text == null) return "";
+    return String(text).replace(/'/g, "\\'").replace(/"/g, "&quot;");
 }
 
 async function loadSeries() {

@@ -28,7 +28,7 @@ async function renderManualForm() {
 
     const container = document.getElementById("manual-form-container");
     container.innerHTML = `
-        <form class="edit-form" id="manual-form" onsubmit="submitManualBook(event)">
+        <form class="edit-form" id="manual-form" onsubmit="submitManualForm(event)">
             <div class="edit-field">
                 <label>登録種別 <span class="edit-required">*</span></label>
                 <select name="media_type" id="manual-media-type">
@@ -214,12 +214,12 @@ async function renderManualForm() {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
-                    <label>出版社</label>
-                    <input type="text" name="cd_publisher">
+                    <label>アーティスト</label>
+                    <input type="text" name="cd_artist">
                 </div>
                 <div class="edit-field">
-                    <label>JAN</label>
-                    <input type="text" name="cd_jan" id="manual-cd-jan">
+                    <label>出版社</label>
+                    <input type="text" name="cd_publisher">
                 </div>
             </div>
             <div class="edit-row">
@@ -234,8 +234,18 @@ async function renderManualForm() {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
+                    <label>JAN</label>
+                    <input type="text" name="cd_jan" id="manual-cd-jan">
+                </div>
+                <div class="edit-field">
                     <label>発売日</label>
                     <input type="text" name="cd_publish_date">
+                </div>
+            </div>
+            <div class="edit-row">
+                <div class="edit-field">
+                    <label>ディスク数</label>
+                    <input type="number" name="cd_disc_count" min="1" step="1">
                 </div>
                 <div class="edit-field">
                     <label>巻</label>
@@ -244,14 +254,8 @@ async function renderManualForm() {
             </div>
             <div class="edit-row">
                 <div class="edit-field">
-                    <label>ディスク数</label>
-                    <input type="number" name="cd_disc_count" min="1" step="1">
-                </div>
-            </div>
-            <div class="edit-row">
-                <div class="edit-field">
                     <label>種別</label>
-                    <select name="cd_media_type" class="form-input">
+                    <select name="cd_media_type">
                         <option value="cd">CD</option>
                         <option value="audiobook">オーディオブック</option>
                     </select>
@@ -266,7 +270,7 @@ async function renderManualForm() {
                 <textarea name="cd_description" rows="3"></textarea>
             </div>
             <div class="edit-section">
-                <h3 class="edit-section-title">アルバム情報 <span style="font-size:0.7rem;color:var(--color-text-dim)">(全トラックで共有)</span></h3>
+                <h3 class="edit-section-title">アルバム情報 <span class="edit-section-hint">(全トラックで共有)</span></h3>
                 <div class="edit-row">
                     <div class="edit-field">
                         <label>作曲</label>
@@ -290,15 +294,15 @@ async function renderManualForm() {
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">トラック</h3>
-                <div id="manual-cd-tracks-list"><p class="series-empty">トラックなし</p></div>
-                <div style="margin-top:0.4rem">
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addManualCdTrack()">+ トラック追加</button>
+                <div id="manual-cd-tracks-list"><p class="manual-cd-tracks-empty">トラックなし</p></div>
+                <div class="manual-cd-track-add">
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="addManualCdTrack()">+ トラック追加</button>
                 </div>
             </div>
             <div class="edit-field">
                 <label>表紙画像</label>
                 <div class="manual-cover-row">
-                    <label class="btn btn-xs btn-outline-success manual-cover-label">
+                    <label class="btn btn-sm btn-outline-success manual-cover-label">
                         ファイルを選択
                         <input type="file" id="manual-cd-cover-input" accept="image/*" hidden>
                     </label>
@@ -309,7 +313,6 @@ async function renderManualForm() {
             <div id="manual-cd-register-status"></div>
             <div class="edit-actions">
                 <button type="button" class="btn btn-md btn-primary" onclick="submitManualCd(event)">登録</button>
-            </div>
             </div>
             </div>
             <div class="edit-section">
@@ -336,56 +339,6 @@ async function renderManualForm() {
                     <label>大シリーズ</label>
                     <div id="manual-grand-series-select-container"></div>
                 </div>
-            </div>
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>アーティスト</label>
-                    <input type="text" name="cd_artist">
-                </div>
-                <div class="edit-field">
-                    <label>レーベル</label>
-                    <input type="text" name="cd_label">
-                </div>
-            </div>
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>カタログ番号</label>
-                    <input type="text" name="cd_catalog_number">
-                </div>
-                <div class="edit-field">
-                    <label>発売日</label>
-                    <input type="text" name="cd_publish_date">
-                </div>
-            </div>
-            <div class="edit-row">
-                <div class="edit-field">
-                    <label>ディスク数</label>
-                    <input type="number" name="cd_disc_count" min="1" step="1">
-                </div>
-                <div class="edit-field">
-                    <label>JAN</label>
-                    <input type="text" name="cd_jan" id="manual-cd-jan">
-                </div>
-            </div>
-            <div class="edit-field">
-                <label>説明</label>
-                <textarea name="cd_description" rows="4"></textarea>
-            </div>
-            <div class="edit-field">
-                <label>表紙画像</label>
-                <div class="manual-cover-row">
-                    <label class="btn btn-xs btn-outline-success manual-cover-label">
-                        ファイルを選択
-                        <input type="file" id="manual-cd-cover-input" accept="image/*" hidden>
-                    </label>
-                    <span class="manual-cover-filename" id="manual-cd-cover-filename"></span>
-                    <img class="manual-cover-preview" id="manual-cd-cover-preview" src="" alt="" hidden>
-                </div>
-            </div>
-            <div id="manual-cd-register-status"></div>
-            <div class="edit-actions">
-                <button type="button" class="btn btn-md btn-primary" onclick="submitManualCd(event)">登録</button>
-            </div>
             </div>
         </form>
     `;
@@ -520,6 +473,16 @@ function addManualAuthor() {
     manualAuthorIds.push(aid);
     manualAuthorSelect.setValue(null);
     renderManualAuthorList();
+}
+
+function submitManualForm(e) {
+    e.preventDefault();
+    const mediaType = document.getElementById("manual-media-type").value;
+    if (mediaType === "cd") {
+        submitManualCd(e);
+    } else {
+        submitManualBook(e);
+    }
 }
 
 async function submitManualBook(e) {
@@ -691,7 +654,6 @@ async function submitManualCd(e) {
         manualCoverPreview = null;
         manualAuthorIds = [];
         manualCdTracks = [];
-        manualCdTracks = [];
         manualRendered = false;
         renderManualForm();
     } catch (err) {
@@ -704,7 +666,7 @@ function renderManualCdTracks() {
     const list = document.getElementById("manual-cd-tracks-list");
     if (!list) return;
     if (manualCdTracks.length === 0) {
-        list.innerHTML = "<p class='series-empty'>トラックなし (下の「+ トラック追加」で追加してください)</p>";
+        list.innerHTML = "<p class='manual-cd-tracks-empty'>トラックなし (下の「+ トラック追加」で追加してください)</p>";
         return;
     }
     const groups = {};
@@ -730,15 +692,20 @@ function renderManualCdTracks() {
                 <div class="manual-cd-track-card" data-idx="${realIdx}">
                     <div class="manual-cd-track-head">
                         <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
-                        <input type="text" class="manual-cd-track-input manual-cd-track-disc" value="${escapeAttr(t.disc_number || 1)}" min="1" step="1" title="ディスク番号" onchange="updateManualTrack(${realIdx}, 'disc_number', this.value)">
-                        <input type="text" class="manual-cd-track-input manual-cd-track-num" value="${escapeAttr(t.track_number)}" min="1" step="1" title="トラック番号" onchange="updateManualTrack(${realIdx}, 'track_number', this.value)">
                         <input type="text" class="manual-cd-track-input manual-cd-track-title" value="${escapeAttr(t.title || '')}" placeholder="タイトル" onchange="updateManualTrack(${realIdx}, 'title', this.value)">
                         <input type="text" class="manual-cd-track-input manual-cd-track-dur" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" onchange="updateManualTrack(${realIdx}, 'duration', this.value)">
                         <button type="button" class="btn btn-xs btn-outline-danger manual-cd-track-del" onclick="removeManualCdTrack(${realIdx})" title="削除">&#10005;</button>
                     </div>
-                    <details class="manual-cd-track-meta">
-                        <summary>メタデータ</summary>
-                        <div class="manual-cd-track-meta-grid">
+                    <div class="manual-cd-track-sub">
+                        <label class="manual-cd-track-subfield">Disc
+                            <input type="number" class="manual-cd-track-input manual-cd-track-disc" value="${escapeAttr(t.disc_number || 1)}" min="1" step="1" onchange="updateManualTrack(${realIdx}, 'disc_number', this.value)">
+                        </label>
+                        <label class="manual-cd-track-subfield">Track
+                            <input type="number" class="manual-cd-track-input manual-cd-track-num" value="${escapeAttr(t.track_number)}" min="1" step="1" onchange="updateManualTrack(${realIdx}, 'track_number', this.value)">
+                        </label>
+                        <details class="manual-cd-track-meta">
+                            <summary>メタデータ</summary>
+                            <div class="manual-cd-track-meta-grid">
                             <label>アーティスト<input type="text" value="${escapeAttr(t.artist || '')}" onchange="updateManualTrack(${realIdx}, 'artist', this.value)"></label>
                             <label>アルバム<input type="text" value="${escapeAttr(t.album || '')}" onchange="updateManualTrack(${realIdx}, 'album', this.value)"></label>
                             <label>作曲<input type="text" value="${escapeAttr(t.composer || '')}" onchange="updateManualTrack(${realIdx}, 'composer', this.value)"></label>
@@ -747,8 +714,9 @@ function renderManualCdTracks() {
                             <label>トラック総数<input type="number" value="${escapeAttr(t.track_total != null ? t.track_total : '')}" min="1" onchange="updateManualTrack(${realIdx}, 'track_total', this.value)"></label>
                             <label>ディスク総数<input type="number" value="${escapeAttr(t.disc_total != null ? t.disc_total : '')}" min="1" onchange="updateManualTrack(${realIdx}, 'disc_total', this.value)"></label>
                             <label>ISRC<input type="text" value="${escapeAttr(t.isrc || '')}" onchange="updateManualTrack(${realIdx}, 'isrc', this.value)"></label>
-                        </div>
-                    </details>
+                            </div>
+                        </details>
+                    </div>
                 </div>
             `;
         }).join("");

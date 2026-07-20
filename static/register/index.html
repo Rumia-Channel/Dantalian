@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/css/form.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/detail.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/responsive.css?v=ASSET_VERSION">
 </head>
 <body data-active-nav="register">
     <div id="app">
@@ -86,8 +87,8 @@
             <form id="cd-form">
                 <input type="text" id="cd-input" placeholder="JANコード (13桁)" pattern="[0-9\-]+" required>
                 <div class="register-parent-row">
-                    <label>親書籍ID (付属CDの場合):</label>
-                    <input type="number" id="cd-parent-book-id" placeholder="書籍ID" min="1" step="1" style="width:6rem">
+                    <label for="cd-parent-book-id">親書籍ID (付属CDの場合):</label>
+                    <input type="number" id="cd-parent-book-id" placeholder="書籍ID" min="1" step="1">
                 </div>
                 <button type="submit" id="cd-btn" class="btn btn-primary">登録</button>
             </form>
@@ -119,8 +120,8 @@
                 <input type="text" id="audiobook-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+">
                 <input type="text" id="audiobook-jan-input" placeholder="JANコード" pattern="[0-9\-]+">
                 <div class="register-parent-row">
-                    <label>親書籍ID (原作):</label>
-                    <input type="number" id="audiobook-parent-book-id" placeholder="書籍ID" min="1" step="1" style="width:6rem">
+                    <label for="audiobook-parent-book-id">親書籍ID (原作):</label>
+                    <input type="number" id="audiobook-parent-book-id" placeholder="書籍ID" min="1" step="1">
                 </div>
                 <button type="submit" id="audiobook-btn" class="btn btn-primary">登録</button>
             </form>

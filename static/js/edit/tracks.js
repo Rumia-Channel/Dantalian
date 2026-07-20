@@ -37,33 +37,37 @@ function renderTracksHtml(tracks, editType, parentId) {
                 : String(t.track_number).padStart(2, "0");
             return `
                 <div class="edit-track-row" data-track-id="${t.id}" data-disc-number="${discId}">
-                    <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
-                    <input type="text" class="edit-track-title-input" value="${escapeAttr(t.title)}" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'title',this.value,'${editType}')">
-                    <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
-                    <div class="edit-track-audio">
-                        ${t.file_hash
-                            ? `<span class="edit-track-file${hasAudio}" title="${escapeAttr(t.file_name || t.file_hash)}">${escapeHtml(t.file_name || t.file_hash)}</span>
-                               <button type="button" class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
-                                   <span class="material-icons" aria-hidden="true">play_arrow</span>
-                               </button>
-                               <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
-                               <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
-                                   差替
-                                   <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
-                               </label>
-                               <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
-                                   <span class="material-icons" aria-hidden="true">info</span>
-                               </button>`
-                            : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
-                                   <span class="material-icons" aria-hidden="true">upload</span>
-                                   音声
-                                   <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
-                               </label>`}
+                    <div class="edit-track-head">
+                        <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
+                        <input type="text" class="edit-track-title-input" value="${escapeAttr(t.title)}" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'title',this.value,'${editType}')">
+                        <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
                     </div>
-                    <div class="edit-track-reorder">
-                        <button type="button" class="btn btn-xs btn-ghost" ${isFirst ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'up','${editType}')" title="上へ">&#9650;</button>
-                        <button type="button" class="btn btn-xs btn-ghost" ${isLast ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'down','${editType}')" title="下へ">&#9660;</button>
-                        <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeTrack(${parentId},${t.id},'${editType}')" title="削除">&#10005;</button>
+                    <div class="edit-track-sub">
+                        <div class="edit-track-audio">
+                            ${t.file_hash
+                                ? `<span class="edit-track-file${hasAudio}" title="${escapeAttr(t.file_name || t.file_hash)}">${escapeHtml(t.file_name || t.file_hash)}</span>
+                                   <button type="button" class="btn btn-xs btn-ghost" onclick="playAudio('/audio/${t.file_hash}','${escapeAttr(t.title)}')" aria-label="再生">
+                                       <span class="material-icons" aria-hidden="true">play_arrow</span>
+                                   </button>
+                                   <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
+                                   <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
+                                       差替
+                                       <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                   </label>
+                                   <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
+                                       <span class="material-icons" aria-hidden="true">info</span>
+                                   </button>`
+                                : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
+                                       <span class="material-icons" aria-hidden="true">upload</span>
+                                       音声
+                                       <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                   </label>`}
+                        </div>
+                        <div class="edit-track-reorder">
+                            <button type="button" class="btn btn-xs btn-ghost" ${isFirst ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'up','${editType}')" title="上へ">&#9650;</button>
+                            <button type="button" class="btn btn-xs btn-ghost" ${isLast ? 'disabled' : ''} onclick="moveTrack(${parentId},${t.id},${discId},'down','${editType}')" title="下へ">&#9660;</button>
+                            <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeTrack(${parentId},${t.id},'${editType}')" title="削除">&#10005;</button>
+                        </div>
                     </div>
                 </div>`;
         }).join("");
