@@ -52,22 +52,15 @@ pub async fn put_book_track_metadata(
     }
 
     if let Some(artists_v) = body.get("artists") {
-        let names: Vec<String> = if let Some(arr) = artists_v.as_array() {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
-                .filter(|s| !s.is_empty())
-                .collect()
+        // フロントは作者IDの配列を送る (例: [3, 7])
+        let ids: Vec<i64> = if let Some(arr) = artists_v.as_array() {
+            arr.iter().filter_map(|v| v.as_i64()).collect()
         } else {
             Vec::new()
         };
         let db = state.db.clone();
         let assign = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
-            if names.is_empty() {
-                db.replace_track_authors(track_id, &[])?;
-            } else {
-                let ids = db.ensure_authors_for_names(&names)?;
-                db.replace_track_authors(track_id, &ids)?;
-            }
+            db.replace_track_authors(track_id, &ids)?;
             Ok(())
         })
         .await;
