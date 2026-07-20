@@ -38,10 +38,44 @@ pub async fn put_book_track_metadata(
     Path((_book_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
-    let meta = crate::external::audio_meta::TrackMetadata::from_json(&body);
+    // The track modal only sends the user-editable fields; preserve everything the
+    // audio extraction produced (artist/album/cover/ReplayGain/file info/...).
+    let db = state.db.clone();
+    let existing = match tokio::task::spawn_blocking(move || db.get_track_metadata(track_id)).await
+    {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            tracing::error!(track_id, "book track_metadata read failed: {}", e);
+            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(e) => {
+            tracing::error!(track_id, "book track_metadata task failed: {}", e);
+            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let mut merged = crate::external::audio_meta::TrackMetadata::from_json(&body);
+    if let Some(ex) = existing {
+        merged.artist = ex.artist;
+        merged.album = ex.album;
+        merged.album_artist = ex.album_artist;
+        merged.year = ex.year;
+        merged.genre = ex.genre;
+        merged.composer = ex.composer;
+        merged.publisher = ex.publisher;
+        merged.label = ex.label;
+        merged.lyrics = ex.lyrics;
+        merged.cover_mime = ex.cover_mime;
+        merged.cover_data = ex.cover_data;
+        merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;
+        merged.replay_gain_track_peak = ex.replay_gain_track_peak;
+        merged.replay_gain_album_gain_db = ex.replay_gain_album_gain_db;
+        merged.replay_gain_album_peak = ex.replay_gain_album_peak;
+        merged.file_type = ex.file_type;
+        merged.raw_size_bytes = ex.raw_size_bytes;
+    }
     let db = state.db.clone();
     let join_result =
-        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta)).await;
+        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &merged)).await;
     if let Err(e) = join_result.as_ref() {
         tracing::error!(track_id, "book track_metadata task failed: {}", e);
         return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);

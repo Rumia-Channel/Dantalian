@@ -331,6 +331,24 @@ pub async fn delete_cd(
     }
 }
 
+/// Present/absent helper for string fields: key present with a string => Some(string);
+/// key present with null (or a non-string) => None (clear); key absent => preserve existing.
+fn present_str(body: &serde_json::Value, key: &str, existing: Option<&str>) -> Option<String> {
+    match body.get(key) {
+        Some(v) => v.as_str().map(|s| s.to_string()),
+        None => existing.map(|s| s.to_string()),
+    }
+}
+
+/// Present/absent helper for integer fields: key present => its i64 (null/non-int => None, clear);
+/// key absent => preserve existing.
+fn present_i64(body: &serde_json::Value, key: &str, existing: Option<i64>) -> Option<i64> {
+    match body.get(key) {
+        Some(v) => v.as_i64(),
+        None => existing,
+    }
+}
+
 pub async fn update_cd(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -360,32 +378,18 @@ pub async fn update_cd(
             )
         })?;
 
-    let jan = body["jan"]
-        .as_str()
-        .or(existing.jan.as_deref())
-        .map(|s| s.to_string());
-    let artist = body["artist"].as_str().or(existing.artist.as_deref());
-    let publisher = body["publisher"].as_str().or(existing.publisher.as_deref());
-    let label = body["label"].as_str().or(existing.label.as_deref());
-    let catalog_number = body["catalog_number"]
-        .as_str()
-        .or(existing.catalog_number.as_deref());
-    let publish_date = body["publish_date"]
-        .as_str()
-        .or(existing.publish_date.as_deref());
-    let description = body["description"]
-        .as_str()
-        .or(existing.description.as_deref());
-    let disc_count = body["disc_count"].as_i64().or(existing.disc_count);
-    let volume = body["volume"]
-        .as_str()
-        .or(existing.volume.as_deref())
-        .map(|s| s.to_string());
-    let parent_book_id = body["parent_book_id"].as_i64().or(existing.parent_book_id);
-    let media_type = body["media_type"]
-        .as_str()
-        .or(existing.media_type.as_deref());
-    let series_id = body["series_id"].as_i64().or(existing.series_id);
+    let jan = present_str(&body, "jan", existing.jan.as_deref());
+    let artist = present_str(&body, "artist", existing.artist.as_deref());
+    let publisher = present_str(&body, "publisher", existing.publisher.as_deref());
+    let label = present_str(&body, "label", existing.label.as_deref());
+    let catalog_number = present_str(&body, "catalog_number", existing.catalog_number.as_deref());
+    let publish_date = present_str(&body, "publish_date", existing.publish_date.as_deref());
+    let description = present_str(&body, "description", existing.description.as_deref());
+    let disc_count = present_i64(&body, "disc_count", existing.disc_count);
+    let volume = present_str(&body, "volume", existing.volume.as_deref());
+    let parent_book_id = present_i64(&body, "parent_book_id", existing.parent_book_id);
+    let media_type = present_str(&body, "media_type", existing.media_type.as_deref());
+    let series_id = present_i64(&body, "series_id", existing.series_id);
 
     state
         .db
@@ -393,16 +397,16 @@ pub async fn update_cd(
             id,
             jan.as_deref(),
             title.trim(),
-            artist,
-            publisher,
-            label,
-            catalog_number,
-            publish_date,
-            description,
+            artist.as_deref(),
+            publisher.as_deref(),
+            label.as_deref(),
+            catalog_number.as_deref(),
+            publish_date.as_deref(),
+            description.as_deref(),
             disc_count,
             volume.as_deref(),
             parent_book_id,
-            media_type,
+            media_type.as_deref(),
             series_id,
         )
         .map_err(|e| {
@@ -460,10 +464,44 @@ pub async fn put_cd_track_metadata(
     Path((_cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
-    let meta = crate::external::audio_meta::TrackMetadata::from_json(&body);
+    // The track modal only sends the user-editable fields; preserve everything the
+    // audio extraction produced (artist/album/cover/ReplayGain/file info/...).
+    let db = state.db.clone();
+    let existing = match tokio::task::spawn_blocking(move || db.get_track_metadata(track_id)).await
+    {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            tracing::error!(track_id, "track_metadata read failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(e) => {
+            tracing::error!(track_id, "track_metadata task failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let mut merged = crate::external::audio_meta::TrackMetadata::from_json(&body);
+    if let Some(ex) = existing {
+        merged.artist = ex.artist;
+        merged.album = ex.album;
+        merged.album_artist = ex.album_artist;
+        merged.year = ex.year;
+        merged.genre = ex.genre;
+        merged.composer = ex.composer;
+        merged.publisher = ex.publisher;
+        merged.label = ex.label;
+        merged.lyrics = ex.lyrics;
+        merged.cover_mime = ex.cover_mime;
+        merged.cover_data = ex.cover_data;
+        merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;
+        merged.replay_gain_track_peak = ex.replay_gain_track_peak;
+        merged.replay_gain_album_gain_db = ex.replay_gain_album_gain_db;
+        merged.replay_gain_album_peak = ex.replay_gain_album_peak;
+        merged.file_type = ex.file_type;
+        merged.raw_size_bytes = ex.raw_size_bytes;
+    }
     let db = state.db.clone();
     let join_result =
-        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta)).await;
+        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &merged)).await;
     if let Err(e) = join_result.as_ref() {
         tracing::error!(track_id, "track_metadata task failed: {}", e);
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -531,10 +569,30 @@ pub async fn put_cd_metadata(
     Path(cd_id): Path<i64>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
-    let meta = CdMetadata::from_json(cd_id, &body);
+    // The album-info edit form only sends {year,genre,composer,isrc}; preserve the
+    // extracted cover art and album ReplayGain that the request never carries.
+    let db = state.db.clone();
+    let existing = match tokio::task::spawn_blocking(move || db.get_cd_metadata(cd_id)).await {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            tracing::error!(cd_id, "cd_metadata read failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(e) => {
+            tracing::error!(cd_id, "cd_metadata task failed: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let mut merged = CdMetadata::from_json(cd_id, &body);
+    if let Some(ex) = existing {
+        merged.cover_mime = ex.cover_mime;
+        merged.cover_data = ex.cover_data;
+        merged.replay_gain_album_gain_db = ex.replay_gain_album_gain_db;
+        merged.replay_gain_album_peak = ex.replay_gain_album_peak;
+    }
     let db = state.db.clone();
     let join_result =
-        tokio::task::spawn_blocking(move || db.upsert_cd_metadata(cd_id, &meta)).await;
+        tokio::task::spawn_blocking(move || db.upsert_cd_metadata(cd_id, &merged)).await;
     match join_result {
         Ok(Ok(())) => Ok(Json("ok".into())),
         Ok(Err(e)) => {

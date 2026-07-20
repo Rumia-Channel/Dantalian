@@ -125,8 +125,13 @@ pub struct UpdateBookRequest {
     pub jpno: Option<String>,
     pub ndl_url: Option<String>,
     pub series_id: Option<Option<i64>>,
-    pub series_number: Option<i64>,
+    pub series_number: Option<Option<i64>>,
     pub grand_series_id: Option<Option<i64>>,
+    pub media_type: Option<Option<String>>,
+    pub catalog_number: Option<Option<String>>,
+    pub artist: Option<Option<String>>,
+    pub label: Option<Option<String>>,
+    pub disc_count: Option<Option<i64>>,
     pub isdn_region: Option<String>,
     pub isdn_class: Option<String>,
     pub isdn_type: Option<String>,
@@ -170,16 +175,53 @@ pub async fn update_book(
             Json(serde_json::json!({"error": "Title is required"})),
         ));
     }
-    let series_id = req.series_id.unwrap_or(None);
-    let grand_series_id = req.grand_series_id.unwrap_or(None);
+    let existing_book = state.db.find_by_id(id).ok().flatten();
 
-    if let Some(gs_id) = grand_series_id {
-        if let Ok(Some(old_gs)) = state.db.get_book_grand_series(id) {
-            let _ = state.db.remove_grand_series_item(old_gs.id, "book", id);
+    // present/absent: Some(inner) = key present (inner None => clear), None = absent => preserve
+    let series_id = match req.series_id {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.series_id),
+    };
+    let series_number = match req.series_number {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.series_number),
+    };
+    let media_type = match req.media_type {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.media_type.clone()),
+    };
+    let catalog_number = match req.catalog_number {
+        Some(o) => o,
+        None => existing_book
+            .as_ref()
+            .and_then(|b| b.catalog_number.clone()),
+    };
+    let artist = match req.artist {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.artist.clone()),
+    };
+    let label = match req.label {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.label.clone()),
+    };
+    let disc_count = match req.disc_count {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.disc_count),
+    };
+
+    // grand_series_id: present => apply (Some(id) set / None clear), absent => leave as-is
+    match req.grand_series_id {
+        Some(gs_opt) => {
+            if let Ok(Some(old_gs)) = state.db.get_book_grand_series(id) {
+                let _ = state.db.remove_grand_series_item(old_gs.id, "book", id);
+            }
+            if let Some(gs_id) = gs_opt {
+                if gs_id != 0 {
+                    let _ = state.db.add_grand_series_item(gs_id, "book", id);
+                }
+            }
         }
-        if gs_id != 0 {
-            let _ = state.db.add_grand_series_item(gs_id, "book", id);
-        }
+        None => {}
     }
 
     state
@@ -205,7 +247,7 @@ pub async fn update_book(
             req.jpno.as_deref(),
             req.ndl_url.as_deref(),
             series_id,
-            req.series_number,
+            series_number,
             req.isdn_region.as_deref(),
             req.isdn_class.as_deref(),
             req.isdn_type.as_deref(),
@@ -222,11 +264,11 @@ pub async fn update_book(
             req.isdn_sample_image_url.as_deref(),
             req.isdn_useroption.as_deref(),
             req.isdn_external_links.as_deref(),
-            None,
-            None,
-            None,
-            None,
-            None,
+            media_type.as_deref(),
+            catalog_number.as_deref(),
+            artist.as_deref(),
+            label.as_deref(),
+            disc_count,
         )
         .map_err(|e| {
             (
