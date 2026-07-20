@@ -1,0 +1,235 @@
+/* --- レスポンシブ対応 (タブレット・スマートフォン) ---
+   必ず他の CSS の後に読み込むこと。画面サイズ依存の上書きはこのファイルに集約する。 */
+
+/* ===== タブレット縦置き以下 (<= 48rem / 768px) ===== */
+@media (max-width: 48rem) {
+    #app {
+        /* 表示幅設定(--content-width: %)は狭い画面では無効化し、全幅で使う */
+        max-width: 100%;
+        padding: 1.25rem 0.75rem;
+    }
+
+    h1 {
+        font-size: 1.75rem;
+        margin-bottom: 1.25rem;
+    }
+
+    nav {
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    .settings-bar {
+        align-items: stretch;
+    }
+
+    .settings-group {
+        flex-wrap: wrap;
+    }
+
+    .booklist-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .detail-modal {
+        padding: 1.5rem;
+    }
+}
+
+/* ===== スマートフォン (<= 30rem / 480px) ===== */
+@media (max-width: 30rem) {
+    :root {
+        --card-min-w: 9rem;
+    }
+
+    /* iOS Safari のフォーカス時自動ズーム防止 (16px 未満だとズームされる) */
+    input,
+    select,
+    textarea {
+        font-size: 1rem !important;
+    }
+
+    nav a {
+        padding: 0.45rem 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    /* 入力行・フォーム行は縦積み */
+    .register form,
+    .bulk-form,
+    .series-create,
+    .edit-row,
+    .gs-add-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .register form > input {
+        flex-basis: auto;
+    }
+
+    .register-parent-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.4rem;
+    }
+
+    .register-parent-row input {
+        width: 100%;
+    }
+
+    /* CD トラックカード: 番号バッジのぶら下げインデントを解除 */
+    .manual-cd-track-sub,
+    .edit-track-sub {
+        padding-left: 0;
+    }
+
+    /* 削除ボタンは絶対配置済みのため、ヘッドはバッジ+タイトル+時間を1行に収め、
+       収まらない極狭幅でのみ時間を折り返す */
+    .manual-cd-track-title {
+        min-width: 0;
+    }
+
+    .detail-overlay {
+        padding: 0.5rem;
+    }
+
+    .detail-modal {
+        width: 100%;
+        padding: 1rem;
+    }
+
+    .detail-header,
+    .edit-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .detail-cover,
+    .detail-cover .book-cover {
+        width: 8rem;
+    }
+
+    .detail-cover .book-cover-placeholder {
+        width: 8rem;
+        height: 12rem;
+    }
+
+    .detail-actions,
+    .edit-actions {
+        flex-wrap: wrap;
+    }
+
+    /* タブ類は横スクロール */
+    .view-tabs,
+    .register-tabs,
+    .series-tabs {
+        overflow-x: auto;
+    }
+
+    .view-tab,
+    .register-tab,
+    .series-tab {
+        white-space: nowrap;
+    }
+
+    .series-card {
+        min-height: 16rem;
+    }
+
+    .grand-series-card {
+        min-height: 20rem;
+    }
+
+    .series-list-item,
+    .gs-list-header,
+    .bulk-item {
+        flex-wrap: wrap;
+    }
+
+    .bulk-item-isbn {
+        min-width: 0;
+    }
+
+    .ss-input {
+        min-width: 0;
+    }
+
+    /* 表示幅設定は狭い画面では無効化しているため非表示 */
+    .settings-bar > .settings-label,
+    #width-buttons {
+        display: none;
+    }
+
+    /* 表示幅設定しか持たないページではバーごと消す */
+    .settings-bar:not(:has(> .settings-group)) {
+        display: none;
+    }
+
+    .settings-form-row {
+        flex-wrap: wrap;
+    }
+
+    .settings-form-label-inline {
+        min-width: 0;
+    }
+
+    .confirm-box {
+        padding: 1.25rem;
+    }
+}
+
+/* ===== タッチデバイス: タップ領域の確保 ===== */
+@media (pointer: coarse) {
+    nav a {
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+    }
+
+    .width-btn {
+        padding: 0.45rem 0.8rem;
+    }
+
+    .view-tab,
+    .register-tab,
+    .series-tab {
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+    }
+
+    .btn-xs {
+        padding: 0.4rem 0.6rem;
+    }
+
+    .manual-cd-track-meta > summary {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .manual-cd-track-del {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+    }
+
+    .book-search-clear {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .detail-close {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+}
+
+/* ===== モーション低減設定への対応 ===== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

@@ -261,8 +261,8 @@
 }
 
 .gs-item-remove:hover {
-    color: var(--color-primary);
-    background: var(--color-primary-alpha);
+    color: var(--color-danger);
+    background: var(--color-danger-alpha);
 }
 
 .gs-add-item {

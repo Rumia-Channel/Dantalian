@@ -9,6 +9,10 @@
     --color-success: #5e60ce;
     --color-success-hover: #7b7ee8;
     --color-success-alpha: rgba(94, 96, 206, 0.15);
+    --color-warning: #ff9800;
+    --color-danger: #e5534b;
+    --color-danger-hover: #f26d65;
+    --color-danger-alpha: rgba(229, 83, 75, 0.15);
     --color-muted: #555;
 
     /* テキストの色 */
@@ -21,7 +25,6 @@
 
     /* 背景色 */
     --color-bg-body: #08090f;
-    --color-bg-body-gradient: radial-gradient(ellipse at 50% 0%, #0a0b14 0%, #08090f 55%);
 
     --color-bg-surface: rgba(14, 16, 32, 0.92);
     --color-bg-input: rgba(18, 20, 38, 0.85);
@@ -103,8 +106,6 @@ button {
 body {
     font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
     background: var(--color-bg-body);
-    background-image: var(--color-bg-body-gradient);
-    background-attachment: fixed;
     color: var(--color-text-primary);
     min-height: 100vh;
     line-height: 1.6;
@@ -283,12 +284,12 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .btn-outline-danger {
     background: transparent;
-    border: 0.0625rem solid var(--color-primary);
-    color: var(--color-primary);
+    border: 0.0625rem solid var(--color-danger);
+    color: var(--color-danger);
 }
 
 .btn-outline-danger:hover {
-    background: var(--color-primary);
+    background: var(--color-danger);
     color: #fff;
 }
 
@@ -380,7 +381,6 @@ input[type="number"]::-webkit-outer-spin-button {
     color: var(--color-text-primary);
     font-size: 0.85rem;
     font-family: inherit;
-}
 }
 
 /* --- Meta modal author list (track-level artists) --- */

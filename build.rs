@@ -18,6 +18,7 @@ fn main() {
         "static/css/series.css",
         "static/css/detail.css",
         "static/css/settings.css",
+        "static/css/responsive.css",
     ];
 
     let js_files = [

@@ -153,7 +153,7 @@
 
 .author-group-header:hover {
     color: var(--color-success);
-    border-bottom-color: rgba(78, 204, 163, 0.4);
+    border-bottom-color: rgba(94, 96, 206, 0.4);
 }
 
 .author-group-header::before {
@@ -316,9 +316,6 @@
     font-size: 0.75rem;
     color: var(--color-text-label);
     margin-top: 0.3rem;
-}
-
-.cd-card-v {
 }
 
 .cd-card-v .book-info {
