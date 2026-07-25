@@ -121,14 +121,6 @@ function renderBookEdit(id) {
                 </div>
             </div>
             <div class="edit-field">
-                <label>シリーズ名(NDL)</label>
-                <input type="text" name="series_title" value="${escapeAttr(book.series_title || '')}">
-            </div>
-            <div class="edit-field">
-                <label>シリーズ名(よみ)</label>
-                <input type="text" name="series_title_transcription" value="${escapeAttr(book.series_title_transcription || '')}">
-            </div>
-            <div class="edit-field">
                 <label>別タイトル</label>
                 <input type="text" name="alternative" value="${escapeAttr(book.alternative || '')}">
             </div>
