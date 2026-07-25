@@ -15,6 +15,7 @@ let editCdAuthorSelect = null;
     await loadCds();
     await loadSeries();
     await loadGrandSeries();
+    await loadStorageLocations();
 
     const [aRes, bRes] = await Promise.all([
         fetch("/api/authors"),
@@ -78,6 +79,7 @@ function renderBookEdit(id) {
         <form class="edit-form" id="edit-form">
             <input type="hidden" name="series_id" value="${book.series_id != null ? book.series_id : ''}">
             <input type="hidden" name="grand_series_id" value="${currentGrandSeries ? currentGrandSeries.id : ''}">
+            <input type="hidden" name="storage_location_id" value="${book.storage_location_id != null ? book.storage_location_id : ''}">
             <div class="edit-field">
                 <label>タイトル <span class="edit-required">*</span></label>
                 <input type="text" name="title" value="${escapeAttr(book.title)}" required>
@@ -268,7 +270,24 @@ function renderBookEdit(id) {
                 </div>
             </div>
             <div class="edit-section">
-                <h3 class="edit-section-title">EPUB</h3>
+                <h3 class="edit-section-title">ステータス</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>読書状況</label>
+                        <select name="reading_status" class="form-input">
+                            <option value="unread" ${(!book.reading_status || book.reading_status === 'unread') ? 'selected' : ''}>未読</option>
+                            <option value="reading" ${book.reading_status === 'reading' ? 'selected' : ''}>読書中</option>
+                            <option value="completed" ${book.reading_status === 'completed' ? 'selected' : ''}>読了</option>
+                        </select>
+                    </div>
+                    <div class="edit-field">
+                        <label>保管場所</label>
+                        <div id="edit-storage-location-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">ファイル</h3>
                 <div class="edit-epub-info" id="edit-epub-info">
                     ${
                         book.epub_file_hash
@@ -276,13 +295,13 @@ function renderBookEdit(id) {
                                 <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
                                 <a class="btn btn-xs btn-ghost" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
                             </div>`
-                            : `<div class="edit-epub-empty">EPUB 未登録</div>`
+                            : `<div class="edit-epub-empty">ファイル未登録</div>`
                     }
                 </div>
                 <div class="edit-epub-actions">
                     <label class="btn btn-xs btn-outline-success edit-epub-upload-label">
                         ${book.epub_file_hash ? "差し替え" : "アップロード"}
-                        <input type="file" id="edit-epub-input" accept=".epub,application/epub+zip" hidden>
+                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" hidden>
                     </label>
                     ${
                         book.epub_file_hash
@@ -367,6 +386,19 @@ function renderBookEdit(id) {
         },
     });
 
+    const locOpts = allStorageLocations.map((l) => ({
+        value: l.id,
+        label: getStorageLocationPath(l.id),
+    }));
+    createSearchableSelect(document.getElementById("edit-storage-location-container"), {
+        options: locOpts,
+        value: book.storage_location_id,
+        placeholder: "なし",
+        onChange: (val) => {
+            form.querySelector("input[name=storage_location_id]").value = val != null ? val : "";
+        },
+    });
+
     const authorOpts = availableAuthors.map((a) => ({ value: a.id, label: a.name }));
     editAuthorSelect = createSearchableSelect(document.getElementById("edit-author-select-container"), {
         options: authorOpts,
@@ -437,7 +469,7 @@ async function saveBook(e, bookId) {
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
-        if (key === "series_id" || key === "grand_series_id" || key === "series_number" || key === "disc_count") {
+        if (key === "series_id" || key === "grand_series_id" || key === "series_number" || key === "disc_count" || key === "storage_location_id") {
             body[key] = val === "" ? null : parseInt(val, 10);
         } else if (key === "isbn" || key === "isdn") {
             body[key] = val === "" ? null : val;
@@ -476,7 +508,7 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
             return;
         }
         const fd = new FormData();
-        fd.append("epub", file);
+        fd.append("file", file);
         try {
             const res = await fetch(`/api/books/${bid}/epub`, {
                 method: "POST",
@@ -484,14 +516,14 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                console.error("EPUB upload failed:", res.status, err);
-                alert(`EPUBのアップロードに失敗しました (${res.status}): ${err.error || ""}`);
+                console.error("File upload failed:", res.status, err);
+                alert(`ファイルのアップロードに失敗しました (${res.status}): ${err.error || ""}`);
             }
             await loadBooks();
             renderBookEdit(bid);
         } catch (err) {
-            console.error("EPUB upload error:", err);
-            alert("EPUBのアップロード中に通信エラーが発生しました");
+            console.error("File upload error:", err);
+            alert("ファイルのアップロード中に通信エラーが発生しました");
         }
         e.target.value = "";
         if (coverDisplay) coverDisplay.style.opacity = "1";

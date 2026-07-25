@@ -6,6 +6,7 @@ const detailContent = document.getElementById("detail-content");
 (async () => {
     await loadSeries();
     await loadGrandSeries();
+    await loadStorageLocations();
     await loadBooks();
     await loadCds();
     renderItems();

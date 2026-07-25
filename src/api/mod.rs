@@ -6,6 +6,7 @@ pub mod grand_series;
 pub mod media_sync;
 pub mod series;
 pub mod settings;
+pub mod storage_locations;
 pub mod tracks;
 
 use axum::extract::DefaultBodyLimit;
@@ -59,6 +60,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
             "/grand-series/{id}/items/{item_type}/{item_id}",
             delete(grand_series::remove_item),
         )
+        .route("/storage-locations", post(storage_locations::create))
+        .route("/storage-locations", get(storage_locations::list))
+        .route("/storage-locations/{id}", put(storage_locations::update))
+        .route("/storage-locations/{id}", delete(storage_locations::delete))
         .route("/books/{id}/copies", get(copies::list_copies))
         .route("/books/{id}/copies", post(copies::create_copy))
         .route("/copies/{id}", put(copies::update_copy))

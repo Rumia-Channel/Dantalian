@@ -1,7 +1,7 @@
 use super::*;
 use rusqlite::{Connection, Row, params};
 
-const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, created_at, updated_at";
+const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, reading_status, storage_location_id, created_at, updated_at";
 
 impl Db {
     fn row_to_book(row: &Row<'_>) -> rusqlite::Result<Book> {
@@ -51,8 +51,10 @@ impl Db {
             disc_count: row.get(42)?,
             epub_file_hash: row.get(43)?,
             epub_file_name: row.get(44)?,
-            created_at: row.get(45)?,
-            updated_at: row.get(46)?,
+            reading_status: row.get(45)?,
+            storage_location_id: row.get(46)?,
+            created_at: row.get(47)?,
+            updated_at: row.get(48)?,
         })
     }
 
@@ -141,6 +143,8 @@ impl Db {
             disc_count: book.disc_count,
             epub_file_hash: None,
             epub_file_name: None,
+            reading_status: Some("unread".to_string()),
+            storage_location_id: None,
             created_at: Some(now),
             updated_at: None,
         })
@@ -315,6 +319,8 @@ impl Db {
         artist: Option<&str>,
         label: Option<&str>,
         disc_count: Option<i64>,
+        reading_status: Option<&str>,
+        storage_location_id: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
@@ -333,8 +339,10 @@ impl Db {
              artist=COALESCE(?39, artist),
              label=COALESCE(?40, label),
              disc_count=COALESCE(?41, disc_count),
-             updated_at=?42
-             WHERE id=?43",
+             reading_status=COALESCE(?42, reading_status),
+             storage_location_id=?43,
+             updated_at=?44
+             WHERE id=?45",
             params![
                 isbn, isdn, jan, title, publisher, publish_date, description,
                 title_transcription, series_title, series_title_transcription,
@@ -345,7 +353,8 @@ impl Db {
                 isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code,
                 isdn_author, isdn_shape, isdn_contents, isdn_barcode2,
                 isdn_sample_image_url, isdn_useroption, isdn_external_links,
-                media_type, catalog_number, artist, label, disc_count, now,
+                media_type, catalog_number, artist, label, disc_count,
+                reading_status, storage_location_id, now,
                 id,
             ],
         )?;

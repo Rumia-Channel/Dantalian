@@ -33,6 +33,7 @@ fn main() {
         "static/js/register/audiobook.js",
         "static/js/register/manual.js",
         "static/js/series.js",
+        "static/js/storage-locations.js",
         "static/js/book-grid.js",
         "static/js/detail.js",
         "static/js/authors.js",

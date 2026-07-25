@@ -2,6 +2,7 @@ let allBooks = [];
 let allCds = [];
 let allSeries = [];
 let allGrandSeries = [];
+let allStorageLocations = [];
 
 function escapeHtml(text) {
     if (text == null) return "";
@@ -74,6 +75,28 @@ async function loadCds() {
         console.error("loadCds failed:", err);
         allCds = [];
     }
+}
+
+async function loadStorageLocations() {
+    try {
+        const res = await fetch("/api/storage-locations");
+        allStorageLocations = await res.json();
+    } catch {
+        allStorageLocations = [];
+    }
+}
+
+function getStorageLocationPath(locationId) {
+    if (locationId == null) return "";
+    const parts = [];
+    let current = allStorageLocations.find((l) => l.id === locationId);
+    while (current) {
+        parts.unshift(current.name);
+        current = current.parent_id != null
+            ? allStorageLocations.find((l) => l.id === current.parent_id)
+            : null;
+    }
+    return parts.join(" > ");
 }
 
 function findBookGrandSeries(bookId) {

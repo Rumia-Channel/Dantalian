@@ -62,6 +62,8 @@ pub struct Book {
     pub disc_count: Option<i64>,
     pub epub_file_hash: Option<String>,
     pub epub_file_name: Option<String>,
+    pub reading_status: Option<String>,
+    pub storage_location_id: Option<i64>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -136,6 +138,13 @@ pub struct NewBook {
 pub struct Series {
     pub id: i64,
     pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StorageLocation {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

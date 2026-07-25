@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 7;
+const SCHEMA_VERSION: u32 = 8;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -27,6 +27,12 @@ CREATE TABLE IF NOT EXISTS authors (
     ndl_id TEXT UNIQUE,
     name TEXT NOT NULL,
     transcription TEXT
+);
+
+CREATE TABLE IF NOT EXISTS storage_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS books (
@@ -75,6 +81,8 @@ CREATE TABLE IF NOT EXISTS books (
     disc_count INTEGER,
     epub_file_hash TEXT,
     epub_file_name TEXT,
+    reading_status TEXT DEFAULT 'unread',
+    storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
     created_at TEXT,
     updated_at TEXT
 );
@@ -229,6 +237,7 @@ DROP TABLE IF EXISTS borrowers;
 DROP TABLE IF EXISTS copies;
 DROP TABLE IF EXISTS book_authors;
 DROP TABLE IF EXISTS books;
+DROP TABLE IF EXISTS storage_locations;
 DROP TABLE IF EXISTS authors;
 DROP TABLE IF EXISTS grand_series_items;
 DROP TABLE IF EXISTS grand_series;
@@ -397,6 +406,18 @@ ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
 ALTER TABLE books ADD COLUMN epub_file_name TEXT;
 "#;
 
+const MIGRATE_V7_TO_V8_SQL: &str = r#"
+ALTER TABLE books ADD COLUMN reading_status TEXT DEFAULT 'unread';
+
+CREATE TABLE IF NOT EXISTS storage_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL
+);
+
+ALTER TABLE books ADD COLUMN storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL;
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -431,6 +452,9 @@ impl Db {
             }
             if current_version < 7 {
                 conn.execute_batch(MIGRATE_V6_TO_V7_SQL)?;
+            }
+            if current_version < 8 {
+                conn.execute_batch(MIGRATE_V7_TO_V8_SQL)?;
             }
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");

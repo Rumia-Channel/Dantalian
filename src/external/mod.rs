@@ -56,7 +56,7 @@ pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
 }
 
 pub(crate) use self::save_uploaded_audio::save_uploaded_audio;
-pub(crate) use self::save_uploaded_epub::save_uploaded_epub;
+pub(crate) use self::save_uploaded_file::save_uploaded_file;
 
 mod save_uploaded_audio {
     use base64::Engine;
@@ -103,22 +103,22 @@ mod save_uploaded_audio {
     }
 }
 
-mod save_uploaded_epub {
+mod save_uploaded_file {
     use base64::Engine;
     use sha3::{Digest, Sha3_256};
 
-    pub(crate) const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
+    pub(crate) const FILE_MAX_BYTES: usize = 500 * 1024 * 1024;
 
-    pub(crate) fn save_uploaded_epub(
+    pub(crate) fn save_uploaded_file(
         bytes: &[u8],
         original_name: &str,
         epubs_dir: &str,
     ) -> Result<(String, String), String> {
-        if bytes.len() > EPUB_MAX_BYTES {
+        if bytes.len() > FILE_MAX_BYTES {
             return Err(format!(
-                "EPUB too large: {} bytes (max {} MB)",
+                "File too large: {} bytes (max {} MB)",
                 bytes.len(),
-                EPUB_MAX_BYTES / 1024 / 1024
+                FILE_MAX_BYTES / 1024 / 1024
             ));
         }
 
@@ -126,16 +126,26 @@ mod save_uploaded_epub {
             .extension()
             .and_then(|s| s.to_str())
             .map(|s| s.to_ascii_lowercase())
-            .filter(|s| s == "epub")
-            .ok_or_else(|| format!("Unsupported EPUB extension: {}", original_name))?;
+            .filter(|s| matches!(s.as_str(), "epub" | "pdf" | "zip"))
+            .ok_or_else(|| format!("Unsupported file extension: {}", original_name))?;
 
-        // Light ZIP magic check: "PK\x03\x04" or "PK\x05\x06" (empty) or "PK\x07\x08" (spanned)
-        if bytes.len() < 4 || &bytes[0..2] != b"PK" {
-            return Err("EPUB file is not a valid ZIP archive".to_string());
-        }
-        let ok_signature = matches!(&bytes[2..4], [0x03, 0x04] | [0x05, 0x06] | [0x07, 0x08]);
-        if !ok_signature {
-            return Err("EPUB file is not a valid ZIP archive".to_string());
+        match ext.as_str() {
+            "epub" | "zip" => {
+                if bytes.len() < 4 || &bytes[0..2] != b"PK" {
+                    return Err("File is not a valid ZIP archive".to_string());
+                }
+                let ok_signature =
+                    matches!(&bytes[2..4], [0x03, 0x04] | [0x05, 0x06] | [0x07, 0x08]);
+                if !ok_signature {
+                    return Err("File is not a valid ZIP archive".to_string());
+                }
+            }
+            "pdf" => {
+                if bytes.len() < 5 || &bytes[0..5] != b"%PDF-" {
+                    return Err("File is not a valid PDF".to_string());
+                }
+            }
+            _ => {}
         }
 
         let hash = Sha3_256::digest(bytes);
@@ -146,7 +156,7 @@ mod save_uploaded_epub {
             .map_err(|e| format!("Failed to create epubs dir: {}", e))?;
 
         let save_path = std::path::Path::new(epubs_dir).join(&save_name);
-        std::fs::write(&save_path, bytes).map_err(|e| format!("Failed to save EPUB: {}", e))?;
+        std::fs::write(&save_path, bytes).map_err(|e| format!("Failed to save file: {}", e))?;
 
         Ok((save_name, ext.to_string()))
     }

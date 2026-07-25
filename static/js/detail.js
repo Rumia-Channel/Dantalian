@@ -143,6 +143,15 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
     if (book.catalog_number) metaParts.push(`<div><span class="detail-meta-label">品番</span>${escapeHtml(book.catalog_number)}</div>`);
     if (book.disc_count) metaParts.push(`<div><span class="detail-meta-label">ディスク</span>${book.disc_count}枚</div>`);
 
+    const readingStatusLabels = { unread: "未読", reading: "読書中", completed: "読了" };
+    const rsLabel = readingStatusLabels[book.reading_status] || book.reading_status || "未読";
+    metaParts.push(`<div><span class="detail-meta-label">読書状況</span><span class="detail-reading-status rs-${book.reading_status || 'unread'}">${escapeHtml(rsLabel)}</span></div>`);
+
+    if (book.storage_location_id != null) {
+        const locPath = getStorageLocationPath(book.storage_location_id);
+        if (locPath) metaParts.push(`<div><span class="detail-meta-label">保管場所</span>${escapeHtml(locPath)}</div>`);
+    }
+
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
         : "";
@@ -225,7 +234,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         ${tracksHtml}
         ${renderChildrenInDetail(book.id)}
         <div class="detail-epub">
-            <div class="detail-epub-title">EPUB</div>
+            <div class="detail-epub-title">ファイル</div>
             ${
                 book.epub_file_hash
                     ? `<div class="detail-epub-info">
@@ -233,7 +242,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                         <a class="btn btn-xs btn-outline-success detail-epub-open" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
                         <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
                     </div>`
-                    : `<div class="detail-epub-empty">EPUB 未登録</div>`
+                    : `<div class="detail-epub-empty">ファイル未登録</div>`
             }
         </div>
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}

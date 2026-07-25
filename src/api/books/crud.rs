@@ -148,6 +148,8 @@ pub struct UpdateBookRequest {
     pub isdn_sample_image_url: Option<String>,
     pub isdn_useroption: Option<String>,
     pub isdn_external_links: Option<String>,
+    pub reading_status: Option<String>,
+    pub storage_location_id: Option<Option<i64>>,
 }
 
 pub async fn update_book(
@@ -207,6 +209,11 @@ pub async fn update_book(
     let disc_count = match req.disc_count {
         Some(o) => o,
         None => existing_book.as_ref().and_then(|b| b.disc_count),
+    };
+    let reading_status = req.reading_status.as_deref();
+    let storage_location_id = match req.storage_location_id {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.storage_location_id),
     };
 
     // grand_series_id: present => apply (Some(id) set / None clear), absent => leave as-is
@@ -269,6 +276,8 @@ pub async fn update_book(
             artist.as_deref(),
             label.as_deref(),
             disc_count,
+            reading_status,
+            storage_location_id,
         )
         .map_err(|e| {
             (
@@ -567,7 +576,7 @@ pub async fn upload_epub(
         )
     })? {
         let name = field.name().unwrap_or("").to_string();
-        if name == "epub" {
+        if name == "epub" || name == "file" {
             let file_name = field
                 .file_name()
                 .map(|s| s.to_string())
@@ -596,7 +605,7 @@ pub async fn upload_epub(
     let original_name = original_name.unwrap_or_else(|| "upload.epub".to_string());
 
     let (saved_name, _ext) =
-        crate::external::save_uploaded_epub(&bytes, &original_name, state.epubs_dir.as_str())
+        crate::external::save_uploaded_file(&bytes, &original_name, state.epubs_dir.as_str())
             .map_err(|e| {
                 (
                     StatusCode::BAD_REQUEST,
