@@ -9,6 +9,7 @@
         '<h1>Dantalian</h1>' +
         '<nav>' +
             '<a href="/" id="nav-home">一覧</a>' +
+            '<a href="/music/" id="nav-music">音楽</a>' +
             '<a href="/register/" id="nav-register">登録</a>' +
             '<a href="/manage/" id="nav-manage">管理</a>' +
             '<a href="/authors/" id="nav-authors">アーティスト</a>' +

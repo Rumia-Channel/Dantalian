@@ -1,12 +1,22 @@
-/* ===== プレイヤーページ専用スタイル ===== */
+/* ===== プレイヤーコンポーネント専用スタイル =====
+   .player-root は画面全体を覆う固定オーバーレイとして動作する。 */
 
-.player-body {
-    margin: 0;
-    min-height: 100vh;
+.player-root {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    overflow-y: auto;
     background: var(--color-bg-body);
     color: var(--color-text-primary);
-    font-family: inherit;
-    overflow-x: hidden;
+}
+
+.player-root.hidden {
+    display: none;
+}
+
+/* プレイヤー表示中は背後のページスクロールを止める */
+body.player-active {
+    overflow: hidden;
 }
 
 /* ---------- アンビエント背景 ---------- */
@@ -46,7 +56,7 @@
     z-index: 1;
     max-width: 60rem;
     margin: 0 auto;
-    min-height: 100vh;
+    min-height: 100%;
     display: flex;
     flex-direction: column;
     padding: 1.25rem 1.5rem 2rem;
@@ -58,7 +68,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+.player-topbar .player-eyebrow {
+    margin: 0 auto;
+}
+
+.player-topbar-spacer {
+    width: 2.4rem;
 }
 
 .player-eyebrow {
@@ -536,8 +555,8 @@
     font-size: 0.9rem;
 }
 
-/* ---------- 閉じるボタン ---------- */
-.player-close .material-icons {
+/* ---------- 戻るボタン ---------- */
+.player-back .material-icons {
     font-size: 1.4rem;
 }
 

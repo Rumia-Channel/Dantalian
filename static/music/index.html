@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - 音楽</title>
+    <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/player.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/music.css?v=ASSET_VERSION">
+</head>
+<body data-active-nav="music">
+    <div id="app">
+        <section class="music-page" id="music-list-view">
+            <div class="music-header">
+                <h2 class="music-title">音楽</h2>
+                <span class="music-count" id="music-count"></span>
+            </div>
+            <div class="music-filters">
+                <button class="music-filter active" data-filter="all">すべて</button>
+                <button class="music-filter" data-filter="cd">CD</button>
+                <button class="music-filter" data-filter="audiobook">オーディオブック</button>
+            </div>
+            <div class="music-grid" id="music-grid"></div>
+        </section>
+
+        <div id="music-player-root"></div>
+    </div>
+
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
+    <script src="/js/utils.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings.js?v=ASSET_VERSION"></script>
+    <script src="/js/player/engine.js?v=ASSET_VERSION"></script>
+    <script src="/js/player/ui.js?v=ASSET_VERSION"></script>
+    <script src="/js/music/main.js?v=ASSET_VERSION"></script>
+</body>
+</html>

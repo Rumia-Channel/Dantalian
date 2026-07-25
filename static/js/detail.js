@@ -541,15 +541,7 @@ async function assignCdGrandSeries(cdId, value) {
 }
 
 function openCdPlayer(cdId) {
-    const w = 980;
-    const h = 640;
-    const left = Math.max(0, (screen.width - w) / 2);
-    const top = Math.max(0, (screen.height - h) / 2);
-    window.open(
-        `/player/?cd=${cdId}`,
-        "dantalian_player",
-        `width=${w},height=${h},left=${left},top=${top},popup=yes`
-    );
+    location.href = `/music/?play=${cdId}`;
 }
 
 async function deleteCd(id) {
