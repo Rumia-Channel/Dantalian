@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 8;
+const SCHEMA_VERSION: u32 = 9;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS storage_locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     parent_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS books (
@@ -83,6 +88,7 @@ CREATE TABLE IF NOT EXISTS books (
     epub_file_name TEXT,
     reading_status TEXT DEFAULT 'unread',
     storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
+    label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL,
     created_at TEXT,
     updated_at TEXT
 );
@@ -237,6 +243,7 @@ DROP TABLE IF EXISTS borrowers;
 DROP TABLE IF EXISTS copies;
 DROP TABLE IF EXISTS book_authors;
 DROP TABLE IF EXISTS books;
+DROP TABLE IF EXISTS labels;
 DROP TABLE IF EXISTS storage_locations;
 DROP TABLE IF EXISTS authors;
 DROP TABLE IF EXISTS grand_series_items;
@@ -418,6 +425,15 @@ CREATE TABLE IF NOT EXISTS storage_locations (
 ALTER TABLE books ADD COLUMN storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL;
 "#;
 
+const MIGRATE_V8_TO_V9_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+
+ALTER TABLE books ADD COLUMN label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL;
+"#;
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -455,6 +471,9 @@ impl Db {
             }
             if current_version < 8 {
                 conn.execute_batch(MIGRATE_V7_TO_V8_SQL)?;
+            }
+            if current_version < 9 {
+                conn.execute_batch(MIGRATE_V8_TO_V9_SQL)?;
             }
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");

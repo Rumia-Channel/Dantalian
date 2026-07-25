@@ -7,6 +7,7 @@ const detailContent = document.getElementById("detail-content");
     await loadSeries();
     await loadGrandSeries();
     await loadStorageLocations();
+    await loadLabels();
     await loadBooks();
     await loadCds();
     renderItems();

@@ -1,7 +1,7 @@
 use super::*;
 use rusqlite::{Connection, Row, params};
 
-const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, reading_status, storage_location_id, created_at, updated_at";
+const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, reading_status, storage_location_id, label_id, created_at, updated_at";
 
 impl Db {
     fn row_to_book(row: &Row<'_>) -> rusqlite::Result<Book> {
@@ -53,8 +53,9 @@ impl Db {
             epub_file_name: row.get(44)?,
             reading_status: row.get(45)?,
             storage_location_id: row.get(46)?,
-            created_at: row.get(47)?,
-            updated_at: row.get(48)?,
+            label_id: row.get(47)?,
+            created_at: row.get(48)?,
+            updated_at: row.get(49)?,
         })
     }
 
@@ -145,6 +146,7 @@ impl Db {
             epub_file_name: None,
             reading_status: Some("unread".to_string()),
             storage_location_id: None,
+            label_id: None,
             created_at: Some(now),
             updated_at: None,
         })
@@ -321,6 +323,7 @@ impl Db {
         disc_count: Option<i64>,
         reading_status: Option<&str>,
         storage_location_id: Option<i64>,
+        label_id: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
@@ -341,8 +344,9 @@ impl Db {
              disc_count=COALESCE(?41, disc_count),
              reading_status=COALESCE(?42, reading_status),
              storage_location_id=?43,
-             updated_at=?44
-             WHERE id=?45",
+             label_id=?44,
+             updated_at=?45
+             WHERE id=?46",
             params![
                 isbn, isdn, jan, title, publisher, publish_date, description,
                 title_transcription, series_title, series_title_transcription,
@@ -354,7 +358,7 @@ impl Db {
                 isdn_author, isdn_shape, isdn_contents, isdn_barcode2,
                 isdn_sample_image_url, isdn_useroption, isdn_external_links,
                 media_type, catalog_number, artist, label, disc_count,
-                reading_status, storage_location_id, now,
+                reading_status, storage_location_id, label_id, now,
                 id,
             ],
         )?;
@@ -385,6 +389,16 @@ impl Db {
         let affected = conn.execute(
             "UPDATE books SET epub_file_hash = ?1, epub_file_name = ?2, updated_at = ?3 WHERE id = ?4",
             params![file_hash, file_name, now, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    pub fn set_book_label(&self, id: i64, label_id: Option<i64>) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let affected = conn.execute(
+            "UPDATE books SET label_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![label_id, now, id],
         )?;
         Ok(affected > 0)
     }

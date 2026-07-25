@@ -3,6 +3,7 @@ let allCds = [];
 let allSeries = [];
 let allGrandSeries = [];
 let allStorageLocations = [];
+let allLabels = [];
 
 function escapeHtml(text) {
     if (text == null) return "";
@@ -83,6 +84,15 @@ async function loadStorageLocations() {
         allStorageLocations = await res.json();
     } catch {
         allStorageLocations = [];
+    }
+}
+
+async function loadLabels() {
+    try {
+        const res = await fetch("/api/labels");
+        allLabels = await res.json();
+    } catch {
+        allLabels = [];
     }
 }
 

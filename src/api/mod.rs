@@ -3,6 +3,7 @@ pub mod borrowers;
 pub mod cds;
 pub mod copies;
 pub mod grand_series;
+pub mod labels;
 pub mod media_sync;
 pub mod series;
 pub mod settings;
@@ -64,6 +65,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/storage-locations", get(storage_locations::list))
         .route("/storage-locations/{id}", put(storage_locations::update))
         .route("/storage-locations/{id}", delete(storage_locations::delete))
+        .route("/labels", post(labels::create))
+        .route("/labels", get(labels::list))
+        .route("/labels/{id}", put(labels::update))
+        .route("/labels/{id}", delete(labels::delete))
         .route("/books/{id}/copies", get(copies::list_copies))
         .route("/books/{id}/copies", post(copies::create_copy))
         .route("/copies/{id}", put(copies::update_copy))

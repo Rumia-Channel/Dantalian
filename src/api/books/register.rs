@@ -95,6 +95,16 @@ pub async fn register(
         )
     })?;
 
+    // Auto-register label from NDL seriesTitle (e.g. "講談社文庫 ; き60-1" → "講談社文庫")
+    if let Some(ref st) = new_book.series_title {
+        let label_name = st.split(" ; ").next().unwrap_or(st).trim();
+        if !label_name.is_empty() {
+            if let Ok(label) = state.db.get_or_create_label(label_name) {
+                let _ = state.db.set_book_label(book.id, Some(label.id));
+            }
+        }
+    }
+
     let mut authors = Vec::new();
     for a in &new_book.authors {
         let aid = state

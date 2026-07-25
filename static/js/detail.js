@@ -152,6 +152,11 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         if (locPath) metaParts.push(`<div><span class="detail-meta-label">保管場所</span>${escapeHtml(locPath)}</div>`);
     }
 
+    if (book.label_id != null) {
+        const lbl = allLabels.find((l) => l.id === book.label_id);
+        if (lbl) metaParts.push(`<div><span class="detail-meta-label">レーベル</span>${escapeHtml(lbl.name)}</div>`);
+    }
+
     const authorLinks = book.authors && book.authors.length > 0
         ? book.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
         : "";

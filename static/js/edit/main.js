@@ -16,6 +16,7 @@ let editCdAuthorSelect = null;
     await loadSeries();
     await loadGrandSeries();
     await loadStorageLocations();
+    await loadLabels();
 
     const [aRes, bRes] = await Promise.all([
         fetch("/api/authors"),
@@ -80,6 +81,7 @@ function renderBookEdit(id) {
             <input type="hidden" name="series_id" value="${book.series_id != null ? book.series_id : ''}">
             <input type="hidden" name="grand_series_id" value="${currentGrandSeries ? currentGrandSeries.id : ''}">
             <input type="hidden" name="storage_location_id" value="${book.storage_location_id != null ? book.storage_location_id : ''}">
+            <input type="hidden" name="label_id" value="${book.label_id != null ? book.label_id : ''}">
             <div class="edit-field">
                 <label>タイトル <span class="edit-required">*</span></label>
                 <input type="text" name="title" value="${escapeAttr(book.title)}" required>
@@ -285,6 +287,12 @@ function renderBookEdit(id) {
                         <div id="edit-storage-location-container"></div>
                     </div>
                 </div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>レーベル</label>
+                        <div id="edit-label-container"></div>
+                    </div>
+                </div>
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">ファイル</h3>
@@ -399,6 +407,16 @@ function renderBookEdit(id) {
         },
     });
 
+    const labelOpts = allLabels.map((l) => ({ value: l.id, label: l.name }));
+    createSearchableSelect(document.getElementById("edit-label-container"), {
+        options: labelOpts,
+        value: book.label_id,
+        placeholder: "なし",
+        onChange: (val) => {
+            form.querySelector("input[name=label_id]").value = val != null ? val : "";
+        },
+    });
+
     const authorOpts = availableAuthors.map((a) => ({ value: a.id, label: a.name }));
     editAuthorSelect = createSearchableSelect(document.getElementById("edit-author-select-container"), {
         options: authorOpts,
@@ -469,7 +487,7 @@ async function saveBook(e, bookId) {
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
-        if (key === "series_id" || key === "grand_series_id" || key === "series_number" || key === "disc_count" || key === "storage_location_id") {
+        if (key === "series_id" || key === "grand_series_id" || key === "series_number" || key === "disc_count" || key === "storage_location_id" || key === "label_id") {
             body[key] = val === "" ? null : parseInt(val, 10);
         } else if (key === "isbn" || key === "isdn") {
             body[key] = val === "" ? null : val;

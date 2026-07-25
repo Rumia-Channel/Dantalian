@@ -2,17 +2,20 @@ function switchSeriesTab(tab) {
     document.getElementById("tab-series").classList.toggle("active", tab === "series");
     document.getElementById("tab-grand-series").classList.toggle("active", tab === "grand-series");
     document.getElementById("tab-storage-locations").classList.toggle("active", tab === "storage-locations");
+    document.getElementById("tab-labels").classList.toggle("active", tab === "labels");
     document.getElementById("tab-borrowers").classList.toggle("active", tab === "borrowers");
     const tabSettings = document.getElementById("tab-settings");
     if (tabSettings) tabSettings.classList.toggle("active", tab === "settings");
     document.getElementById("panel-series").classList.toggle("hidden", tab !== "series");
     document.getElementById("panel-grand-series").classList.toggle("hidden", tab !== "grand-series");
     document.getElementById("panel-storage-locations").classList.toggle("hidden", tab !== "storage-locations");
+    document.getElementById("panel-labels").classList.toggle("hidden", tab !== "labels");
     document.getElementById("panel-borrowers").classList.toggle("hidden", tab !== "borrowers");
     const panelSettings = document.getElementById("panel-settings");
     if (panelSettings) panelSettings.classList.toggle("hidden", tab !== "settings");
     if (tab === "grand-series") renderGrandSeriesManager();
     if (tab === "storage-locations") renderStorageLocations();
+    if (tab === "labels") renderLabels();
     if (tab === "borrowers") renderBorrowerList();
     if (tab === "settings" && typeof renderSettingsForm === "function") renderSettingsForm();
 }

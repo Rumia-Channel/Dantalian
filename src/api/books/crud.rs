@@ -150,6 +150,7 @@ pub struct UpdateBookRequest {
     pub isdn_external_links: Option<String>,
     pub reading_status: Option<String>,
     pub storage_location_id: Option<Option<i64>>,
+    pub label_id: Option<Option<i64>>,
 }
 
 pub async fn update_book(
@@ -215,6 +216,10 @@ pub async fn update_book(
         Some(o) => o,
         None => existing_book.as_ref().and_then(|b| b.storage_location_id),
     };
+    let label_id = match req.label_id {
+        Some(o) => o,
+        None => existing_book.as_ref().and_then(|b| b.label_id),
+    };
 
     // grand_series_id: present => apply (Some(id) set / None clear), absent => leave as-is
     match req.grand_series_id {
@@ -278,6 +283,7 @@ pub async fn update_book(
             disc_count,
             reading_status,
             storage_location_id,
+            label_id,
         )
         .map_err(|e| {
             (
