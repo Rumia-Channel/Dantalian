@@ -199,8 +199,8 @@ async function loadAlbum(cdId, startTrackId, autoplay) {
     if (!cd) return;
     currentCd = cd;
     setCover(cd);
-    renderTracklist(cd);
     engine.loadTracks(cd.tracks || [], startTrackId);
+    renderTracklist(cd);
     updateNowPlaying();
     updateProgress(0);
     updateDuration(0);
