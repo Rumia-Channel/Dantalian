@@ -41,6 +41,10 @@ async fn serve_authors() -> Html<String> {
     serve_html("static/authors/index.html")
 }
 
+async fn serve_player() -> Html<String> {
+    serve_html("static/player/index.html")
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Db,
@@ -173,6 +177,8 @@ async fn main() {
         .route("/edit/", axum::routing::get(serve_edit))
         .route("/authors", axum::routing::get(serve_authors))
         .route("/authors/", axum::routing::get(serve_authors))
+        .route("/player", axum::routing::get(serve_player))
+        .route("/player/", axum::routing::get(serve_player))
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .nest_service("/audio", ServeDir::new(audio_dir_arc.as_ref()))

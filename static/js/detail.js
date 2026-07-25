@@ -475,6 +475,9 @@ function renderCdDetail(cd, currentSeries, tracks) {
             <div id="cd-detail-grand-series-select-container"></div>
         </div>
         <div class="detail-actions">
+            <button class="btn btn-sm btn-primary" onclick="openCdPlayer(${cd.originalId})">
+                <span class="material-icons" style="font-size:1.1em;vertical-align:-0.15em;">play_arrow</span> 再生
+            </button>
             <a href="/edit/?mode=cd&cd=${cd.originalId}" class="btn btn-sm btn-outline-success">編集</a>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteCd(${cd.originalId})">削除</button>
         </div>
@@ -535,6 +538,18 @@ async function assignCdGrandSeries(cdId, value) {
     await loadGrandSeries();
     await loadCds();
     renderItems();
+}
+
+function openCdPlayer(cdId) {
+    const w = 980;
+    const h = 640;
+    const left = Math.max(0, (screen.width - w) / 2);
+    const top = Math.max(0, (screen.height - h) / 2);
+    window.open(
+        `/player/?cd=${cdId}`,
+        "dantalian_player",
+        `width=${w},height=${h},left=${left},top=${top},popup=yes`
+    );
 }
 
 async function deleteCd(id) {

@@ -9,6 +9,7 @@ fn main() {
         "static/manage/index.html",
         "static/edit/index.html",
         "static/authors/index.html",
+        "static/player/index.html",
     ];
 
     let css_files = [
@@ -19,6 +20,7 @@ fn main() {
         "static/css/detail.css",
         "static/css/settings.css",
         "static/css/responsive.css",
+        "static/css/player.css",
     ];
 
     let js_files = [
@@ -43,6 +45,8 @@ fn main() {
         "static/js/edit/main.js",
         "static/js/borrowers.js",
         "static/js/settings-manage.js",
+        "static/js/player/engine.js",
+        "static/js/player/main.js",
         "static/js/app.js",
     ];
 
