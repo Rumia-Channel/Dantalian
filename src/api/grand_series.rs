@@ -98,10 +98,10 @@ pub async fn add_item(
     Path(id): Path<i64>,
     Json(req): Json<AddGrandSeriesItemRequest>,
 ) -> Result<StatusCode, ApiError> {
-    if req.item_type != "series" && req.item_type != "book" {
+    if req.item_type != "series" && req.item_type != "book" && req.item_type != "cd" {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "item_type must be 'series' or 'book'"})),
+            Json(serde_json::json!({"error": "item_type must be 'series', 'book', or 'cd'"})),
         ));
     }
     state
@@ -120,10 +120,10 @@ pub async fn remove_item(
     State(state): State<AppState>,
     Path((id, item_type, item_id)): Path<(i64, String, i64)>,
 ) -> Result<StatusCode, ApiError> {
-    if item_type != "series" && item_type != "book" {
+    if item_type != "series" && item_type != "book" && item_type != "cd" {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "item_type must be 'series' or 'book'"})),
+            Json(serde_json::json!({"error": "item_type must be 'series', 'book', or 'cd'"})),
         ));
     }
     state

@@ -123,6 +123,13 @@ function findSeriesGrandSeries(seriesId) {
     return null;
 }
 
+function findCdGrandSeries(cdId) {
+    for (const gs of allGrandSeries) {
+        if (gs.items.some((it) => it.item_type === "cd" && it.item_id === cdId)) return gs;
+    }
+    return null;
+}
+
 function getBookIndirectGrandSeriesIds(bookId) {
     const book = allBooks.find((b) => b.id === bookId);
     if (!book || book.series_id == null) return new Set();

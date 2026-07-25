@@ -470,6 +470,10 @@ function renderCdDetail(cd, currentSeries, tracks) {
             <label>シリーズ</label>
             <div id="cd-detail-series-select-container"></div>
         </div>
+        <div class="detail-series-assign">
+            <label>大シリーズ</label>
+            <div id="cd-detail-grand-series-select-container"></div>
+        </div>
         <div class="detail-actions">
             <a href="/edit/?mode=cd&cd=${cd.originalId}" class="btn btn-sm btn-outline-success">編集</a>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteCd(${cd.originalId})">削除</button>
@@ -481,6 +485,14 @@ function renderCdDetail(cd, currentSeries, tracks) {
         value: cd.series_id,
         placeholder: "なし",
         onChange: (val) => assignCdSeries(cd.originalId, val),
+    });
+
+    const cdGs = findCdGrandSeries(cd.originalId);
+    createSearchableSelect(document.getElementById("cd-detail-grand-series-select-container"), {
+        options: allGrandSeries.map((gs) => ({ value: gs.id, label: gs.name })),
+        value: cdGs ? cdGs.id : null,
+        placeholder: "なし",
+        onChange: (val) => assignCdGrandSeries(cd.originalId, val),
     });
 
     detailOverlay.classList.remove("hidden");
@@ -498,6 +510,31 @@ async function assignCdSeries(cdId, value) {
         await loadCds();
         renderItems();
     } catch {}
+}
+
+async function assignCdGrandSeries(cdId, value) {
+    const gsId = value != null ? value : null;
+
+    const currentGs = findCdGrandSeries(cdId);
+    if (currentGs) {
+        try {
+            await fetch(`/api/grand-series/${currentGs.id}/items/cd/${cdId}`, { method: "DELETE" });
+        } catch {}
+    }
+
+    if (gsId != null) {
+        try {
+            await fetch(`/api/grand-series/${gsId}/items`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item_type: "cd", item_id: cdId }),
+            });
+        } catch {}
+    }
+
+    await loadGrandSeries();
+    await loadCds();
+    renderItems();
 }
 
 async function deleteCd(id) {
