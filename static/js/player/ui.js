@@ -1,94 +1,122 @@
 // 再利用可能なプレイヤー UI コンポーネント。
-// 指定コンテナ内にプレイヤー一式(アンビエント背景/カバー/コントロール/トラックリスト)を描画し、
-// PlayerEngine と結びつける。アルバム一覧の操作(前後アルバム)も内部で処理する。
+// 指定コンテナ内に「フルプレイヤー(オーバーレイ)」と「ミニプレイヤー(下部バー)」を描画し、
+// PlayerEngine と結びつける。
+//
+// 状態:
+//   hidden   … どちらも非表示 (初期状態 / 再生停止)
+//   mode-full… フルプレイヤー表示 (アンビエント背景付き、背後スクロール停止)
+//   mode-mini… ミニバー表示 (一覧の上に表示、再生は継続)
 //
 // 使い方:
-//   const player = createPlayerUI(rootEl, { onBack: () => {...} });
+//   const player = createPlayerUI(rootEl, { onBack: () => {} });
 //   player.setAlbums(albums);
-//   player.loadAlbum(cdId, null, true);
-//   player.show(); / player.hide();
+//   player.loadAlbum(cdId, null, true);   // 読み込み + 再生開始 (フル表示にはしない)
+//   player.show();   // フル表示
+//   player.hide();   // ミニ表示へ (現在トラックがあれば再生継続)
+//   player.close();  // 完全停止
 
 function createPlayerUI(rootEl, opts) {
     const onBack = (opts && opts.onBack) || (() => {});
 
-    rootEl.classList.add("player-root");
+    rootEl.classList.add("player-root", "hidden");
     rootEl.innerHTML = `
-    <div class="player-ambient" aria-hidden="true">
-        <div class="player-ambient-img" data-ambient="a"></div>
-        <div class="player-ambient-img" data-ambient="b"></div>
-        <div class="player-ambient-shade"></div>
+    <div class="player-overlay">
+        <div class="player-ambient" aria-hidden="true">
+            <div class="player-ambient-img" data-ambient="a"></div>
+            <div class="player-ambient-img" data-ambient="b"></div>
+            <div class="player-ambient-shade"></div>
+        </div>
+        <div class="player-shell">
+            <header class="player-topbar">
+                <button class="player-iconbtn player-back" data-act="back" aria-label="一覧に戻る" title="一覧に戻る">
+                    <span class="material-icons">arrow_back</span>
+                </button>
+                <span class="player-eyebrow">
+                    <span class="player-eyebrow-dot" data-el="status-dot"></span>
+                    <span data-el="status-label">NOW PLAYING</span>
+                </span>
+                <span class="player-topbar-spacer"></span>
+            </header>
+            <main class="player-main">
+                <section class="player-coverwrap">
+                    <div class="player-cover" data-el="cover">
+                        <img data-el="cover-img" src="" alt="" draggable="false">
+                        <div class="player-cover-fallback" data-el="cover-fallback">
+                            <span class="material-icons">album</span>
+                        </div>
+                    </div>
+                </section>
+                <section class="player-info">
+                    <div class="player-titles">
+                        <h2 class="player-track-title" data-el="track-title">—</h2>
+                        <div class="player-album" data-el="album-title">—</div>
+                        <div class="player-artist" data-el="artist-name">—</div>
+                    </div>
+                    <div class="player-progress">
+                        <div class="player-progress-bar" data-el="progress-bar" role="slider" aria-label="再生位置" tabindex="0">
+                            <div class="player-progress-fill" data-el="progress-fill"></div>
+                            <div class="player-progress-thumb" data-el="progress-thumb"></div>
+                        </div>
+                        <div class="player-times">
+                            <span data-el="time-current">0:00</span>
+                            <span data-el="time-total">0:00</span>
+                        </div>
+                    </div>
+                    <div class="player-controls">
+                        <button class="player-iconbtn player-albumnav" data-act="prev-album" aria-label="前のアルバム" title="前のアルバム">
+                            <span class="material-icons">album</span>
+                            <span class="player-albumnav-chevron material-icons">chevron_left</span>
+                        </button>
+                        <button class="player-iconbtn player-ctrl" data-act="prev" aria-label="前の曲" title="前の曲">
+                            <span class="material-icons">skip_previous</span>
+                        </button>
+                        <button class="player-playbtn" data-act="play" aria-label="再生/一時停止" title="再生/一時停止">
+                            <span class="material-icons" data-el="play-icon">play_arrow</span>
+                        </button>
+                        <button class="player-iconbtn player-ctrl" data-act="next" aria-label="次の曲" title="次の曲">
+                            <span class="material-icons">skip_next</span>
+                        </button>
+                        <button class="player-iconbtn player-albumnav" data-act="next-album" aria-label="次のアルバム" title="次のアルバム">
+                            <span class="material-icons">album</span>
+                            <span class="player-albumnav-chevron material-icons">chevron_right</span>
+                        </button>
+                    </div>
+                    <div class="player-volume">
+                        <button class="player-iconbtn player-volbtn" data-act="mute" aria-label="ミュート" title="ミュート">
+                            <span class="material-icons" data-el="vol-icon">volume_up</span>
+                        </button>
+                        <input type="range" data-el="volume" class="player-volslider" min="0" max="100" value="100" aria-label="音量">
+                    </div>
+                    <div class="player-tracklist-wrap">
+                        <button class="player-tracklist-toggle" data-act="toggle-tracklist" aria-expanded="true">
+                            <span class="player-tracklist-toggle-label">トラックリスト</span>
+                            <span class="player-tracklist-count" data-el="tracklist-count"></span>
+                            <span class="material-icons player-tracklist-caret">expand_more</span>
+                        </button>
+                        <ol class="player-tracklist" data-el="tracklist"></ol>
+                    </div>
+                </section>
+            </main>
+        </div>
     </div>
-    <div class="player-shell">
-        <header class="player-topbar">
-            <button class="player-iconbtn player-back" data-act="back" aria-label="一覧に戻る" title="一覧に戻る">
-                <span class="material-icons">arrow_back</span>
+    <div class="player-mini">
+        <div class="player-mini-progress"><div class="player-mini-progress-fill" data-el="mini-fill"></div></div>
+        <div class="player-mini-body">
+            <button class="player-mini-coverbtn" data-act="expand" aria-label="プレイヤーを開く">
+                <img class="player-mini-cover" data-el="mini-cover" src="" alt="" draggable="false">
+                <span class="player-mini-coverfallback" data-el="mini-cover-fallback"><span class="material-icons">album</span></span>
             </button>
-            <span class="player-eyebrow">
-                <span class="player-eyebrow-dot" data-el="status-dot"></span>
-                <span data-el="status-label">NOW PLAYING</span>
-            </span>
-            <span class="player-topbar-spacer"></span>
-        </header>
-        <main class="player-main">
-            <section class="player-coverwrap">
-                <div class="player-cover" data-el="cover">
-                    <img data-el="cover-img" src="" alt="" draggable="false">
-                    <div class="player-cover-fallback" data-el="cover-fallback">
-                        <span class="material-icons">album</span>
-                    </div>
-                </div>
-            </section>
-            <section class="player-info">
-                <div class="player-titles">
-                    <h2 class="player-track-title" data-el="track-title">—</h2>
-                    <div class="player-album" data-el="album-title">—</div>
-                    <div class="player-artist" data-el="artist-name">—</div>
-                </div>
-                <div class="player-progress">
-                    <div class="player-progress-bar" data-el="progress-bar" role="slider" aria-label="再生位置" tabindex="0">
-                        <div class="player-progress-fill" data-el="progress-fill"></div>
-                        <div class="player-progress-thumb" data-el="progress-thumb"></div>
-                    </div>
-                    <div class="player-times">
-                        <span data-el="time-current">0:00</span>
-                        <span data-el="time-total">0:00</span>
-                    </div>
-                </div>
-                <div class="player-controls">
-                    <button class="player-iconbtn player-albumnav" data-act="prev-album" aria-label="前のアルバム" title="前のアルバム">
-                        <span class="material-icons">album</span>
-                        <span class="player-albumnav-chevron material-icons">chevron_left</span>
-                    </button>
-                    <button class="player-iconbtn player-ctrl" data-act="prev" aria-label="前の曲" title="前の曲">
-                        <span class="material-icons">skip_previous</span>
-                    </button>
-                    <button class="player-playbtn" data-act="play" aria-label="再生/一時停止" title="再生/一時停止">
-                        <span class="material-icons" data-el="play-icon">play_arrow</span>
-                    </button>
-                    <button class="player-iconbtn player-ctrl" data-act="next" aria-label="次の曲" title="次の曲">
-                        <span class="material-icons">skip_next</span>
-                    </button>
-                    <button class="player-iconbtn player-albumnav" data-act="next-album" aria-label="次のアルバム" title="次のアルバム">
-                        <span class="material-icons">album</span>
-                        <span class="player-albumnav-chevron material-icons">chevron_right</span>
-                    </button>
-                </div>
-                <div class="player-volume">
-                    <button class="player-iconbtn player-volbtn" data-act="mute" aria-label="ミュート" title="ミュート">
-                        <span class="material-icons" data-el="vol-icon">volume_up</span>
-                    </button>
-                    <input type="range" data-el="volume" class="player-volslider" min="0" max="100" value="100" aria-label="音量">
-                </div>
-                <div class="player-tracklist-wrap">
-                    <button class="player-tracklist-toggle" data-act="toggle-tracklist" aria-expanded="true">
-                        <span class="player-tracklist-toggle-label">トラックリスト</span>
-                        <span class="player-tracklist-count" data-el="tracklist-count"></span>
-                        <span class="material-icons player-tracklist-caret">expand_more</span>
-                    </button>
-                    <ol class="player-tracklist" data-el="tracklist"></ol>
-                </div>
-            </section>
-        </main>
+            <div class="player-mini-text" data-act="expand">
+                <div class="player-mini-title" data-el="mini-title">—</div>
+                <div class="player-mini-artist" data-el="mini-artist">—</div>
+            </div>
+            <div class="player-mini-controls">
+                <button class="player-mini-btn" data-act="prev" aria-label="前の曲" title="前の曲"><span class="material-icons">skip_previous</span></button>
+                <button class="player-mini-btn player-mini-play" data-act="play" aria-label="再生/一時停止" title="再生/一時停止"><span class="material-icons" data-el="mini-play-icon">play_arrow</span></button>
+                <button class="player-mini-btn" data-act="next" aria-label="次の曲" title="次の曲"><span class="material-icons">skip_next</span></button>
+                <button class="player-mini-btn player-mini-close" data-act="close" aria-label="再生を停止" title="再生を停止"><span class="material-icons">close</span></button>
+            </div>
+        </div>
     </div>`;
 
     const $ = (sel) => rootEl.querySelector(sel);
@@ -135,10 +163,16 @@ function createPlayerUI(rootEl, opts) {
             el["cover-img"].alt = cd.title || "";
             el["cover-img"].style.display = "block";
             el["cover-fallback"].style.display = "none";
+            el["mini-cover"].src = url;
+            el["mini-cover"].style.display = "block";
+            el["mini-cover-fallback"].style.display = "none";
         } else {
             el["cover-img"].removeAttribute("src");
             el["cover-img"].style.display = "none";
             el["cover-fallback"].style.display = "flex";
+            el["mini-cover"].removeAttribute("src");
+            el["mini-cover"].style.display = "none";
+            el["mini-cover-fallback"].style.display = "flex";
         }
         setAmbient(url);
     }
@@ -181,9 +215,12 @@ function createPlayerUI(rootEl, opts) {
 
     function updateNowPlaying() {
         const t = engine.current();
-        el["track-title"].textContent = t ? t.title : "再生できるトラックがありません";
+        const title = t ? t.title : "再生できるトラックがありません";
+        el["track-title"].textContent = title;
         el["album-title"].textContent = currentCd ? currentCd.title : "—";
         el["artist-name"].textContent = currentCd ? (currentCd.artist || "") : "";
+        el["mini-title"].textContent = title;
+        el["mini-artist"].textContent = currentCd ? (currentCd.artist || currentCd.title) : "";
         highlightCurrentTrack();
         updateMediaSession();
     }
@@ -208,6 +245,7 @@ function createPlayerUI(rootEl, opts) {
         el["progress-fill"].style.width = pct;
         el["progress-thumb"].style.left = pct;
         el["time-current"].textContent = formatTime(pos);
+        el["mini-fill"].style.width = pct;
     }
 
     function updateDuration(dur) {
@@ -215,11 +253,14 @@ function createPlayerUI(rootEl, opts) {
     }
 
     function setPlayState(playing) {
-        el["play-icon"].textContent = playing ? "pause" : "play_arrow";
+        const icon = playing ? "pause" : "play_arrow";
+        el["play-icon"].textContent = icon;
+        el["mini-play-icon"].textContent = icon;
         el.cover.classList.toggle("is-playing", playing);
         el["status-dot"].classList.toggle("is-playing", playing);
         el["status-label"].textContent = playing ? "NOW PLAYING" : "PAUSED";
         el.tracklist.classList.toggle("is-playing", playing);
+        rootEl.classList.toggle("is-playing", playing);
         if ("mediaSession" in navigator) {
             navigator.mediaSession.playbackState = playing ? "playing" : "paused";
         }
@@ -236,6 +277,21 @@ function createPlayerUI(rootEl, opts) {
         if (idx < 0) idx = delta > 0 ? -1 : 0;
         const next = (idx + delta + albums.length) % albums.length;
         api.loadAlbum(albums[next].id, null, true);
+    }
+
+    // ---------- 状態遷移 ----------
+    function setMode(mode) {
+        rootEl.classList.remove("hidden", "mode-full", "mode-mini");
+        document.body.classList.remove("player-active", "player-mini-active");
+        if (mode === "full") {
+            rootEl.classList.add("mode-full");
+            document.body.classList.add("player-active");
+        } else if (mode === "mini") {
+            rootEl.classList.add("mode-mini");
+            document.body.classList.add("player-mini-active");
+        } else {
+            rootEl.classList.add("hidden");
+        }
     }
 
     // ---------- シーク ----------
@@ -269,7 +325,7 @@ function createPlayerUI(rootEl, opts) {
         updateVolumeIcon();
     });
 
-    // ---------- イベント ----------
+    // ---------- エンジンイベント ----------
     engine.on("trackchange", updateNowPlaying);
     engine.on("time", updateProgress);
     engine.on("duration", updateDuration);
@@ -286,7 +342,9 @@ function createPlayerUI(rootEl, opts) {
         const btn = e.target.closest("[data-act]");
         if (!btn) return;
         const act = btn.dataset.act;
-        if (act === "back") onBack();
+        if (act === "back") { onBack(); api.hide(); }
+        else if (act === "expand") api.show();
+        else if (act === "close") api.close();
         else if (act === "play") engine.toggle();
         else if (act === "next") engine.next(false);
         else if (act === "prev") engine.prev();
@@ -324,17 +382,21 @@ function createPlayerUI(rootEl, opts) {
         },
         currentCd() { return currentCd; },
         show() {
-            rootEl.classList.remove("hidden");
-            document.body.classList.add("player-active");
+            if (!engine.current()) return;
+            setMode("full");
         },
+        // 現在トラックがあればミニ表示へ (再生継続)、なければ完全停止
         hide() {
-            rootEl.classList.add("hidden");
-            document.body.classList.remove("player-active");
-            engine.pause();
+            if (engine.current()) setMode("mini");
+            else api.close();
         },
-        get visible() { return !rootEl.classList.contains("hidden"); },
+        close() {
+            engine.pause();
+            setMode("closed");
+        },
+        get visible() { return rootEl.classList.contains("mode-full"); },
+        get miniVisible() { return rootEl.classList.contains("mode-mini"); },
     };
 
-    rootEl.classList.add("hidden");
     return api;
 }

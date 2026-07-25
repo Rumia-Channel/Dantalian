@@ -7,9 +7,7 @@ const playerRoot = document.getElementById("music-player-root");
 let allAlbums = [];           // 再生可能トラックを持つ CD 一覧
 let currentFilter = "all";
 
-const player = createPlayerUI(playerRoot, {
-    onBack: () => player.hide(),
-});
+const player = createPlayerUI(playerRoot, {});
 
 function albumMediaType(cd) {
     return cd.media_type === "audiobook" ? "audiobook" : "cd";

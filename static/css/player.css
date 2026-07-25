@@ -1,22 +1,44 @@
 /* ===== プレイヤーコンポーネント専用スタイル =====
-   .player-root は画面全体を覆う固定オーバーレイとして動作する。 */
+   .player-root は論理コンテナ。実体は .player-overlay (全画面) と .player-mini (下部バー)。 */
 
 .player-root {
+    color: var(--color-text-primary);
+}
+
+.player-overlay {
     position: fixed;
     inset: 0;
     z-index: 1000;
     overflow-y: auto;
     background: var(--color-bg-body);
-    color: var(--color-text-primary);
-}
-
-.player-root.hidden {
     display: none;
 }
 
-/* プレイヤー表示中は背後のページスクロールを止める */
+.player-mini {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+    display: none;
+}
+
+.player-root.mode-full .player-overlay {
+    display: block;
+}
+
+.player-root.mode-mini .player-mini {
+    display: block;
+}
+
+/* フル表示中は背後のページスクロールを止める */
 body.player-active {
     overflow: hidden;
+}
+
+/* ミニ表示中は下部バー分の余白を確保 */
+body.player-mini-active #app {
+    padding-bottom: 6rem;
 }
 
 /* ---------- アンビエント背景 ---------- */
@@ -558,6 +580,158 @@ body.player-active {
 /* ---------- 戻るボタン ---------- */
 .player-back .material-icons {
     font-size: 1.4rem;
+}
+
+/* ---------- ミニプレイヤー ---------- */
+.player-mini {
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-light);
+    box-shadow: 0 -0.5rem 1.75rem rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(0.75rem);
+    animation: miniSlideUp 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes miniSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+.player-mini-progress {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.player-mini-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+    transition: width 0.2s linear;
+}
+
+.player-mini-body {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.55rem 1rem;
+    max-width: 60rem;
+    margin: 0 auto;
+}
+
+.player-mini-coverbtn {
+    position: relative;
+    flex-shrink: 0;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.45rem;
+    overflow: hidden;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.player-mini-coverbtn:hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 2px var(--color-primary-alpha);
+}
+
+.player-mini-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.player-mini-coverfallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-dim);
+}
+
+.player-mini-coverfallback .material-icons {
+    font-size: 1.6rem;
+}
+
+.player-mini-text {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.player-mini-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-mini-artist {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-mini-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+
+.player-mini-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: color 0.18s ease, background 0.18s ease, transform 0.15s ease;
+}
+
+.player-mini-btn:hover {
+    color: var(--color-text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.08);
+}
+
+.player-mini-btn:active {
+    transform: scale(0.94);
+}
+
+.player-mini-btn .material-icons {
+    font-size: 1.5rem;
+}
+
+.player-mini-play {
+    color: var(--color-text-primary);
+    background: var(--color-primary-alpha);
+}
+
+.player-mini-play:hover {
+    background: var(--color-primary);
+    color: #fff;
+}
+
+.player-mini-close {
+    color: var(--color-text-dim);
+}
+
+/* 再生中はミニカバーに微かなリング */
+.player-root.is-playing .player-mini-coverbtn {
+    box-shadow: 0 0 0 2px var(--color-primary-alpha);
 }
 
 /* ---------- レスポンシブ ---------- */
