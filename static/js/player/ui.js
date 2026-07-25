@@ -1,24 +1,19 @@
 // 再利用可能なプレイヤー UI コンポーネント。
-// 指定コンテナ内に「フルプレイヤー(オーバーレイ)」と「ミニプレイヤー(下部バー)」を描画し、
-// PlayerEngine と結びつける。
 //
-// 状態:
-//   hidden   … どちらも非表示 (初期状態 / 再生停止)
-//   mode-full… フルプレイヤー表示 (アンビエント背景付き、背後スクロール停止)
-//   mode-mini… ミニバー表示 (一覧の上に表示、再生は継続)
+// 状態モデル:
+//   viewMode = 'live'   … フル表示中のアルバム = 再生中のアルバム (進行/ハイライトはライブ)
+//            'queued'   … 別のアルバムを再生中に閲覧中 = 「Up Next」予約 (再生は継続)
+//            'idle'     … 何も再生していない状態で閲覧中 (プレビュー)
+//   表示     = 'full' / 'mini' / 'closed'
 //
-// 使い方:
-//   const player = createPlayerUI(rootEl, { onBack: () => {} });
-//   player.setAlbums(albums);
-//   player.loadAlbum(cdId, null, true);   // 読み込み + 再生開始 (フル表示にはしない)
-//   player.show();   // フル表示
-//   player.hide();   // ミニ表示へ (現在トラックがあれば再生継続)
-//   player.close();  // 完全停止
+// 挙動:
+//   ・ライブラリのカードクリックは自動再生しない (閲覧/予約のみ)。
+//   ・再生は「再生ボタン」または「トラッククリック」で初めて始まる。
+//   ・再生中に別CDを開くと Up Next として予約され、現在の曲が終わると再生される。
+//   ・一覧に戻ると下部ミニバーで再生継続。ミニバークリックでフル表示へ。
 
-function createPlayerUI(rootEl, opts) {
-    const onBack = (opts && opts.onBack) || (() => {});
-
-    rootEl.classList.add("player-root", "hidden");
+function createPlayerUI(rootEl) {
+    rootEl.classList.add("player-root", "closed");
     rootEl.innerHTML = `
     <div class="player-overlay">
         <div class="player-ambient" aria-hidden="true">
@@ -47,6 +42,10 @@ function createPlayerUI(rootEl, opts) {
                     </div>
                 </section>
                 <section class="player-info">
+                    <div class="player-nowplaying-banner" data-el="banner" hidden>
+                        <span class="material-icons">play_circle</span>
+                        <span>現在再生中: <strong data-el="banner-text"></strong></span>
+                    </div>
                     <div class="player-titles">
                         <h2 class="player-track-title" data-el="track-title">—</h2>
                         <div class="player-album" data-el="album-title">—</div>
@@ -109,6 +108,7 @@ function createPlayerUI(rootEl, opts) {
             <div class="player-mini-text" data-act="expand">
                 <div class="player-mini-title" data-el="mini-title">—</div>
                 <div class="player-mini-artist" data-el="mini-artist">—</div>
+                <div class="player-mini-next" data-el="mini-next" hidden>次に: <span data-el="mini-next-text"></span></div>
             </div>
             <div class="player-mini-controls">
                 <button class="player-mini-btn" data-act="prev" aria-label="前の曲" title="前の曲"><span class="material-icons">skip_previous</span></button>
@@ -128,20 +128,40 @@ function createPlayerUI(rootEl, opts) {
     const engine = new PlayerEngine();
 
     let albums = [];
-    let currentCd = null;
+    let currentCd = null;     // 再生中のアルバム (engine のキュー元)
+    let viewCd = null;        // フル表示中のアルバム
+    let viewTrackId = null;   // フル表示で選択/再生中のトラック
+    let viewMode = "idle";    // 'live' | 'queued' | 'idle'
+    let stagedCd = null;      // Up Next 予約
+    let stagedTrackId = null;
+    let fullVisible = false;
     let ambientFlip = false;
 
+    // ---------- ユーティリティ ----------
     function formatTime(sec) {
         if (!isFinite(sec) || sec < 0) sec = 0;
         const m = Math.floor(sec / 60);
         const s = Math.floor(sec % 60);
         return `${m}:${String(s).padStart(2, "0")}`;
     }
-
-    function coverUrl(cd) {
-        return cd && cd.cover_url ? `/images/${cd.cover_url}` : null;
+    function coverUrl(cd) { return cd && cd.cover_url ? `/images/${cd.cover_url}` : null; }
+    function playableTracks(cd) { return (cd.tracks || []).filter((t) => t.file_hash); }
+    function firstPlayable(cd) { return playableTracks(cd)[0] || null; }
+    function trackById(cd, id) { return (cd.tracks || []).find((t) => t.id === id) || null; }
+    function parseDur(str) {
+        if (!str) return 0;
+        const p = String(str).split(":").map((x) => parseInt(x, 10));
+        if (p.some((x) => isNaN(x))) return 0;
+        return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+    }
+    function computeViewMode() {
+        if (!viewCd) return "idle";
+        if (currentCd && currentCd.id === viewCd.id) return "live";
+        if (currentCd) return "queued";
+        return "idle";
     }
 
+    // ---------- アンビエント / カバー ----------
     function setAmbient(url) {
         const show = ambientFlip ? ambientA : ambientB;
         const hide = ambientFlip ? ambientB : ambientA;
@@ -155,43 +175,37 @@ function createPlayerUI(rootEl, opts) {
             ambientB.classList.remove("active");
         }
     }
-
-    function setCover(cd) {
+    function paintCover(cd) {
         const url = coverUrl(cd);
         if (url) {
-            el["cover-img"].src = url;
-            el["cover-img"].alt = cd.title || "";
-            el["cover-img"].style.display = "block";
-            el["cover-fallback"].style.display = "none";
-            el["mini-cover"].src = url;
-            el["mini-cover"].style.display = "block";
+            el["cover-img"].src = url; el["cover-img"].alt = cd.title || "";
+            el["cover-img"].style.display = "block"; el["cover-fallback"].style.display = "none";
+            el["mini-cover"].src = url; el["mini-cover"].style.display = "block";
             el["mini-cover-fallback"].style.display = "none";
         } else {
-            el["cover-img"].removeAttribute("src");
-            el["cover-img"].style.display = "none";
+            el["cover-img"].removeAttribute("src"); el["cover-img"].style.display = "none";
             el["cover-fallback"].style.display = "flex";
-            el["mini-cover"].removeAttribute("src");
-            el["mini-cover"].style.display = "none";
+            el["mini-cover"].removeAttribute("src"); el["mini-cover"].style.display = "none";
             el["mini-cover-fallback"].style.display = "flex";
         }
         setAmbient(url);
     }
 
-    function renderTracklist(cd) {
-        const tracks = engine.allTracks || [];
+    // ---------- トラックリスト ----------
+    function renderTracklist() {
+        const cd = viewCd;
+        if (!cd) { el.tracklist.innerHTML = ""; return; }
+        const tracks = cd.tracks || [];
         const multiDisc = (cd.disc_count || 1) > 1 || tracks.some((t) => (t.disc_number || 1) > 1);
         let html = "";
         let lastDisc = null;
         for (const t of tracks) {
             const disc = t.disc_number || 1;
-            if (multiDisc && disc !== lastDisc) {
-                html += `<li class="player-tracklist-disc">DISC ${disc}</li>`;
-                lastDisc = disc;
-            }
+            if (multiDisc && disc !== lastDisc) { html += `<li class="player-tracklist-disc">DISC ${disc}</li>`; lastDisc = disc; }
             const playable = !!t.file_hash;
             const num = String(t.track_number).padStart(2, "0");
             html += `
-            <li class="player-track${playable ? "" : " player-track--disabled"}" data-track-id="${t.id}">
+            <li class="player-track${playable ? "" : " player-track--disabled"}${t.id === viewTrackId ? " player-track--current" : ""}" data-track-id="${t.id}">
                 <span class="player-track-num">
                     <span class="player-track-num-text">${num}</span>
                     <span class="player-eq" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -201,28 +215,81 @@ function createPlayerUI(rootEl, opts) {
             </li>`;
         }
         el.tracklist.innerHTML = html || '<li class="player-track-empty">トラックがありません</li>';
-        const playableCount = tracks.filter((t) => t.file_hash).length;
-        el["tracklist-count"].textContent = `${playableCount} 曲`;
+        el["tracklist-count"].textContent = `${playableTracks(cd).length} 曲`;
     }
 
-    function highlightCurrentTrack() {
-        const cur = engine.current();
-        el.tracklist.querySelectorAll(".player-track").forEach((li) => {
-            const id = parseInt(li.dataset.trackId, 10);
-            li.classList.toggle("player-track--current", !!cur && cur.id === id);
-        });
+    // ---------- フル表示描画 ----------
+    function renderView() {
+        if (!viewCd) return;
+        const track = trackById(viewCd, viewTrackId) || firstPlayable(viewCd);
+        viewTrackId = track ? track.id : viewTrackId;
+        paintCover(viewCd);
+        el["track-title"].textContent = track ? track.title : viewCd.title;
+        el["album-title"].textContent = viewCd.title;
+        el["artist-name"].textContent = viewCd.artist || "";
+        renderTracklist();
+
+        rootEl.classList.remove("view-live", "view-queued", "view-idle");
+        rootEl.classList.add(`view-${viewMode}`);
+
+        if (viewMode === "live") {
+            el.banner.hidden = true;
+            const playing = engine.isPlaying;
+            el["play-icon"].textContent = playing ? "pause" : "play_arrow";
+            el.cover.classList.toggle("is-playing", playing);
+            el["status-dot"].classList.toggle("is-playing", playing);
+            el["status-label"].textContent = playing ? "NOW PLAYING" : "PAUSED";
+            el.tracklist.classList.toggle("is-playing", playing);
+            setViewProgress(engine.getPosition());
+            const dur = engine.getDuration();
+            el["time-total"].textContent = formatTime(dur > 0 ? dur : parseDur(track && track.duration));
+        } else {
+            // queued / idle: プレビュー状態 (再生はビューのアルバムからは流れていない)
+            el["play-icon"].textContent = "play_arrow";
+            el.cover.classList.remove("is-playing");
+            el.tracklist.classList.remove("is-playing");
+            el["status-dot"].classList.remove("is-playing");
+            el["status-label"].textContent = viewMode === "queued" ? "UP NEXT" : "PREVIEW";
+            setViewProgress(0);
+            el["time-total"].textContent = formatTime(parseDur(track && track.duration));
+            if (viewMode === "queued" && currentCd) {
+                const ct = engine.current();
+                el["banner-text"].textContent = `${currentCd.title}${ct ? " / " + ct.title : ""}`;
+                el.banner.hidden = false;
+            } else {
+                el.banner.hidden = true;
+            }
+        }
     }
 
-    function updateNowPlaying() {
+    function setViewProgress(pos) {
+        const dur = engine.getDuration();
+        const frac = (viewMode === "live" && dur > 0) ? Math.min(pos / dur, 1) : 0;
+        const pct = (frac * 100).toFixed(3) + "%";
+        el["progress-fill"].style.width = pct;
+        el["progress-thumb"].style.left = pct;
+        el["time-current"].textContent = viewMode === "live" ? formatTime(pos) : "0:00";
+    }
+
+    // ---------- ミニ描画 (常に再生中を反映) ----------
+    function renderMini() {
         const t = engine.current();
-        const title = t ? t.title : "再生できるトラックがありません";
-        el["track-title"].textContent = title;
-        el["album-title"].textContent = currentCd ? currentCd.title : "—";
-        el["artist-name"].textContent = currentCd ? (currentCd.artist || "") : "";
-        el["mini-title"].textContent = title;
+        el["mini-title"].textContent = t ? t.title : "—";
         el["mini-artist"].textContent = currentCd ? (currentCd.artist || currentCd.title) : "";
-        highlightCurrentTrack();
-        updateMediaSession();
+        if (currentCd) paintCover(currentCd);
+        const playing = engine.isPlaying;
+        el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
+        if (stagedCd) {
+            el["mini-next-text"].textContent = stagedCd.title;
+            el["mini-next"].hidden = false;
+        } else {
+            el["mini-next"].hidden = true;
+        }
+    }
+    function setMiniProgress(pos) {
+        const dur = engine.getDuration();
+        const frac = dur > 0 ? Math.min(pos / dur, 1) : 0;
+        el["mini-fill"].style.width = (frac * 100).toFixed(3) + "%";
     }
 
     function updateMediaSession() {
@@ -238,77 +305,74 @@ function createPlayerUI(rootEl, opts) {
         } catch {}
     }
 
-    function updateProgress(pos) {
-        const dur = engine.getDuration();
-        const frac = dur > 0 ? Math.min(pos / dur, 1) : 0;
-        const pct = (frac * 100).toFixed(3) + "%";
-        el["progress-fill"].style.width = pct;
-        el["progress-thumb"].style.left = pct;
-        el["time-current"].textContent = formatTime(pos);
-        el["mini-fill"].style.width = pct;
-    }
-
-    function updateDuration(dur) {
-        el["time-total"].textContent = formatTime(dur);
-    }
-
-    function setPlayState(playing) {
-        const icon = playing ? "pause" : "play_arrow";
-        el["play-icon"].textContent = icon;
-        el["mini-play-icon"].textContent = icon;
-        el.cover.classList.toggle("is-playing", playing);
-        el["status-dot"].classList.toggle("is-playing", playing);
-        el["status-label"].textContent = playing ? "NOW PLAYING" : "PAUSED";
-        el.tracklist.classList.toggle("is-playing", playing);
-        rootEl.classList.toggle("is-playing", playing);
-        if ("mediaSession" in navigator) {
-            navigator.mediaSession.playbackState = playing ? "playing" : "paused";
-        }
-    }
-
-    function currentAlbumIndex() {
-        if (!currentCd) return -1;
-        return albums.findIndex((c) => c.id === currentCd.id);
-    }
-
-    function goToAlbum(delta) {
-        if (albums.length === 0) return;
-        let idx = currentAlbumIndex();
-        if (idx < 0) idx = delta > 0 ? -1 : 0;
-        const next = (idx + delta + albums.length) % albums.length;
-        api.loadAlbum(albums[next].id, null, true);
-    }
-
-    // ---------- 状態遷移 ----------
-    function setMode(mode) {
-        rootEl.classList.remove("hidden", "mode-full", "mode-mini");
+    // ---------- 表示切替 ----------
+    function setVisibility(v) {
+        rootEl.classList.remove("full", "mini", "closed");
+        rootEl.classList.add(v);
         document.body.classList.remove("player-active", "player-mini-active");
-        if (mode === "full") {
-            rootEl.classList.add("mode-full");
-            document.body.classList.add("player-active");
-        } else if (mode === "mini") {
-            rootEl.classList.add("mode-mini");
-            document.body.classList.add("player-mini-active");
-        } else {
-            rootEl.classList.add("hidden");
-        }
+        fullVisible = (v === "full");
+        if (v === "full") document.body.classList.add("player-active");
+        else if (v === "mini") document.body.classList.add("player-mini-active");
+    }
+
+    // ---------- 再生開始 (ビューのアルバムから) ----------
+    function startViewFromTrack(trackId) {
+        if (!viewCd) return;
+        const t = trackById(viewCd, trackId) || firstPlayable(viewCd);
+        if (!t) return;
+        currentCd = viewCd;
+        viewTrackId = t.id;
+        viewMode = "live";
+        stagedCd = null; stagedTrackId = null;
+        engine.loadTracks(viewCd.tracks, t.id);
+        engine.play();
+        renderView();
+        renderMini();
+    }
+
+    function viewStepTrack(delta) {
+        if (!viewCd) return;
+        const list = playableTracks(viewCd);
+        if (list.length === 0) return;
+        let i = list.findIndex((t) => t.id === viewTrackId);
+        i = (i < 0 ? 0 : (i + delta + list.length) % list.length);
+        startViewFromTrack(list[i].id);
+    }
+
+    // ---------- アルバム閲覧 ----------
+    function browseAlbum(cd) {
+        if (!cd) return;
+        viewCd = cd;
+        viewTrackId = (firstPlayable(cd) || {}).id || null;
+        viewMode = computeViewMode();
+        if (viewMode === "queued") { stagedCd = cd; stagedTrackId = null; }
+        else if (viewMode === "idle") { stagedCd = null; stagedTrackId = null; }
+        renderView();
+    }
+
+    function navAlbum(delta) {
+        if (albums.length === 0 || !viewCd) return;
+        let idx = albums.findIndex((c) => c.id === viewCd.id);
+        if (idx < 0) idx = 0;
+        const next = (idx + delta + albums.length) % albums.length;
+        browseAlbum(albums[next]);
     }
 
     // ---------- シーク ----------
     function seekFromEvent(e) {
+        if (viewMode !== "live") return;
         const rect = el["progress-bar"].getBoundingClientRect();
-        const frac = (e.clientX - rect.left) / rect.width;
-        engine.seek(frac);
+        engine.seek((e.clientX - rect.left) / rect.width);
     }
     let dragging = false;
     el["progress-bar"].addEventListener("pointerdown", (e) => {
-        dragging = true;
-        el["progress-bar"].setPointerCapture(e.pointerId);
-        seekFromEvent(e);
+        if (viewMode !== "live") return;
+        dragging = true; el["progress-bar"].setPointerCapture(e.pointerId); seekFromEvent(e);
     });
     el["progress-bar"].addEventListener("pointermove", (e) => { if (dragging) seekFromEvent(e); });
     el["progress-bar"].addEventListener("pointerup", () => { dragging = false; });
     el["progress-bar"].addEventListener("keydown", (e) => {
+        if (viewMode !== "live") return;
         const dur = engine.getDuration();
         if (!dur) return;
         if (e.key === "ArrowRight") engine.seek((engine.getPosition() + 5) / dur);
@@ -320,36 +384,67 @@ function createPlayerUI(rootEl, opts) {
         const muted = engine.muted || engine.volume === 0;
         el["vol-icon"].textContent = muted ? "volume_off" : (engine.volume < 0.5 ? "volume_down" : "volume_up");
     }
-    el.volume.addEventListener("input", () => {
-        engine.setVolume(el.volume.value / 100);
-        updateVolumeIcon();
-    });
+    el.volume.addEventListener("input", () => { engine.setVolume(el.volume.value / 100); updateVolumeIcon(); });
 
     // ---------- エンジンイベント ----------
-    engine.on("trackchange", updateNowPlaying);
-    engine.on("time", updateProgress);
-    engine.on("duration", updateDuration);
-    engine.on("playstate", setPlayState);
+    engine.on("trackchange", (t) => {
+        renderMini();
+        updateMediaSession();
+        if (fullVisible && viewMode === "live") { viewTrackId = t.id; renderView(); }
+        else if (fullVisible && viewMode === "queued") { renderView(); } // バナーの現在再生中を更新
+    });
+    engine.on("time", (pos) => { setMiniProgress(pos); if (fullVisible && viewMode === "live") setViewProgress(pos); });
+    engine.on("duration", (dur) => { if (fullVisible && viewMode === "live") el["time-total"].textContent = formatTime(dur); });
+    engine.on("playstate", (playing) => {
+        el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
+        rootEl.classList.toggle("is-playing", playing);
+        if (fullVisible && viewMode === "live") {
+            el["play-icon"].textContent = playing ? "pause" : "play_arrow";
+            el.cover.classList.toggle("is-playing", playing);
+            el["status-dot"].classList.toggle("is-playing", playing);
+            el["status-label"].textContent = playing ? "NOW PLAYING" : "PAUSED";
+            el.tracklist.classList.toggle("is-playing", playing);
+        }
+    });
+    engine.on("ended", () => {
+        if (stagedCd) {
+            const cd = stagedCd; const tid = stagedTrackId;
+            stagedCd = null; stagedTrackId = null;
+            const t = (tid != null ? trackById(cd, tid) : null) || firstPlayable(cd);
+            currentCd = cd;
+            viewCd = cd; viewTrackId = t ? t.id : null; viewMode = "live";
+            engine.loadTracks(cd.tracks, t ? t.id : null);
+            engine.play();
+            renderView(); renderMini();
+        } else {
+            engine.next(true);
+        }
+    });
     engine.on("error", () => { setTimeout(() => engine.next(true), 300); });
 
     el.tracklist.addEventListener("click", (e) => {
         const li = e.target.closest(".player-track");
         if (!li || li.classList.contains("player-track--disabled")) return;
-        engine.playTrackById(parseInt(li.dataset.trackId, 10));
+        const id = parseInt(li.dataset.trackId, 10);
+        if (viewMode === "live") engine.playTrackById(id);
+        else startViewFromTrack(id);
     });
 
     rootEl.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-act]");
         if (!btn) return;
         const act = btn.dataset.act;
-        if (act === "back") { onBack(); api.hide(); }
-        else if (act === "expand") api.show();
+        if (act === "back") api.hide();
+        else if (act === "expand") api.expandNowPlaying();
         else if (act === "close") api.close();
-        else if (act === "play") engine.toggle();
-        else if (act === "next") engine.next(false);
-        else if (act === "prev") engine.prev();
-        else if (act === "next-album") goToAlbum(1);
-        else if (act === "prev-album") goToAlbum(-1);
+        else if (act === "play") {
+            if (viewMode === "live") engine.toggle();
+            else startViewFromTrack(viewTrackId);
+        }
+        else if (act === "next") { if (viewMode === "live") engine.next(false); else viewStepTrack(1); }
+        else if (act === "prev") { if (viewMode === "live") engine.prev(); else viewStepTrack(-1); }
+        else if (act === "next-album") navAlbum(1);
+        else if (act === "prev-album") navAlbum(-1);
         else if (act === "mute") { engine.toggleMute(); updateVolumeIcon(); }
         else if (act === "toggle-tracklist") {
             const wrap = btn.closest(".player-tracklist-wrap");
@@ -368,34 +463,48 @@ function createPlayerUI(rootEl, opts) {
     const api = {
         engine,
         setAlbums(list) { albums = list || []; },
-        loadAlbum(cdId, startTrackId, autoplay) {
+        // autoplay=false: 閲覧/予約のみ (自動再生しない)。true: 即再生。
+        openAlbum(cdId, autoplay) {
             const cd = albums.find((c) => c.id === cdId);
             if (!cd) return;
-            currentCd = cd;
-            setCover(cd);
-            engine.loadTracks(cd.tracks || [], startTrackId);
-            renderTracklist(cd);
-            updateNowPlaying();
-            updateProgress(0);
-            updateDuration(0);
-            if (autoplay) engine.play();
+            if (autoplay) {
+                viewCd = cd; viewTrackId = (firstPlayable(cd) || {}).id || null;
+                currentCd = cd; viewMode = "live";
+                stagedCd = null; stagedTrackId = null;
+                engine.loadTracks(cd.tracks, viewTrackId);
+                engine.play();
+                renderView(); renderMini();
+            } else {
+                browseAlbum(cd);
+            }
+            api.show();
         },
-        currentCd() { return currentCd; },
         show() {
-            if (!engine.current()) return;
-            setMode("full");
+            if (!viewCd) return;
+            renderView();
+            setVisibility("full");
         },
-        // 現在トラックがあればミニ表示へ (再生継続)、なければ完全停止
+        // ミニバー展開: 再生中アルバムをライブ表示にして開く
+        expandNowPlaying() {
+            if (currentCd) {
+                viewCd = currentCd;
+                viewTrackId = engine.current() ? engine.current().id : (firstPlayable(currentCd) || {}).id || null;
+                viewMode = "live";
+            }
+            if (!viewCd) return;
+            renderView();
+            setVisibility("full");
+        },
         hide() {
-            if (engine.current()) setMode("mini");
+            if (engine.current()) { setVisibility("mini"); renderMini(); }
             else api.close();
         },
         close() {
             engine.pause();
-            setMode("closed");
+            stagedCd = null; stagedTrackId = null;
+            setVisibility("closed");
+            renderMini();
         },
-        get visible() { return rootEl.classList.contains("mode-full"); },
-        get miniVisible() { return rootEl.classList.contains("mode-mini"); },
     };
 
     return api;

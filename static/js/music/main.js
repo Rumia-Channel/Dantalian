@@ -7,7 +7,7 @@ const playerRoot = document.getElementById("music-player-root");
 let allAlbums = [];           // 再生可能トラックを持つ CD 一覧
 let currentFilter = "all";
 
-const player = createPlayerUI(playerRoot, {});
+const player = createPlayerUI(playerRoot);
 
 function albumMediaType(cd) {
     return cd.media_type === "audiobook" ? "audiobook" : "cd";
@@ -63,24 +63,23 @@ function renderGrid() {
     }).join("");
 }
 
-function openAlbum(cdId) {
+function openAlbum(cdId, autoplay) {
     player.setAlbums(playableAlbums());
-    player.loadAlbum(cdId, null, true);
-    player.show();
+    player.openAlbum(cdId, !!autoplay);
 }
 
-// グリッド操作 (クリック / キーボード)
+// グリッド操作 (クリック / キーボード) — 自動再生しない
 musicGrid.addEventListener("click", (e) => {
     const card = e.target.closest(".music-album");
     if (!card) return;
-    openAlbum(parseInt(card.dataset.cdId, 10));
+    openAlbum(parseInt(card.dataset.cdId, 10), false);
 });
 musicGrid.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const card = e.target.closest(".music-album");
     if (!card) return;
     e.preventDefault();
-    openAlbum(parseInt(card.dataset.cdId, 10));
+    openAlbum(parseInt(card.dataset.cdId, 10), false);
 });
 
 // フィルタ
@@ -107,6 +106,6 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
     // ?play={cdId} があれば自動再生 (CD詳細の「再生」ボタンから遷移)
     const playId = parseInt(new URLSearchParams(location.search).get("play"), 10);
     if (!isNaN(playId) && playableAlbums().some((c) => c.id === playId)) {
-        openAlbum(playId);
+        openAlbum(playId, true);
     }
 })();

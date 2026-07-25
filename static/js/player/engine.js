@@ -12,7 +12,7 @@ class PlayerEngine {
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
         this.audio.addEventListener("loadedmetadata", () => this._emit("duration", this.getDuration()));
-        this.audio.addEventListener("ended", () => this.next(true));
+        this.audio.addEventListener("ended", () => this._emit("ended", this.current()));
         this.audio.addEventListener("play", () => this._emit("playstate", true));
         this.audio.addEventListener("pause", () => this._emit("playstate", false));
         this.audio.addEventListener("error", () => {
