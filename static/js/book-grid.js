@@ -1,4 +1,4 @@
-let currentView = "author";
+let currentView = localStorage.getItem("dantalian_view") || "author";
 let currentSort = localStorage.getItem("dantalian_sort") || "id";
 let currentTypeFilter = localStorage.getItem("dantalian_type_filter") || "all";
 const authorBookGrid = document.getElementById("book-grid");
@@ -67,6 +67,7 @@ document.querySelectorAll(".view-tab").forEach((tab) => {
         document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
         currentView = tab.dataset.view;
+        localStorage.setItem("dantalian_view", currentView);
         renderItems();
     });
 });
@@ -572,6 +573,12 @@ function renderItems() {
 (function initSortButtons() {
     document.querySelectorAll("#sort-buttons .width-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.sort === currentSort);
+    });
+})();
+
+(function initViewTabs() {
+    document.querySelectorAll(".view-tab").forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.view === currentView);
     });
 })();
 
