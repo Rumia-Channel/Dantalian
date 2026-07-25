@@ -268,11 +268,12 @@ impl Db {
         &self,
         book_id: i64,
         series_id: Option<i64>,
+        series_number: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute(
-            "UPDATE books SET series_id = ?1 WHERE id = ?2",
-            params![series_id, book_id],
+            "UPDATE books SET series_id = ?1, series_number = ?2 WHERE id = ?3",
+            params![series_id, series_number, book_id],
         )?;
         Ok(affected > 0)
     }

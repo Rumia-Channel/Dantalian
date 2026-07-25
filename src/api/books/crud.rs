@@ -78,7 +78,8 @@ pub async fn delete(
 
 #[derive(Deserialize)]
 pub struct SetSeriesRequest {
-    pub series_id: Option<i64>,
+    pub series_id: Option<Option<i64>>,
+    pub series_number: Option<Option<i64>>,
 }
 
 pub async fn set_series(
@@ -86,9 +87,18 @@ pub async fn set_series(
     Path(id): Path<i64>,
     Json(req): Json<SetSeriesRequest>,
 ) -> Result<StatusCode, StatusCode> {
+    let existing = state.db.find_by_id(id).ok().flatten();
+    let series_id = match req.series_id {
+        Some(o) => o,
+        None => existing.as_ref().and_then(|b| b.series_id),
+    };
+    let series_number = match req.series_number {
+        Some(o) => o,
+        None => existing.as_ref().and_then(|b| b.series_number),
+    };
     state
         .db
-        .set_book_series(id, req.series_id)
+        .set_book_series(id, series_id, series_number)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

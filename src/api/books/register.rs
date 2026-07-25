@@ -429,14 +429,7 @@ pub async fn manual_register(
     let grand_series_id = req.grand_series_id.unwrap_or(None);
 
     if series_id.is_some() || series_number.is_some() {
-        let _ = state.db.set_book_series(book.id, series_id);
-    }
-    if series_number.is_some() {
-        let conn = state.db.0.lock().unwrap();
-        let _ = conn.execute(
-            "UPDATE books SET series_number = ?1 WHERE id = ?2",
-            rusqlite::params![series_number, book.id],
-        );
+        let _ = state.db.set_book_series(book.id, series_id, series_number);
     }
     if let Some(gs_id) = grand_series_id {
         if gs_id != 0 {

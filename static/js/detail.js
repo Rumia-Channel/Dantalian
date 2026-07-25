@@ -261,6 +261,10 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
             <div id="detail-series-select-container"></div>
         </div>
         <div class="detail-series-assign">
+            <label>巻</label>
+            <input type="number" id="detail-series-number" class="form-input" style="max-width:6rem;" min="1" value="${book.series_number != null ? book.series_number : ''}" placeholder="—" onchange="updateSeriesNumber(${book.id}, this.value)">
+        </div>
+        <div class="detail-series-assign">
             <label>大シリーズ</label>
             <div id="detail-grand-series-select-container"></div>
         </div>
@@ -296,13 +300,28 @@ function closeDetail(e) {
 
 async function assignSeries(bookId, value) {
     const seriesId = value != null ? value : null;
+    const numInput = document.getElementById("detail-series-number");
+    const seriesNumber = numInput && numInput.value ? parseInt(numInput.value, 10) : null;
     try {
         await fetch(`/api/books/${bookId}/series`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ series_id: seriesId }),
+            body: JSON.stringify({ series_id: seriesId, series_number: seriesNumber }),
         });
         await loadSeries();
+        await loadBooks();
+        renderItems();
+    } catch {}
+}
+
+async function updateSeriesNumber(bookId, value) {
+    const seriesNumber = value ? parseInt(value, 10) : null;
+    try {
+        await fetch(`/api/books/${bookId}/series`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ series_number: seriesNumber }),
+        });
         await loadBooks();
         renderItems();
     } catch {}
