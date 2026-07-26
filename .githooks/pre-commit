@@ -1,0 +1,69 @@
+#!/bin/sh
+# Pre-commit hook: run `cargo fmt --all` and abort the commit only if the
+# formatter changed the working tree's UNSTAGED diff.
+#
+# Rationale:
+#   A normal pre-commit state already contains staged content, so checking
+#   `git diff --cached` or `git diff HEAD` would abort every commit. We only
+#   care whether `cargo fmt` rewrote files that the user did not stage.
+#
+# Algorithm:
+#   1. Snapshot the current UNSTAGED diff (`git diff --binary --`).
+#   2. Run `cargo fmt --all` (fall back to `cargo fmt` if --all is unsupported).
+#   3. Re-snapshot the UNSTAGED diff.
+#   4. If the snapshot changed, `cargo fmt` rewrote something in the working
+#      tree. Abort and ask the user to review and `git add` the new changes.
+#   5. If the snapshot is unchanged, allow the commit to proceed even if the
+#      user has unrelated pre-existing unstaged edits.
+#
+# This hook never runs `git add` automatically; staging is the user's call
+# so they can review the formatted diff first.
+#
+# Setup (once per local clone):
+#   git config core.hooksPath .githooks
+
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+# `mktemp` is POSIX. Using two distinct temp files for the before/after
+# snapshots; `trap` cleans them up on any exit path.
+BEFORE_DIFF=$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/dantalian-precommit-before.$$")
+AFTER_DIFF=$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/dantalian-precommit-after.$$")
+cleanup() {
+    rm -f "$BEFORE_DIFF" "$AFTER_DIFF"
+}
+trap cleanup EXIT INT TERM
+
+# Snapshot the unstaged working-tree diff BEFORE running cargo fmt.
+# `--binary` preserves binary patches so the comparison is byte-exact.
+git diff --binary -- > "$BEFORE_DIFF"
+
+echo "[pre-commit] Running 'cargo fmt --all' over the whole repository..."
+if ! cargo fmt --all 2>/dev/null; then
+    # Fallback for non-workspace or older cargo: plain `cargo fmt`.
+    cargo fmt
+fi
+
+# Re-snapshot the unstaged diff AFTER running cargo fmt.
+git diff --binary -- > "$AFTER_DIFF"
+
+# `cmp -s` returns 0 when the two files are byte-identical, 1 when they differ.
+if ! cmp -s "$BEFORE_DIFF" "$AFTER_DIFF"; then
+    echo ""
+    echo "[pre-commit] 'cargo fmt' modified the working tree's unstaged diff."
+    echo "[pre-commit] This usually means `cargo fmt` rewrote a file that is"
+    echo "[pre-commit] either not yet staged, or was already staged and has"
+    echo "[pre-commit] been reformatted in place."
+    echo ""
+    echo "[pre-commit] Please review the formatted output, then run:"
+    echo "    git add -A"
+    echo "    git commit"
+    echo ""
+    echo "[pre-commit] Aborting this commit to let you stage the formatted files."
+    exit 1
+fi
+
+echo "[pre-commit] 'cargo fmt' did not change the working tree. Proceeding with commit."
+exit 0

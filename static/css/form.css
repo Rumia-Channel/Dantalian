@@ -1,0 +1,412 @@
+.register {
+    margin-bottom: 2rem;
+}
+
+.register form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.register form > input {
+    flex: 1 1 14rem;
+    min-width: 0;
+}
+
+#register-status {
+    margin-top: 0.5rem;
+    min-height: 1.5rem;
+    font-size: 0.9rem;
+}
+
+#register-status.success {
+    color: var(--color-success);
+}
+
+#register-status.error {
+    color: var(--color-danger);
+}
+
+/* --- Register tabs --- */
+.register-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 0.0625rem solid var(--color-border);
+}
+
+.register-tab {
+    font-family: inherit;
+    padding: 0.5rem 1.2rem;
+    font-size: 0.9rem;
+    background: transparent;
+    border: none;
+    border-bottom: 0.125rem solid transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.register-tab:hover {
+    color: var(--color-text-primary);
+}
+
+.register-tab.active {
+    color: var(--color-success);
+    border-bottom-color: var(--color-success);
+}
+
+/* --- Bulk toggle --- */
+.register-bulk-toggle {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 0.0625rem solid var(--color-border);
+}
+
+/* --- Manual cover --- */
+.manual-cover-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.manual-cover-label {
+    cursor: pointer;
+}
+
+.manual-cover-filename {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.manual-cover-preview {
+    width: 4rem;
+    height: auto;
+    border-radius: 0.25rem;
+}
+
+/* --- Manual register status --- */
+#manual-register-status,
+#manual-cd-register-status {
+    min-height: 1.5rem;
+    font-size: 0.9rem;
+}
+
+#manual-register-status.success,
+#manual-cd-register-status.success {
+    color: var(--color-success);
+}
+
+#manual-register-status.error,
+#manual-cd-register-status.error {
+    color: var(--color-danger);
+}
+
+/* --- Bulk registration --- */
+.bulk-hint {
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+}
+
+.bulk-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.bulk-form input {
+    flex: 1;
+}
+
+.bulk-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.bulk-progress {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.bulk-queue {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.bulk-empty {
+    text-align: center;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    padding: 1.5rem 0;
+}
+
+.bulk-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.25rem;
+    background: var(--color-bg-surface);
+    font-size: 0.85rem;
+}
+
+.bulk-item--processing {
+    border-left: 0.1875rem solid var(--color-success);
+}
+
+.bulk-item--success {
+    border-left: 0.1875rem solid var(--color-success);
+    opacity: 0.7;
+}
+
+.bulk-item--error {
+    border-left: 0.1875rem solid var(--color-danger);
+}
+
+.bulk-item-isbn {
+    font-family: monospace;
+    color: var(--color-text-tertiary);
+    min-width: 8rem;
+    flex-shrink: 0;
+}
+
+.bulk-item-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
+}
+
+.bulk-item--error .bulk-item-title {
+    color: var(--color-danger);
+    font-size: 0.8rem;
+}
+
+.bulk-item-remove {
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.register-parent-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+}
+
+.register-parent-row input {
+    width: 8rem;
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.75rem;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.register-parent-row input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
+}
+
+/* --- 手動登録: セクション見出しの補足 --- */
+.edit-section-hint {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-dim);
+}
+
+/* --- 手動登録: CD トラック --- */
+.manual-disc-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-text-tertiary);
+    margin-top: 1.1rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 0.0625rem solid var(--color-border);
+}
+
+.manual-cd-tracks-empty {
+    text-align: center;
+    color: var(--color-text-dim);
+    font-size: 0.9rem;
+    padding: 1.5rem 0.75rem;
+    background: var(--color-bg-surface);
+    border: 0.0625rem dashed var(--color-border-light);
+    border-radius: var(--radius-md);
+}
+
+.manual-cd-track-add {
+    margin-top: 0.75rem;
+}
+
+.manual-cd-track-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.75rem 0.85rem;
+    margin-bottom: 0.5rem;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.manual-cd-track-card:hover {
+    border-color: var(--color-border-light);
+}
+
+.manual-cd-track-card:focus-within {
+    border-color: var(--color-border-light);
+    box-shadow: var(--shadow-md);
+}
+
+.manual-cd-track-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    /* 右上に絶対配置した削除ボタンと重ならないよう右側を確保 */
+    padding-right: 2.75rem;
+}
+
+.manual-cd-track-input {
+    padding: 0.5rem 0.65rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.manual-cd-track-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
+}
+
+.manual-cd-track-title {
+    flex: 1 1 10rem;
+    min-width: 8rem;
+}
+
+.manual-cd-track-dur {
+    width: 5.5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 削除ボタンはカード右上に固定し、狭幅でも孤立折り返ししない */
+.manual-cd-track-del {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    flex-shrink: 0;
+    min-width: 2rem;
+    min-height: 2rem;
+    font-size: 0.8rem;
+}
+
+.manual-cd-track-sub {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    /* 1行目の番号バッジ (.edit-track-num) + gap の分だけ右に寄せ、タイトルと左端を揃える */
+    padding-left: 3rem;
+}
+
+.manual-cd-track-subfield {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.02em;
+}
+
+.manual-cd-track-disc,
+.manual-cd-track-num {
+    width: 4rem;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.85rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.manual-cd-track-meta {
+    margin-left: auto;
+    font-size: 0.85rem;
+}
+
+/* 開いたときはサブ行全体を占めて折り返し、メタデータグリッドを全幅にする */
+.manual-cd-track-meta[open] {
+    flex-basis: 100%;
+    margin-left: 0;
+}
+
+.manual-cd-track-meta > summary {
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius-sm);
+    user-select: none;
+    transition: color 0.15s, background 0.15s;
+}
+
+.manual-cd-track-meta > summary:hover {
+    color: var(--color-text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.manual-cd-track-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 0.65rem 1rem;
+    padding: 0.75rem 0.1rem 0.25rem;
+}
+
+.manual-cd-track-meta-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+}
+
+.manual-cd-track-meta-grid input {
+    padding: 0.45rem 0.6rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.manual-cd-track-meta-grid input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
+}

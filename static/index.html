@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - 一覧</title>
+    <link rel="stylesheet" href="css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="css/book-card.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="css/series.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="css/detail.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="css/settings.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="css/responsive.css?v=ASSET_VERSION">
+</head>
+<body data-active-nav="home">
+    <div id="app">
+
+        <section class="booklist">
+            <div class="booklist-header">
+                <h2>登録済み一覧 <span id="book-count"></span></h2>
+                <div class="view-tabs">
+                    <button class="view-tab active" data-view="author">アーティスト別</button>
+                    <button class="view-tab" data-view="grid">一覧</button>
+                </div>
+            </div>
+            <div class="book-search">
+                <input type="search" id="book-search-input" placeholder="検索" autocomplete="off">
+                <button type="button" id="book-search-clear" class="book-search-clear" aria-label="検索をクリア">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
+            </div>
+            <div id="book-grid"></div>
+        </section>
+
+        <div id="detail-overlay" class="detail-overlay hidden" onclick="closeDetail(event)">
+            <div class="detail-modal" onclick="event.stopPropagation()">
+                <button class="detail-close" onclick="closeDetail()" aria-label="閉じる">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
+                <div id="detail-content"></div>
+            </div>
+        </div>
+
+
+    </div>
+    <script src="js/header.js?v=ASSET_VERSION"></script>
+    <script>
+        (function () {
+            var bar = document.querySelector(".settings-bar");
+            if (!bar) return;
+            var group = document.createElement("div");
+            group.className = "settings-group";
+            group.innerHTML =
+                '<span class="settings-label">並び順</span>' +
+                '<div class="settings-buttons" id="sort-buttons">' +
+                '<button class="width-btn" data-sort="id">登録順</button>' +
+                '<button class="width-btn" data-sort="title">タイトル順</button>' +
+                '<button class="width-btn" data-sort="publish_date">発売日順</button>' +
+                '</div>';
+            bar.appendChild(group);
+            var fgroup = document.createElement("div");
+            fgroup.className = "settings-group";
+            fgroup.innerHTML =
+                '<span class="settings-label">表示</span>' +
+                '<div class="settings-buttons" id="type-filter-buttons">' +
+                '<button class="width-btn active" data-type="all">全</button>' +
+                '<button class="width-btn" data-type="book">書籍</button>' +
+                '<button class="width-btn" data-type="cd">CD</button>' +
+                '<button class="width-btn" data-type="audiobook">AB</button>' +
+                '</div>';
+            bar.appendChild(fgroup);
+        })();
+    </script>
+    <script src="js/utils.js?v=ASSET_VERSION"></script>
+    <script src="js/searchable-select.js?v=ASSET_VERSION"></script>
+    <script src="js/settings.js?v=ASSET_VERSION"></script>
+    <script src="js/book-grid.js?v=ASSET_VERSION"></script>
+    <script src="js/detail.js?v=ASSET_VERSION"></script>
+    <script src="js/app.js?v=ASSET_VERSION"></script>
+</body>
+</html>

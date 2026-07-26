@@ -1,0 +1,971 @@
+.detail-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 1rem;
+}
+
+.detail-overlay.hidden {
+    display: none;
+}
+
+.detail-modal {
+    background: var(--color-bg-surface);
+    border-radius: 0.75rem;
+    max-width: 56.25rem;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 2rem;
+    position: relative;
+}
+
+.detail-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    line-height: 1;
+}
+
+.detail-close .material-icons {
+    font-size: 1.25rem;
+}
+
+.detail-close:hover {
+    color: var(--color-text-primary);
+}
+
+.detail-header {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.detail-cover {
+    width: 10rem;
+    flex-shrink: 0;
+}
+
+.detail-cover .book-cover {
+    width: 10rem;
+    aspect-ratio: auto;
+    height: auto;
+    border-radius: 0.25rem;
+}
+
+.detail-cover .book-cover-placeholder {
+    width: 10rem;
+    aspect-ratio: auto;
+    height: 15rem;
+}
+
+.detail-title-block {
+    flex: 1;
+    min-width: 0;
+}
+
+.detail-title {
+    font-size: 1.3rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.detail-series-name {
+    font-size: 0.85rem;
+    color: var(--color-primary);
+    margin-bottom: 0.3rem;
+}
+
+.detail-grand-series-name {
+    font-size: 0.85rem;
+    color: var(--color-success);
+    margin-bottom: 0.15rem;
+}
+
+.detail-volume {
+    font-size: 0.9rem;
+    color: var(--color-success);
+    margin-bottom: 0.3rem;
+}
+
+.detail-alternative {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+    margin-bottom: 0.3rem;
+}
+
+.detail-author {
+    font-size: 0.95rem;
+    color: var(--color-text-tertiary);
+    margin-bottom: 0.5rem;
+}
+
+.detail-meta-list {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    line-height: 1.8;
+}
+
+.detail-meta-list span {
+    display: block;
+}
+
+.detail-meta-label {
+    color: var(--color-text-dim);
+    font-size: 0.75rem;
+}
+
+.detail-description {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--color-text-faint);
+    margin-bottom: 1.5rem;
+    white-space: pre-wrap;
+}
+
+.detail-ndl-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--color-success);
+}
+
+.detail-ndl-link:hover {
+    color: var(--color-success-hover);
+}
+
+.detail-series-assign {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--color-bg-input);
+    border-radius: 0.5rem;
+}
+
+.detail-series-assign label {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    display: block;
+    margin-bottom: 0.4rem;
+}
+
+.detail-series-assign select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+}
+
+.detail-series-assign select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.detail-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.series-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w-in-series), 1fr));
+    gap: 0.75rem;
+}
+
+.series-modal-item {
+    background: var(--color-bg-series);
+    border-radius: 0.375rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.series-modal-item:hover {
+    transform: translateY(-0.125rem);
+}
+
+.series-modal-item .book-cover {
+    width: 100%;
+    aspect-ratio: 2/3;
+    object-fit: contain;
+    background: var(--color-bg-input);
+    display: block;
+}
+
+.series-modal-item .book-cover-placeholder {
+    width: 100%;
+    aspect-ratio: 2/3;
+    background: var(--color-bg-input);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+    font-size: 0.6rem;
+}
+
+.series-modal-item .volume-title {
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 0.35rem 0.4rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.gs-modal-section {
+    margin-bottom: 1.25rem;
+}
+
+.gs-modal-section:last-child {
+    margin-bottom: 0;
+}
+
+.gs-modal-section-title {
+    font-size: 0.85rem;
+    color: var(--color-primary);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 0.0625rem solid var(--color-border);
+}
+
+.detail-author-link {
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    border-bottom: 0.0625rem dashed transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.detail-author-link:hover {
+    color: var(--color-success);
+    border-bottom-color: var(--color-success);
+}
+
+.edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+}
+
+.edit-field label {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.edit-required {
+    color: var(--color-danger);
+}
+
+.edit-field input,
+.edit-field textarea {
+    padding: 0.45rem 0.6rem;
+    font-size: 0.9rem;
+}
+
+.edit-field textarea {
+    resize: vertical;
+    min-height: 6rem;
+    line-height: 1.6;
+}
+
+.edit-row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    padding-top: 0.5rem;
+    border-top: 0.0625rem solid var(--color-border);
+}
+
+.edit-header {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-start;
+}
+
+.edit-cover {
+    width: 8rem;
+    flex-shrink: 0;
+}
+
+.edit-cover .book-cover {
+    width: 8rem;
+    aspect-ratio: auto;
+    height: auto;
+    border-radius: 0.25rem;
+}
+
+.edit-cover .book-cover-placeholder {
+    width: 8rem;
+    aspect-ratio: auto;
+    height: 12rem;
+}
+
+.edit-cover-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.edit-cover-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.edit-cover-upload-label {
+    cursor: pointer;
+}
+
+.edit-header-info {
+    flex: 1;
+    min-width: 0;
+    padding-top: 0.5rem;
+}
+
+.edit-isbn {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.4rem;
+    word-break: break-all;
+}
+
+.edit-author-tag {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.2rem;
+    border: 0.0625rem solid var(--color-border-light);
+    margin-right: 0.3rem;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.edit-author-tag:hover {
+    color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+.edit-section {
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 0.0625rem solid var(--color-border);
+}
+
+.edit-section-title {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.edit-author-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.edit-author-add {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.edit-author-add select {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+.edit-author-order {
+    width: 2.2rem;
+    flex-shrink: 0;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.8rem;
+    text-align: center;
+    border-radius: 0.25rem;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-input);
+    color: var(--color-text-primary);
+}
+
+.edit-author-item {
+    display: flex;
+    align-items: center;
+    gap: 1.0rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.375rem;
+}
+
+.edit-author-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.edit-author-name {
+    font-size: 0.95rem;
+    color: var(--color-text-primary);
+    margin-bottom: 0.15rem;
+}
+
+.edit-author-meta {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--color-text-dim);
+}
+
+.edit-author-ndl,
+.edit-author-yomi {
+    font-size: 0.75rem;
+    color: var(--color-text-dim);
+}
+
+.edit-author-edit-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.edit-author-id {
+    color: var(--color-text-dim);
+}
+
+.author-create {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.author-create input {
+    flex: 1;
+    min-width: 8rem;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+.detail-copies {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.5rem;
+}
+
+.detail-copies-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-dim);
+    text-align: center;
+    padding: 1rem;
+}
+
+.detail-copies-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.detail-copy-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    border-top: 0.0625rem solid var(--color-border-light);
+}
+
+.detail-copy-item:first-of-type {
+    border-top: none;
+}
+
+.detail-copy-item.copy-lent {
+    background: rgba(255, 152, 0, 0.08);
+    margin: 0 -0.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.copy-type-icon {
+    font-family: "Material Icons";
+    font-size: 1.1rem;
+    color: var(--color-text-dim);
+    width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.copy-location {
+    flex: 1;
+    color: var(--color-text-primary);
+    min-width: 0;
+}
+
+.copy-no-location {
+    color: var(--color-text-dim);
+    font-style: italic;
+}
+
+.copy-lent-badge {
+    font-size: 0.75rem;
+    color: var(--color-warning);
+    white-space: nowrap;
+}
+
+.copy-available-badge {
+    font-size: 0.75rem;
+    color: var(--color-success);
+    white-space: nowrap;
+}
+
+.copy-due-date {
+    font-size: 0.75rem;
+    color: var(--color-text-dim);
+    white-space: nowrap;
+}
+
+.copy-count-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    background: var(--color-bg-input);
+    color: var(--color-text-secondary);
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.5rem;
+    margin-left: 0.3rem;
+    vertical-align: middle;
+}
+
+.copy-count-badge.copy-lent-badge {
+    background: rgba(255, 152, 0, 0.15);
+    color: var(--color-warning);
+}
+
+.edit-copy-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-top: 0.0625rem solid var(--color-border-light);
+    font-size: 0.85rem;
+}
+
+.edit-copy-item.copy-lent {
+    background: rgba(255, 152, 0, 0.06);
+    margin: 0 -0.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.edit-copy-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.edit-copy-main {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.edit-copy-location {
+    color: var(--color-text-primary);
+}
+
+.edit-copy-notes {
+    font-size: 0.75rem;
+    color: var(--color-text-dim);
+    margin-top: 0.2rem;
+}
+
+.edit-copy-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+}
+
+.edit-copy-add {
+    margin-top: 0.5rem;
+}
+
+.edit-lend-form {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.375rem;
+}
+
+.edit-lend-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.edit-lend-fields {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.edit-lend-fields select,
+.edit-lend-fields input {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border-radius: 0.25rem;
+    border: 0.0625rem solid var(--color-border-light);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+}
+
+.edit-lend-fields select:focus,
+.edit-lend-fields input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.detail-tracks {
+    margin-top: 1rem;
+}
+
+.detail-tracks-disc {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.35rem;
+    font-weight: 500;
+}
+
+.detail-tracks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.detail-track-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--color-bg-input);
+    font-size: 0.85rem;
+}
+
+.detail-track-num {
+    color: var(--color-text-dim);
+    font-variant-numeric: tabular-nums;
+    min-width: 1.5rem;
+    text-align: right;
+}
+
+.detail-track-title {
+    flex: 1;
+    color: var(--color-text-primary);
+}
+
+.detail-track-duration {
+    color: var(--color-text-dim);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.detail-track-play {
+    padding: 0.2rem 0.3rem;
+}
+
+.detail-track-has-audio:hover {
+    background: var(--color-bg-surface);
+}
+
+.edit-track-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border);
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.edit-track-row:hover {
+    border-color: var(--color-border-light);
+}
+
+.edit-track-row:focus-within {
+    border-color: var(--color-border-light);
+    box-shadow: var(--shadow-md);
+}
+
+.edit-track-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.edit-track-sub {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    /* 1行目の番号バッジ + gap の分だけ右に寄せ、タイトルと左端を揃える */
+    padding-left: 3rem;
+}
+
+/* サブ行の操作ボタンはタップしやすく最低高を確保 */
+.edit-track-sub .btn {
+    min-height: 1.9rem;
+}
+
+.edit-track-num {
+    color: var(--color-text-dim);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.5rem;
+    text-align: right;
+}
+
+.edit-disc-count {
+    color: var(--color-text-dim);
+    font-size: 0.8rem;
+    margin-left: 0.3rem;
+}
+
+.edit-track-title-text {
+    flex: 1;
+    color: var(--color-text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.edit-track-dur {
+    color: var(--color-text-dim);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.edit-track-audio {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.edit-track-file {
+    font-size: 0.8rem;
+    color: var(--color-text-dim);
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-children {
+    margin: 1rem 0;
+}
+
+.detail-children-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.detail-child-item {
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--color-bg-input);
+    font-size: 0.85rem;
+    margin-bottom: 0.2rem;
+}
+
+.edit-track-title-input {
+    flex: 1 1 10rem;
+    min-width: 8rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.95rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.edit-track-title-input:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
+}
+
+.edit-track-dur-input {
+    width: 5.5rem;
+    padding: 0.5rem 0.5rem;
+    font-size: 0.9rem;
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.edit-track-dur-input:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
+}
+
+.edit-track-reorder {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.edit-track-file.has-audio {
+    color: var(--color-success);
+}
+
+.detail-epub {
+    margin: 1rem 0 1.5rem 0;
+    padding: 0.75rem;
+    background: var(--color-bg-input);
+    border-radius: 0.5rem;
+}
+
+.detail-epub-title {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.detail-epub-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.detail-epub-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+
+.detail-epub-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-dim);
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.edit-epub-info {
+    margin-bottom: 0.5rem;
+}
+
+.edit-epub-current {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.edit-epub-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+
+.edit-epub-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-dim);
+    padding: 0.4rem 0;
+}
+
+.edit-epub-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.edit-epub-upload-label {
+    cursor: pointer;
+}
+
+.detail-reading-status {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.detail-reading-status.rs-unread {
+    background: var(--color-bg-hover);
+    color: var(--color-text-dim);
+}
+
+.detail-reading-status.rs-reading {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.detail-reading-status.rs-completed {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
