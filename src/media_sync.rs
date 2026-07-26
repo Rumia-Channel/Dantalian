@@ -53,7 +53,7 @@ impl MediaType {
         match self {
             MediaType::Images => &["jpg", "jpeg", "png", "webp", "gif"],
             MediaType::Audio => &["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"],
-            MediaType::Epubs => &["epub"],
+            MediaType::Epubs => &["epub", "pdf", "zip"],
         }
     }
 
@@ -80,6 +80,8 @@ impl MediaType {
             "opus" => "audio/opus",
             "webm" => "audio/webm",
             "epub" => "application/epub+zip",
+            "pdf" => "application/pdf",
+            "zip" => "application/zip",
             _ => "application/octet-stream",
         }
     }

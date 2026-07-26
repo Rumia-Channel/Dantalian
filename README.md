@@ -70,7 +70,7 @@ ISBN から書籍メタデータを自動取得し、ローカルで管理する
       dantalian.db    # SQLite データベース
     images/       # 表紙画像ファイル (jpg, jpeg, png, webp, gif)
     audio/        # 音声ファイル (mp3, wav, flac, ogg, m4a, aac, opus, webm)
-    epubs/        # EPUB ファイル (epub)
+    epubs/        # 書籍ファイル (epub, pdf, zip)
 ```
 
 ## メディア同期 (S3 upload-only)

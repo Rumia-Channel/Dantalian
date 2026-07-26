@@ -176,7 +176,7 @@ async function renderSettingsForm() {
                 <div class="settings-form-group">
                     <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-images" ${msTypesSet.has("images") ? "checked" : ""}> 画像 (cover)</label>
                     <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-audio" ${msTypesSet.has("audio") ? "checked" : ""}> 音声 (audio)</label>
-                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-epubs" ${msTypesSet.has("epubs") ? "checked" : ""}> EPUB</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-epubs" ${msTypesSet.has("epubs") ? "checked" : ""}> 書籍ファイル (epub/pdf/zip)</label>
                 </div>
             </div>
 
