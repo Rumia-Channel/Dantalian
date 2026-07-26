@@ -510,8 +510,9 @@ async function describeUploadError(res, label) {
     } catch {}
     if (res.status === 413 && !serverMsg) {
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
-            `ファイルサイズが前面のリバースプロキシ (nginx / Caddy / Cloudflare 等) の上限を超えています。` +
-            `サーバー側で上限を引き上げてください (nginx: client_max_body_size、Caddy: request_body max_size)。`;
+            `ファイルサイズが上限を超えています。` +
+            `前面のリバースプロキシ (nginx: client_max_body_size / Caddy / Cloudflare 等) の上限をまず確認してください。` +
+            `(参考: Dantalian 本体の上限は file 500MB / audio 100MB / cover 10MB)`;
     }
     const detail = serverMsg ? `: ${serverMsg}` : "";
     return `${label}のアップロードに失敗しました (${res.status})${detail}`;
