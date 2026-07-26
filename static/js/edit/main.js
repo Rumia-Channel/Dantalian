@@ -499,6 +499,24 @@ async function saveBook(e, bookId) {
     } catch {}
 }
 
+// アップロード失敗時のメッセージを組み立てる。
+// 413 でアプリ由来のエラー本文が無い場合は、リバースプロキシの上限超過とみなして
+// 対処法を案内する (Dantalian 本体は cover 10MB / audio 100MB / file 500MB まで許可)。
+async function describeUploadError(res, label) {
+    let serverMsg = "";
+    try {
+        const err = await res.json();
+        serverMsg = (err && err.error) || "";
+    } catch {}
+    if (res.status === 413 && !serverMsg) {
+        return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
+            `ファイルサイズが前面のリバースプロキシ (nginx / Caddy / Cloudflare 等) の上限を超えています。` +
+            `サーバー側で上限を引き上げてください (nginx: client_max_body_size、Caddy: request_body max_size)。`;
+    }
+    const detail = serverMsg ? `: ${serverMsg}` : "";
+    return `${label}のアップロードに失敗しました (${res.status})${detail}`;
+}
+
 document.getElementById("edit-content").addEventListener("change", async (e) => {
     if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
     const file = e.target.files[0];
@@ -525,9 +543,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("File upload failed:", res.status, err);
-                alert(`ファイルのアップロードに失敗しました (${res.status}): ${err.error || ""}`);
+                console.error("File upload failed:", res.status);
+                alert(await describeUploadError(res, "ファイル"));
             }
             await loadBooks();
             renderBookEdit(bid);
@@ -550,9 +567,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("CD cover upload failed:", res.status, err);
-                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
+                console.error("CD cover upload failed:", res.status);
+                alert(await describeUploadError(res, "カバー画像"));
             }
             await loadCds();
             renderCdEdit(cid);
@@ -568,9 +584,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("Book cover upload failed:", res.status, err);
-                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
+                console.error("Book cover upload failed:", res.status);
+                alert(await describeUploadError(res, "カバー画像"));
             }
             await loadBooks();
             renderBookEdit(bid);
