@@ -489,7 +489,10 @@ pub async fn put_cd_track_metadata(
         merged.composer = ex.composer;
         merged.publisher = ex.publisher;
         merged.label = ex.label;
-        merged.lyrics = ex.lyrics;
+        // 歌詞はモーダルで編集可能なので、body に含まれるときはそちらを優先する。
+        if body.get("lyrics").is_none() {
+            merged.lyrics = ex.lyrics;
+        }
         merged.cover_mime = ex.cover_mime;
         merged.cover_data = ex.cover_data;
         merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;
@@ -1059,5 +1062,53 @@ pub async fn update_cd_author_order(
         .db
         .update_cd_author_order(cd_id, author_id, sort_order)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// CD 配下の track_metadata から集約したアルバムレベルタグ(参考値)を返す。読取専用。
+pub async fn get_cd_album_tags(
+    State(state): State<AppState>,
+    Path(cd_id): Path<i64>,
+) -> Result<Json<crate::db_models::AlbumTagConsensus>, StatusCode> {
+    let db = state.db.clone();
+    let consensus = tokio::task::spawn_blocking(move || db.get_cd_album_tag_consensus(cd_id))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(consensus))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AddCdAuthorsFromNamesRequest {
+    pub names: Vec<String>,
+}
+
+/// 名前リストから作者を確保(同名は既存を再利用)し、CD のアルバムアーティストとして紐付ける。
+/// 空欄へタグ由来のアルバムアーティストを登録する用途。冪等。
+pub async fn add_cd_authors_from_names(
+    State(state): State<AppState>,
+    Path(cd_id): Path<i64>,
+    Json(req): Json<AddCdAuthorsFromNamesRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let names = req
+        .names
+        .into_iter()
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+        let ids = db.ensure_authors_for_names(&names)?;
+        for id in ids {
+            db.add_cd_author(cd_id, id)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -63,7 +63,10 @@ pub async fn put_book_track_metadata(
         merged.composer = ex.composer;
         merged.publisher = ex.publisher;
         merged.label = ex.label;
-        merged.lyrics = ex.lyrics;
+        // 歌詞はモーダルで編集可能なので、body に含まれるときはそちらを優先する。
+        if body.get("lyrics").is_none() {
+            merged.lyrics = ex.lyrics;
+        }
         merged.cover_mime = ex.cover_mime;
         merged.cover_data = ex.cover_data;
         merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;

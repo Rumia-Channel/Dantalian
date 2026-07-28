@@ -267,6 +267,73 @@ impl Db {
         Ok(Some(resp))
     }
 
+    /// CD 配下の全トラックの track_metadata からアルバムレベルタグの合意値を集約する。
+    /// cd 側の編集値とは独立に、タグが何と言っていたかを UI へ出すための読取専用集約。
+    pub fn get_cd_album_tag_consensus(
+        &self,
+        cd_id: i64,
+    ) -> Result<crate::db_models::AlbumTagConsensus, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT tm.album, tm.album_artist, tm.artist, tm.publisher, tm.label,
+                    tm.year, tm.genre, tm.composer, tm.lyrics
+             FROM track_metadata tm
+             JOIN tracks t ON t.id = tm.track_id
+             WHERE t.cd_id = ?1
+             ORDER BY t.disc_number ASC, t.track_number ASC",
+        )?;
+        let rows = stmt.query_map(params![cd_id], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        })?;
+
+        let mut c = crate::db_models::AlbumTagConsensus::default();
+        for r in rows {
+            let (album, album_artist, artist, publisher, label, year, genre, composer, lyrics) =
+                match r {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+            if c.album.is_none() {
+                c.album = album.filter(|s| !s.trim().is_empty());
+            }
+            if c.album_artist.is_none() {
+                c.album_artist = album_artist.filter(|s| !s.trim().is_empty());
+            }
+            if c.artist.is_none() {
+                c.artist = artist.filter(|s| !s.trim().is_empty());
+            }
+            if c.publisher.is_none() {
+                c.publisher = publisher.filter(|s| !s.trim().is_empty());
+            }
+            if c.label.is_none() {
+                c.label = label.filter(|s| !s.trim().is_empty());
+            }
+            if c.year.is_none() {
+                c.year = year;
+            }
+            if c.genre.is_none() {
+                c.genre = genre.filter(|s| !s.trim().is_empty());
+            }
+            if c.composer.is_none() {
+                c.composer = composer.filter(|s| !s.trim().is_empty());
+            }
+            if c.lyrics.is_none() {
+                c.lyrics = lyrics.filter(|s| !s.trim().is_empty());
+            }
+        }
+        Ok(c)
+    }
+
     pub fn delete_track_metadata(&self, track_id: i64) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         conn.execute(

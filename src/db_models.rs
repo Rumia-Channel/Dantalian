@@ -357,3 +357,20 @@ pub struct TrackMetadataResponse {
     pub artists: Vec<BookAuthor>,
     pub album_artists: Vec<BookAuthor>,
 }
+
+/// CD 配下の全トラックの track_metadata から得たアルバムレベルタグの合意値。
+/// cd 側の編集値(cds/cd_metadata/cd_authors)とは別に出し、UI で「タグ由来(参考)」
+/// 表示や空欄への仮入力に使う。各フィールドは disc/track 順で最初の非空値を採用。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AlbumTagConsensus {
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub artist: Option<String>,
+    pub publisher: Option<String>,
+    pub label: Option<String>,
+    pub year: Option<i64>,
+    pub genre: Option<String>,
+    pub composer: Option<String>,
+    pub lyrics: Option<String>,
+}

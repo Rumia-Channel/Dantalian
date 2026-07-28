@@ -306,6 +306,26 @@ async function showTrackMetadata(editType, parentId, trackId) {
     }
 
     const isCd = editType === "cd";
+
+    // CD の track_metadata 由来タグ合意(参考)。cd 側が空の項目は仮入力にも使う。
+    let tags = {};
+    if (isCd) {
+        try {
+            const tr = await fetch(`/api/cds/${parentId}/album-tags`);
+            if (tr.ok) {
+                const tj = await tr.json();
+                if (tj && typeof tj === "object") tags = tj;
+            }
+        } catch (err) {
+            console.error("loadCdAlbumTags (modal) failed:", err);
+        }
+        for (const k of ["composer", "genre", "year"]) {
+            if ((meta[k] == null || String(meta[k]) === "") && tags[k] != null && String(tags[k]) !== "") {
+                meta[k] = tags[k];
+            }
+        }
+    }
+
     const cdLevelFields = [
         { key: "composer", label: "作曲" },
         { key: "genre", label: "ジャンル" },
@@ -319,6 +339,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
         { key: "disc_number", label: "ディスク番号", type: "number", min: 1 },
         { key: "disc_total", label: "ディスク総数", type: "number", min: 1 },
         { key: "comment", label: "コメント" },
+        { key: "lyrics", label: "歌詞", type: "textarea" },
         { key: "encoder", label: "エンコーダ" },
     ];
 
@@ -328,12 +349,29 @@ async function showTrackMetadata(editType, parentId, trackId) {
         const type = f.type || "text";
         const min = f.min != null ? `min="${f.min}"` : "";
         const max = f.max != null ? `max="${f.max}"` : "";
+        if (type === "textarea") {
+            return `<tr><th><label for="meta-field-${f.key}">${escapeHtml(f.label)}</label></th>
+                <td><textarea id="meta-field-${f.key}" data-meta-key="${f.key}" data-meta-scope="${scope}" rows="4">${escapeHtml(val)}</textarea></td></tr>`;
+        }
         return `<tr><th><label for="meta-field-${f.key}">${escapeHtml(f.label)}</label></th>
             <td><input type="${type}" id="meta-field-${f.key}" data-meta-key="${f.key}" data-meta-scope="${scope}" value="${escapeAttr(val)}" ${min} ${max}></td></tr>`;
     }
 
     const cdLevelRows = cdLevelFields.map((f) => rowFor(f, "cd")).join("");
     const trackLevelRows = trackLevelFields.map((f) => rowFor(f, "track")).join("");
+
+    const tagRefRows = [
+        ["アルバム名", tags.album],
+        ["アルバムアーティスト", tags.album_artist],
+        ["出版社", tags.publisher],
+        ["レーベル", tags.label],
+    ].filter(([, v]) => v != null && String(v) !== "");
+    const tagRefHtml = tagRefRows.length > 0
+        ? `<div class="edit-tag-ref" style="margin:0.5rem 0">
+               <div class="edit-tag-ref-title">音声タグ由来 (参考・このモーダルでは編集不可)</div>
+               ${tagRefRows.map(([l, v]) => `<div class="edit-tag-ref-row"><span class="edit-tag-ref-label">${escapeHtml(l)}</span><span class="edit-tag-ref-value">${escapeHtml(v)}</span></div>`).join("")}
+           </div>`
+        : "";
 
     const albumArtists = Array.isArray(meta.album_artists) ? meta.album_artists : [];
     const albumArtistListHtml = albumArtists.length > 0
@@ -351,6 +389,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
             </div>
             <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">アルバムアーティスト (CD 基本情報と共有・編集は CD 編集画面で)</div>
             <div id="meta-album-artists" style="margin:0.3rem 0 0.5rem 0;line-height:1.8">${albumArtistListHtml}</div>
+            ${tagRefHtml}
             <div style="font-size:0.85rem;font-weight:600;margin-top:0.5rem">アルバム情報 (audio 固有・全トラックで共有)</div>
             <table class="edit-meta-table">${cdLevelRows}</table>
             <div style="font-size:0.85rem;font-weight:600;margin-top:0.8rem">トラック情報 (このトラックのみ)</div>
@@ -439,7 +478,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
         };
         overlay.querySelector("#meta-modal-close").addEventListener("click", close);
         overlay.querySelector("#meta-modal-clear").addEventListener("click", () => {
-            overlay.querySelectorAll("input[data-meta-key]").forEach((i) => { i.value = ""; });
+            overlay.querySelectorAll("input[data-meta-key], textarea[data-meta-key]").forEach((i) => { i.value = ""; });
             trackAuthorIds.length = 0;
             trackAuthorNames.clear();
             renderTrackAuthorList();
@@ -447,7 +486,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
         overlay.querySelector("#meta-modal-save").addEventListener("click", async () => {
             const cdBody = {};
             const trackBody = { artists: trackAuthorIds.slice() };
-            overlay.querySelectorAll("input[data-meta-key]").forEach((i) => {
+            overlay.querySelectorAll("input[data-meta-key], textarea[data-meta-key]").forEach((i) => {
                 const k = i.dataset.metaKey;
                 const scope = i.dataset.metaScope;
                 const v = i.value.trim();
