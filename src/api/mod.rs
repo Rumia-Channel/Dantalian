@@ -13,9 +13,34 @@ pub mod tracks;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 
-const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
-const AUDIO_MAX_BYTES: usize = 100 * 1024 * 1024;
-const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
+pub(crate) const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
+pub(crate) const AUDIO_MAX_BYTES: usize = 100 * 1024 * 1024;
+pub(crate) const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
+
+/// ルートに掛けるボディ上限の天井値。実効上限は設定(upload.*_max_mb)で決め、
+/// ハンドラ側で検査する。ルート側はこの天井まで読み取りを許可するだけ。
+const UPLOAD_ROUTE_LIMIT_BYTES: usize = 4 * 1024 * 1024 * 1024;
+
+pub(crate) const KEY_UPLOAD_COVER_MB: &str = "upload.cover_max_mb";
+pub(crate) const KEY_UPLOAD_AUDIO_MB: &str = "upload.audio_max_mb";
+pub(crate) const KEY_UPLOAD_FILE_MB: &str = "upload.file_max_mb";
+
+/// 設定からアップロード上限(MB指定)を読み、バイト数に変換して返す。
+/// 未設定/不正値なら default_bytes、天井(UPLOAD_ROUTE_LIMIT_BYTES)でキャップ。
+pub(crate) fn upload_limit_bytes(
+    state: &crate::AppState,
+    key: &str,
+    default_bytes: usize,
+) -> usize {
+    state
+        .db
+        .get_setting(key)
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|mb| (mb as usize).saturating_mul(1024 * 1024))
+        .filter(|&b| b > 0)
+        .map(|b| b.min(UPLOAD_ROUTE_LIMIT_BYTES))
+        .unwrap_or(default_bytes)
+}
 
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
@@ -35,13 +60,13 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route(
             "/books/{id}/cover",
             post(books::upload_cover)
-                .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
+                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(books::delete_cover),
         )
         .route(
             "/books/{id}/epub",
             post(books::upload_epub)
-                .layer(DefaultBodyLimit::max(EPUB_MAX_BYTES))
+                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(books::delete_epub),
         )
         .route("/authors", get(books::list_authors))
@@ -102,7 +127,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route(
             "/books/{id}/tracks/{track_id}/audio",
             post(tracks::upload_track_audio)
-                .layer(DefaultBodyLimit::max(AUDIO_MAX_BYTES))
+                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(tracks::delete_track_audio),
         )
         .route("/cds", get(cds::list_cds).post(cds::cd_register))
@@ -111,7 +136,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route(
             "/cds/{id}/cover",
             post(cds::upload_cd_cover)
-                .layer(DefaultBodyLimit::max(COVER_MAX_BYTES))
+                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(cds::delete_cd_cover),
         )
         .route(
@@ -125,7 +150,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route(
             "/cds/{id}/tracks/{tid}/audio",
             post(cds::upload_cd_track_audio)
-                .layer(DefaultBodyLimit::max(AUDIO_MAX_BYTES))
+                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(cds::delete_cd_track_audio),
         )
         .route(

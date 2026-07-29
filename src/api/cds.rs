@@ -701,8 +701,13 @@ pub async fn upload_cd_track_audio(
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
 
-        let (saved_name, _ext) =
-            external::save_uploaded_audio(&data, &name, &audio_dir).map_err(|e| {
+        let audio_max = crate::api::upload_limit_bytes(
+            &state,
+            crate::api::KEY_UPLOAD_AUDIO_MB,
+            crate::api::AUDIO_MAX_BYTES,
+        );
+        let (saved_name, _ext) = external::save_uploaded_audio(&data, &name, &audio_dir, audio_max)
+            .map_err(|e| {
                 tracing::warn!(track_id, cd_id = _cd_id, "Audio save failed: {}", e);
                 StatusCode::BAD_REQUEST
             })?;
@@ -934,10 +939,17 @@ pub async fn upload_cd_cover(
                     )
                 })?
                 .to_vec();
-            if bytes.len() > 10 * 1024 * 1024 {
+            let cover_max = crate::api::upload_limit_bytes(
+                &state,
+                crate::api::KEY_UPLOAD_COVER_MB,
+                crate::api::COVER_MAX_BYTES,
+            );
+            if bytes.len() > cover_max {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "File too large (max 10MB)"})),
+                    Json(
+                        serde_json::json!({"error": format!("File too large (max {}MB)", cover_max / 1024 / 1024)}),
+                    ),
                 ));
             }
             data = Some(bytes);

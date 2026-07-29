@@ -465,10 +465,17 @@ pub async fn upload_cover(
                     )
                 })?
                 .to_vec();
-            if bytes.len() > 10 * 1024 * 1024 {
+            let cover_max = crate::api::upload_limit_bytes(
+                &state,
+                crate::api::KEY_UPLOAD_COVER_MB,
+                crate::api::COVER_MAX_BYTES,
+            );
+            if bytes.len() > cover_max {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "File too large (max 10MB)"})),
+                    Json(
+                        serde_json::json!({"error": format!("File too large (max {}MB)", cover_max / 1024 / 1024)}),
+                    ),
                 ));
             }
             data = Some(bytes);
@@ -620,14 +627,23 @@ pub async fn upload_epub(
     })?;
     let original_name = original_name.unwrap_or_else(|| "upload.epub".to_string());
 
-    let (saved_name, _ext) =
-        crate::external::save_uploaded_file(&bytes, &original_name, state.epubs_dir.as_str())
-            .map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e})),
-                )
-            })?;
+    let file_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_FILE_MB,
+        crate::api::EPUB_MAX_BYTES,
+    );
+    let (saved_name, _ext) = crate::external::save_uploaded_file(
+        &bytes,
+        &original_name,
+        state.epubs_dir.as_str(),
+        file_max,
+    )
+    .map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+    })?;
 
     // Update DB first; only delete the old file after a successful update,
     // and only when no other book still references it.

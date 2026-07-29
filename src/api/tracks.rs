@@ -161,11 +161,18 @@ pub async fn upload_track_audio(
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-        let (saved_name, _ext) = crate::external::save_uploaded_audio(&data, &name, &audio_dir)
-            .map_err(|e| {
-                tracing::warn!(track_id, "Audio save failed: {}", e);
-                axum::http::StatusCode::BAD_REQUEST
-            })?;
+        let audio_max = crate::api::upload_limit_bytes(
+            &state,
+            crate::api::KEY_UPLOAD_AUDIO_MB,
+            crate::api::AUDIO_MAX_BYTES,
+        );
+        let (saved_name, _ext) = crate::external::save_uploaded_audio(
+            &data, &name, &audio_dir, audio_max,
+        )
+        .map_err(|e| {
+            tracing::warn!(track_id, "Audio save failed: {}", e);
+            axum::http::StatusCode::BAD_REQUEST
+        })?;
 
         file_hash = Some(saved_name);
         file_name = Some(name);

@@ -118,6 +118,10 @@ async function renderSettingsForm() {
         `<option value="${escapeAttr(d.value)}" ${d.value === destType ? "selected" : ""}>${escapeHtml(d.label)}</option>`
     ).join("");
 
+    const uploadCoverMb = getValue(settings, "upload.cover_max_mb", "10");
+    const uploadAudioMb = getValue(settings, "upload.audio_max_mb", "100");
+    const uploadFileMb = getValue(settings, "upload.file_max_mb", "500");
+
     container.innerHTML = `
         <div class="settings-form-section">
             <h3>外部API</h3>
@@ -126,6 +130,25 @@ async function renderSettingsForm() {
                 <label class="settings-form-label-inline" for="s-discogs-token">Discogs Token</label>
                 <input type="password" id="s-discogs-token" value="${escapeAttr(getValue(settings, "discogs_token", ""))}" class="form-input" placeholder="Discogs Personal Access Token">
                 <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);margin-left:0.5rem">CD検索のMusicBrainzフォールバックに使用</span>
+            </div>
+        </div>
+
+        <div class="settings-form-section">
+            <h3>アップロード上限</h3>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-upload-cover-mb">カバー画像 (MB)</label>
+                <input type="number" id="s-upload-cover-mb" value="${escapeAttr(uploadCoverMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-upload-audio-mb">音声ファイル (MB)</label>
+                <input type="number" id="s-upload-audio-mb" value="${escapeAttr(uploadAudioMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-upload-file-mb">書籍ファイル epub/pdf/zip (MB)</label>
+                <input type="number" id="s-upload-file-mb" value="${escapeAttr(uploadFileMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+            </div>
+            <div class="settings-form-row">
+                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</span>
             </div>
         </div>
 
@@ -295,6 +318,9 @@ function renderDestFields(destType, settings) {
 async function submitSettings() {
     const settings = {};
     settings["discogs_token"] = document.getElementById("s-discogs-token").value;
+    settings["upload.cover_max_mb"] = document.getElementById("s-upload-cover-mb").value;
+    settings["upload.audio_max_mb"] = document.getElementById("s-upload-audio-mb").value;
+    settings["upload.file_max_mb"] = document.getElementById("s-upload-file-mb").value;
     settings["backup.enabled"] = document.getElementById("s-backup-enabled").checked ? "true" : "false";
     settings["backup.schedule_time"] = document.getElementById("s-schedule-time").value;
     settings["backup.schedule_tz"] = document.getElementById("s-schedule-tz").value;

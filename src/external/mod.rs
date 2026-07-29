@@ -62,18 +62,17 @@ mod save_uploaded_audio {
     use base64::Engine;
     use sha3::{Digest, Sha3_256};
 
-    pub(crate) const AUDIO_MAX_BYTES: usize = 100 * 1024 * 1024;
-
     pub(crate) fn save_uploaded_audio(
         bytes: &[u8],
         original_name: &str,
         audio_dir: &str,
+        max_bytes: usize,
     ) -> Result<(String, String), String> {
-        if bytes.len() > AUDIO_MAX_BYTES {
+        if bytes.len() > max_bytes {
             return Err(format!(
                 "Audio too large: {} bytes (max {} MB)",
                 bytes.len(),
-                AUDIO_MAX_BYTES / 1024 / 1024
+                max_bytes / 1024 / 1024
             ));
         }
 
@@ -107,18 +106,17 @@ mod save_uploaded_file {
     use base64::Engine;
     use sha3::{Digest, Sha3_256};
 
-    pub(crate) const FILE_MAX_BYTES: usize = 500 * 1024 * 1024;
-
     pub(crate) fn save_uploaded_file(
         bytes: &[u8],
         original_name: &str,
         epubs_dir: &str,
+        max_bytes: usize,
     ) -> Result<(String, String), String> {
-        if bytes.len() > FILE_MAX_BYTES {
+        if bytes.len() > max_bytes {
             return Err(format!(
                 "File too large: {} bytes (max {} MB)",
                 bytes.len(),
-                FILE_MAX_BYTES / 1024 / 1024
+                max_bytes / 1024 / 1024
             ));
         }
 

@@ -107,6 +107,18 @@ DB の `settings` テーブル (`media_sync.*`) または環境変数 (`MEDIA_SY
 | `media_sync.s3_secret_key` | (backup) | シークレットキー |
 | `media_sync.s3_prefix` | (backup / `""`) | キープレフィックス (末尾 `/` は不要) |
 
+### アップロード上限
+
+DB の `settings` テーブル (管理画面「設定」→「アップロード上限」からも変更可能) で指定します。単位は MB。
+
+| キー | デフォルト | 説明 |
+|------|-----------|------|
+| `upload.cover_max_mb` | `10` | カバー画像の上限 |
+| `upload.audio_max_mb` | `100` | 音声ファイルの上限 |
+| `upload.file_max_mb` | `500` | 書籍ファイル (epub/pdf/zip) の上限 |
+
+上限は 4096MB (4GB) まで。これは**アプリ側**の上限です。前面のリバースプロキシ (nginx: `client_max_body_size` 等) や Cloudflare の上限も、これ以上に引き上げる必要があります (実効上限は両者の小さい方)。
+
 ### API
 
 - `POST /api/media-sync/run` — 手動実行。レスポンスは `ok` / `scanned` / `uploaded` / `skipped` / `failed` / `missing_local` を含む summary JSON。
