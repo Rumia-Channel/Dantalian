@@ -17,57 +17,15 @@
         <section class="music-page" id="music-list-view">
             <div class="music-header">
                 <h2 class="music-title">音楽</h2>
-                <div class="music-header-actions">
-                    <span class="music-count" id="music-count"></span>
-                    <button type="button" class="music-create-playlist" id="playlist-create-button">
-                        <span class="material-icons">playlist_add</span>新規プレイリスト
-                    </button>
-                </div>
+                <span class="music-count" id="music-count"></span>
             </div>
             <div class="music-filters">
                 <button class="music-filter active" data-filter="all">すべて</button>
                 <button class="music-filter" data-filter="cd">CD</button>
                 <button class="music-filter" data-filter="audiobook">オーディオブック</button>
-                <button class="music-filter" data-filter="playlist">プレイリスト</button>
             </div>
             <div class="music-grid" id="music-grid"></div>
         </section>
-
-        <div class="playlist-modal" id="playlist-modal" hidden>
-            <section class="playlist-dialog" role="dialog" aria-modal="true" aria-labelledby="playlist-dialog-title">
-                <header class="playlist-dialog-header">
-                    <h2 id="playlist-dialog-title">プレイリストを作成</h2>
-                    <button type="button" class="playlist-dialog-close" id="playlist-close-button" aria-label="閉じる">
-                        <span class="material-icons">close</span>
-                    </button>
-                </header>
-                <form id="playlist-form">
-                    <label class="playlist-field">
-                        <span>名前</span>
-                        <input class="playlist-input" id="playlist-name" type="text" maxlength="200" required>
-                    </label>
-                    <label class="playlist-field">
-                        <span>説明</span>
-                        <textarea class="playlist-input playlist-textarea" id="playlist-description" rows="2"></textarea>
-                    </label>
-                    <label class="playlist-field">
-                        <span>カバーに使うCD</span>
-                        <select class="playlist-input" id="playlist-cover-cd"></select>
-                    </label>
-                    <div class="playlist-field">
-                        <span>曲を選択</span>
-                        <div class="playlist-track-picker" id="playlist-track-picker"></div>
-                    </div>
-                    <p class="playlist-form-status" id="playlist-form-status" role="status"></p>
-                    <footer class="playlist-dialog-actions">
-                        <button type="button" class="playlist-delete-button" id="playlist-delete-button" hidden>削除</button>
-                        <span></span>
-                        <button type="button" class="playlist-cancel-button" id="playlist-cancel-button">キャンセル</button>
-                        <button type="submit" class="playlist-save-button">保存</button>
-                    </footer>
-                </form>
-            </section>
-        </div>
 
         <div id="music-player-root"></div>
     </div>

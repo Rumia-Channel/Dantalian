@@ -22,7 +22,6 @@ function filteredMedia() {
     const list = playableAlbums();
     const playlists = getPlaylists();
     if (currentFilter === "all") return { albums: list, playlists };
-    if (currentFilter === "playlist") return { albums: [], playlists };
     return { albums: list.filter((cd) => albumMediaType(cd) === currentFilter), playlists: [] };
 }
 
@@ -79,8 +78,7 @@ musicGrid.addEventListener("click", (e) => {
     if (!card) return;
     const playlistId = card.dataset.playlistId;
     if (playlistId) {
-        if (e.target.closest("[data-playlist-action=\"edit\"]")) openPlaylistEditor(playlistId);
-        else openPlaylist(playlistId);
+        openPlaylist(playlistId);
         return;
     }
     const play = Boolean(e.target.closest("[data-album-action=\"play\"]"));
@@ -115,6 +113,8 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
         allAlbums = [];
     }
     await loadPlaylists();
+    window.musicAlbums = allAlbums;
+    player.setAlbums(playableAlbums());
     renderGrid();
 
     // ?play={cdId} があれば自動再生 (CD詳細の「再生」ボタンから遷移)
@@ -122,4 +122,7 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
     if (!isNaN(playId) && playableAlbums().some((c) => c.id === playId)) {
         openAlbum(playId, true);
     }
+
+    const playlistId = parseInt(new URLSearchParams(location.search).get("playlist"), 10);
+    if (!isNaN(playlistId)) openPlaylist(playlistId);
 })();

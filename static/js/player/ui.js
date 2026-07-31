@@ -65,6 +65,9 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="add-album" aria-label="このCDを再生キューに追加" title="このCDを再生キューに追加">
                             <span class="material-icons">playlist_add</span><span>CDをキューに追加</span>
                         </button>
+                        <button class="player-secondary-btn" data-act="add-album-playlist" aria-label="このCDをプレイリストに追加" title="このCDをプレイリストに追加">
+                            <span class="material-icons">playlist_add_check</span><span>プレイリストに追加</span>
+                        </button>
                     </div>
                     <div class="player-progress">
                         <div class="player-progress-bar" data-el="progress-bar" role="slider" aria-label="再生位置" tabindex="0">
@@ -347,7 +350,8 @@ function createPlayerUI(rootEl) {
                 </span>
                 <span class="player-track-title-cell">${escapeHtml(t.title)}</span>
                 <span class="player-track-dur">${t.duration ? escapeHtml(t.duration) : (playable ? "" : "—")}</span>
-                ${playable ? `<button class="player-track-add" data-act="add-track" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をキューに追加" title="キューに追加"><span class="material-icons">playlist_add</span></button>` : ""}
+                ${playable ? `<button class="player-track-add" data-act="add-track" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をキューに追加" title="キューに追加"><span class="material-icons">playlist_add</span></button>
+                <button class="player-track-playlist-add" data-act="add-track-playlist" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をプレイリストに追加" title="プレイリストに追加"><span class="material-icons">playlist_add_check</span></button>` : ""}
             </li>`;
         }
         el.tracklist.innerHTML = html || '<li class="player-track-empty">トラックがありません</li>';
@@ -569,6 +573,13 @@ function createPlayerUI(rootEl) {
         renderQueue();
     }
 
+    function appendTracksToPlaylist(trackIds) {
+        if (!viewCd || typeof openPlaylistPicker !== "function") return;
+        const ids = (trackIds || []).filter(Number.isFinite);
+        if (ids.length === 0) return;
+        openPlaylistPicker({ trackIds: ids, defaultCoverCdId: viewCd.id });
+    }
+
     function startExternalQueue(entries, startIndex = 0) {
         const playable = (entries || []).filter((entry) => entry && entry.track && entry.track.file_hash && entry.album);
         if (playable.length === 0) return false;
@@ -760,6 +771,8 @@ function createPlayerUI(rootEl) {
         else if (act === "repeat") engine.toggleRepeatMode();
         else if (act === "add-album") appendAlbumToQueue(viewCd);
         else if (act === "add-track") appendTrackToQueue(viewCd, parseInt(btn.dataset.trackId, 10));
+        else if (act === "add-album-playlist") appendTracksToPlaylist(playableTracks(viewCd).map((track) => track.id));
+        else if (act === "add-track-playlist") appendTracksToPlaylist([parseInt(btn.dataset.trackId, 10)]);
         else if (act === "remove-queue") engine.removeQueueIndex(parseInt(btn.dataset.queueIndex, 10));
         else if (act === "clear-queue") {
             engine.clearQueue();
