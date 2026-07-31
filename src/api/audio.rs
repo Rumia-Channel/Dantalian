@@ -7,6 +7,7 @@ use serde::Deserialize;
 pub struct StreamQuery {
     pub ext: Option<String>,
     pub format: Option<String>,
+    pub cache: Option<bool>,
 }
 
 pub async fn stream(
@@ -27,7 +28,9 @@ pub async fn stream(
         Some("aac") => "aac",
         _ => return original,
     };
-    if !audio_encoding::AudioDataSaverConfig::load(&state.db).applies_to(&extension) {
+    if query.cache != Some(true)
+        && !audio_encoding::AudioDataSaverConfig::load(&state.db).applies_to(&extension)
+    {
         return original;
     }
     if !audio_encoding::is_safe_hash(&file_hash) {
@@ -61,8 +64,6 @@ pub async fn stream(
     if !available {
         return original;
     }
-    Redirect::temporary(&format!(
-        "/audio/encoded/{}/{}.{}",
-        format, file_hash, format
-    ))
+    let encoded_name = audio_encoding::encoded_file_name(&file_hash, format);
+    Redirect::temporary(&format!("/audio/encoded/{}/{}", format, encoded_name))
 }

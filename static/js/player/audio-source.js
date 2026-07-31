@@ -7,7 +7,7 @@ let audioDataSaverPolicy = {
 
 async function loadAudioDataSaverPolicy() {
     try {
-        const response = await fetch("/api/settings");
+        const response = await fetch("/api/settings", { cache: "no-store" });
         if (!response.ok) return;
         const settings = await response.json();
         const enabled = String(settings["audio.data_saver.enabled"] || "false").toLowerCase();
@@ -42,6 +42,8 @@ function audioSourceCandidates(track) {
     const probe = document.createElement("audio");
     const canPlayOpus = probe.canPlayType('audio/ogg; codecs="opus"') !== "";
     const canPlayAac = probe.canPlayType("audio/aac") !== "";
-    const preferred = canPlayOpus ? [opus, aac] : canPlayAac ? [aac, opus] : [opus, aac];
-    return [...new Set([...preferred, original])];
+    const preferred = [];
+    if (canPlayOpus) preferred.push(opus);
+    if (canPlayAac) preferred.push(aac);
+    return [...preferred, original];
 }

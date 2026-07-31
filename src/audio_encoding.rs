@@ -91,17 +91,27 @@ pub fn normalize_extension(value: &str) -> Option<String> {
 
 pub fn is_safe_hash(value: &str) -> bool {
     !value.is_empty()
+        && value != "."
+        && value != ".."
         && value.len() <= 256
         && value
             .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
 }
 
 pub fn encoded_path(audio_dir: &str, file_hash: &str, format: &str) -> PathBuf {
     Path::new(audio_dir)
         .join("encoded")
         .join(format)
-        .join(format!("{}.{}", file_hash, format))
+        .join(encoded_file_name(file_hash, format))
+}
+
+pub fn encoded_file_name(file_hash: &str, format: &str) -> String {
+    let hash_stem = file_hash
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(file_hash);
+    format!("{}.{}", hash_stem, format)
 }
 
 pub fn ensure_encoded_variants(
@@ -588,7 +598,10 @@ fn format_command_error(command: &str, output: &std::process::Output) -> String 
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioDataSaverConfig, is_safe_hash, normalize_extension, opus_sample_rate};
+    use super::{
+        AudioDataSaverConfig, encoded_file_name, is_safe_hash, normalize_extension,
+        opus_sample_rate,
+    };
     use crate::db::Db;
 
     #[test]
@@ -612,6 +625,12 @@ mod tests {
         assert_eq!(normalize_extension(" .FLAC "), Some("flac".to_string()));
         assert!(normalize_extension("wav/../x").is_none());
         assert!(is_safe_hash("abc-123_X"));
+        assert!(is_safe_hash("abc-123_X.flac"));
         assert!(!is_safe_hash("../secret"));
+        assert!(!is_safe_hash(".."));
+        assert_eq!(
+            encoded_file_name("abc-123_X.flac", "opus"),
+            "abc-123_X.opus"
+        );
     }
 }
