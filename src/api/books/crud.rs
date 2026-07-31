@@ -1,8 +1,9 @@
 use crate::AppState;
+use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use crate::db::BookWithAuthors;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use axum_extra::extract::Multipart;
@@ -425,6 +426,7 @@ pub async fn remove_book_author(
 pub async fn upload_cover(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let book = state
@@ -442,6 +444,12 @@ pub async fn upload_cover(
                 Json(serde_json::json!({"error": "Book not found"})),
             )
         })?;
+    let chunk_info = chunk.validate().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid upload chunk parameters"})),
+        )
+    })?;
 
     let mut data: Option<Vec<u8>> = None;
     let mut content_type: Option<String> = None;
@@ -465,6 +473,34 @@ pub async fn upload_cover(
                     )
                 })?
                 .to_vec();
+            let bytes = match chunk_info.as_ref() {
+                Some(info) => match crate::api::upload_chunks::store_chunk(
+                    state.uploads_dir.as_str(),
+                    "cover",
+                    info.clone(),
+                    &bytes,
+                )
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "Invalid upload chunk"})),
+                    )
+                })? {
+                    StoreResult::Partial { part, total_parts } => {
+                        return Ok(Json(serde_json::json!({
+                            "chunked": true,
+                            "complete": false,
+                            "part": part,
+                            "total_parts": total_parts,
+                        })));
+                    }
+                    StoreResult::Complete { bytes, cleanup_dir } => {
+                        let _ = std::fs::remove_dir_all(cleanup_dir);
+                        bytes
+                    }
+                },
+                None => bytes,
+            };
             let cover_max = crate::api::upload_limit_bytes(
                 &state,
                 crate::api::KEY_UPLOAD_COVER_MB,
@@ -571,6 +607,7 @@ pub async fn delete_cover(
 pub async fn upload_epub(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let book = state
@@ -588,6 +625,12 @@ pub async fn upload_epub(
                 Json(serde_json::json!({"error": "Book not found"})),
             )
         })?;
+    let chunk_info = chunk.validate().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid upload chunk parameters"})),
+        )
+    })?;
 
     let mut data: Option<Vec<u8>> = None;
     let mut original_name: Option<String> = None;
@@ -614,6 +657,34 @@ pub async fn upload_epub(
                     )
                 })?
                 .to_vec();
+            let bytes = match chunk_info.as_ref() {
+                Some(info) => match crate::api::upload_chunks::store_chunk(
+                    state.uploads_dir.as_str(),
+                    "file",
+                    info.clone(),
+                    &bytes,
+                )
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "Invalid upload chunk"})),
+                    )
+                })? {
+                    StoreResult::Partial { part, total_parts } => {
+                        return Ok(Json(serde_json::json!({
+                            "chunked": true,
+                            "complete": false,
+                            "part": part,
+                            "total_parts": total_parts,
+                        })));
+                    }
+                    StoreResult::Complete { bytes, cleanup_dir } => {
+                        let _ = std::fs::remove_dir_all(cleanup_dir);
+                        bytes
+                    }
+                },
+                None => bytes,
+            };
             data = Some(bytes);
             original_name = Some(file_name);
         }

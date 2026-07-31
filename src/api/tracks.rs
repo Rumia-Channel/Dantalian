@@ -1,6 +1,7 @@
+use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
 };
 use tokio::fs;
 
@@ -143,9 +144,13 @@ pub async fn update_track(
 pub async fn upload_track_audio(
     State(state): State<crate::AppState>,
     Path((_book_id, track_id)): Path<(i64, i64)>,
+    Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let audio_dir = state.audio_dir.as_str();
+    let chunk_info = chunk
+        .validate()
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
@@ -160,6 +165,30 @@ pub async fn upload_track_audio(
             .bytes()
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+        let data = match chunk_info.as_ref() {
+            Some(info) => match crate::api::upload_chunks::store_chunk(
+                state.uploads_dir.as_str(),
+                "audio",
+                info.clone(),
+                &data,
+            )
+            .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?
+            {
+                StoreResult::Partial { part, total_parts } => {
+                    return Ok(Json(serde_json::json!({
+                        "chunked": true,
+                        "complete": false,
+                        "part": part,
+                        "total_parts": total_parts,
+                    })));
+                }
+                StoreResult::Complete { bytes, cleanup_dir } => {
+                    let _ = std::fs::remove_dir_all(cleanup_dir);
+                    bytes
+                }
+            },
+            None => data.to_vec(),
+        };
 
         let audio_max = crate::api::upload_limit_bytes(
             &state,

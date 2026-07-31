@@ -518,15 +518,19 @@ async function submitManualBook(e) {
         }
 
         const bookId = data.book.id;
+        let coverUploadFailed = false;
 
         if (manualCoverFile && bookId) {
-            const coverFd = new FormData();
-            coverFd.append("cover", manualCoverFile);
-            await fetch(`/api/books/${bookId}/cover`, { method: "POST", body: coverFd });
+            const coverRes = await uploadFileWithChunks(`/api/books/${bookId}/cover`, "cover", manualCoverFile);
+            if (!coverRes.ok) {
+                coverUploadFailed = true;
+            }
         }
 
-        statusEl.textContent = `「${data.book.title}」を登録しました`;
-        statusEl.className = "success";
+        statusEl.textContent = coverUploadFailed
+            ? `「${data.book.title}」を登録しましたが、カバー画像のアップロードに失敗しました`
+            : `「${data.book.title}」を登録しました`;
+        statusEl.className = coverUploadFailed ? "error" : "success";
         manualCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];
@@ -642,14 +646,19 @@ async function submitManualCd(e) {
             }
         }
 
+        let coverUploadFailed = false;
         if (manualCoverFile && cdId) {
-            const coverFd = new FormData();
-            coverFd.append("cover", manualCoverFile);
-            await fetch(`/api/cds/${cdId}/cover`, { method: "POST", body: coverFd });
+            const coverRes = await uploadFileWithChunks(`/api/cds/${cdId}/cover`, "cover", manualCoverFile);
+            if (!coverRes.ok) {
+                coverUploadFailed = true;
+            }
         }
 
-        statusEl.textContent = `「${data.cd?.title || data.title}」を登録しました`;
-        statusEl.className = "success";
+        const registeredTitle = data.cd?.title || data.title;
+        statusEl.textContent = coverUploadFailed
+            ? `「${registeredTitle}」を登録しましたが、カバー画像のアップロードに失敗しました`
+            : `「${registeredTitle}」を登録しました`;
+        statusEl.className = coverUploadFailed ? "error" : "success";
         manualCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];

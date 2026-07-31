@@ -536,13 +536,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
             if (coverDisplay) coverDisplay.style.opacity = "1";
             return;
         }
-        const fd = new FormData();
-        fd.append("file", file);
         try {
-            const res = await fetch(`/api/books/${bid}/epub`, {
-                method: "POST",
-                body: fd,
-            });
+            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file);
             if (!res.ok) {
                 console.error("File upload failed:", res.status);
                 alert(await describeUploadError(res, "ファイル"));
@@ -558,15 +553,9 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
         return;
     }
 
-    const fd = new FormData();
-    fd.append("cover", file);
-
     if (cid) {
         try {
-            const res = await fetch(`/api/cds/${cid}/cover`, {
-                method: "POST",
-                body: fd,
-            });
+            const res = await uploadFileWithChunks(`/api/cds/${cid}/cover`, "cover", file);
             if (!res.ok) {
                 console.error("CD cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));
@@ -580,10 +569,7 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
         }
     } else if (bid) {
         try {
-            const res = await fetch(`/api/books/${bid}/cover`, {
-                method: "POST",
-                body: fd,
-            });
+            const res = await uploadFileWithChunks(`/api/books/${bid}/cover`, "cover", file);
             if (!res.ok) {
                 console.error("Book cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));

@@ -1,10 +1,11 @@
 use crate::AppState;
+use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use crate::db::{CdWithTracks, NewCd};
 use crate::db_models::CdMetadata;
 use crate::external;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use axum_extra::extract::Multipart;
@@ -686,9 +687,11 @@ pub async fn delete_cd_track(
 pub async fn upload_cd_track_audio(
     State(state): State<AppState>,
     Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let audio_dir = state.audio_dir.as_str();
+    let chunk_info = chunk.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
@@ -700,6 +703,30 @@ pub async fn upload_cd_track_audio(
     {
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+        let data = match chunk_info.as_ref() {
+            Some(info) => match crate::api::upload_chunks::store_chunk(
+                state.uploads_dir.as_str(),
+                "audio",
+                info.clone(),
+                &data,
+            )
+            .map_err(|_| StatusCode::BAD_REQUEST)?
+            {
+                StoreResult::Partial { part, total_parts } => {
+                    return Ok(Json(serde_json::json!({
+                        "chunked": true,
+                        "complete": false,
+                        "part": part,
+                        "total_parts": total_parts,
+                    })));
+                }
+                StoreResult::Complete { bytes, cleanup_dir } => {
+                    let _ = std::fs::remove_dir_all(cleanup_dir);
+                    bytes
+                }
+            },
+            None => data.to_vec(),
+        };
 
         let audio_max = crate::api::upload_limit_bytes(
             &state,
@@ -899,6 +926,7 @@ pub async fn delete_cd_track_audio(
 pub async fn upload_cd_cover(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let cd = state
@@ -916,6 +944,12 @@ pub async fn upload_cd_cover(
                 Json(serde_json::json!({"error": "CD not found"})),
             )
         })?;
+    let chunk_info = chunk.validate().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid upload chunk parameters"})),
+        )
+    })?;
 
     let mut data: Option<Vec<u8>> = None;
     let mut content_type: Option<String> = None;
@@ -939,6 +973,34 @@ pub async fn upload_cd_cover(
                     )
                 })?
                 .to_vec();
+            let bytes = match chunk_info.as_ref() {
+                Some(info) => match crate::api::upload_chunks::store_chunk(
+                    state.uploads_dir.as_str(),
+                    "cover",
+                    info.clone(),
+                    &bytes,
+                )
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "Invalid upload chunk"})),
+                    )
+                })? {
+                    StoreResult::Partial { part, total_parts } => {
+                        return Ok(Json(serde_json::json!({
+                            "chunked": true,
+                            "complete": false,
+                            "part": part,
+                            "total_parts": total_parts,
+                        })));
+                    }
+                    StoreResult::Complete { bytes, cleanup_dir } => {
+                        let _ = std::fs::remove_dir_all(cleanup_dir);
+                        bytes
+                    }
+                },
+                None => bytes,
+            };
             let cover_max = crate::api::upload_limit_bytes(
                 &state,
                 crate::api::KEY_UPLOAD_COVER_MB,

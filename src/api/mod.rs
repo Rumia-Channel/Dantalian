@@ -9,6 +9,7 @@ pub mod series;
 pub mod settings;
 pub mod storage_locations;
 pub mod tracks;
+pub(crate) mod upload_chunks;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
@@ -19,7 +20,7 @@ pub(crate) const EPUB_MAX_BYTES: usize = 500 * 1024 * 1024;
 
 /// ルートに掛けるボディ上限の天井値。実効上限は設定(upload.*_max_mb)で決め、
 /// ハンドラ側で検査する。ルート側はこの天井まで読み取りを許可するだけ。
-const UPLOAD_ROUTE_LIMIT_BYTES: usize = 4 * 1024 * 1024 * 1024;
+pub(crate) const UPLOAD_ROUTE_LIMIT_BYTES: usize = 4 * 1024 * 1024 * 1024;
 
 pub(crate) const KEY_UPLOAD_COVER_MB: &str = "upload.cover_max_mb";
 pub(crate) const KEY_UPLOAD_AUDIO_MB: &str = "upload.audio_max_mb";

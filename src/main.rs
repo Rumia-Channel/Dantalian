@@ -53,6 +53,7 @@ pub struct AppState {
     pub images_dir: Arc<String>,
     pub audio_dir: Arc<String>,
     pub epubs_dir: Arc<String>,
+    pub uploads_dir: Arc<String>,
     pub discogs_token: String,
     pub musicbrainz_contact: String,
 }
@@ -79,10 +80,13 @@ async fn main() {
     let images_dir = format!("{}{}images", data_dir, std::path::MAIN_SEPARATOR);
     let audio_dir = format!("{}{}audio", data_dir, std::path::MAIN_SEPARATOR);
     let epubs_dir = format!("{}{}epubs", data_dir, std::path::MAIN_SEPARATOR);
+    let uploads_dir = format!("{}{}uploads", data_dir, std::path::MAIN_SEPARATOR);
     std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
     std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
     std::fs::create_dir_all(&audio_dir).expect("Failed to create audio directory");
     std::fs::create_dir_all(&epubs_dir).expect("Failed to create epubs directory");
+    std::fs::create_dir_all(&uploads_dir).expect("Failed to create upload directory");
+    api::upload_chunks::cleanup_stale_uploads(&uploads_dir);
 
     let db_path = format!("{}{}dantalian.db", db_dir, std::path::MAIN_SEPARATOR);
     tracing::info!(%data_dir, %db_path, %images_dir, %audio_dir, %epubs_dir, "Data directories");
@@ -153,6 +157,7 @@ async fn main() {
     let images_dir_arc = Arc::new(images_dir);
     let audio_dir_arc = Arc::new(audio_dir);
     let epubs_dir_arc = Arc::new(epubs_dir);
+    let uploads_dir_arc = Arc::new(uploads_dir);
 
     let state = AppState {
         db,
@@ -161,6 +166,7 @@ async fn main() {
         images_dir: images_dir_arc.clone(),
         audio_dir: audio_dir_arc.clone(),
         epubs_dir: epubs_dir_arc.clone(),
+        uploads_dir: uploads_dir_arc.clone(),
         discogs_token,
         musicbrainz_contact,
     };

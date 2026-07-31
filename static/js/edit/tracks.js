@@ -279,13 +279,11 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         return;
     }
 
-    const fd = new FormData();
-    fd.append("audio", file);
     const url = editType === "cd"
         ? `/api/cds/${parentId}/tracks/${trackId}/audio`
         : `/api/books/${parentId}/tracks/${trackId}/audio`;
     try {
-        const res = await fetch(url, { method: "POST", body: fd });
+        const res = await uploadFileWithChunks(url, "audio", file);
         if (res.ok) {
             const body = await res.json().catch(() => ({}));
             const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
