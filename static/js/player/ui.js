@@ -62,6 +62,9 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="add-album-playlist" aria-label="このCDをプレイリストに追加" title="このCDをプレイリストに追加">
                             <span class="material-icons">playlist_add_check</span><span>プレイリストに追加</span>
                         </button>
+                        <button class="player-secondary-btn player-cache-btn" data-act="cache-album" data-el="cache-album-button" hidden aria-label="このCDをキャッシュに保存" title="このCDをキャッシュに保存">
+                            <span class="material-icons" data-el="cache-album-icon">download_for_offline</span><span data-el="cache-album-label">キャッシュに保存</span>
+                        </button>
                         <button class="player-secondary-btn player-playlist-delete-btn" data-act="remove-playlist" data-el="remove-playlist-button" hidden aria-label="このプレイリストを削除" title="このプレイリストを削除">
                             <span class="material-icons">delete</span><span>プレイリストを削除</span>
                         </button>
@@ -179,6 +182,8 @@ function createPlayerUI(rootEl) {
     let queueVisible = false;
     let metadataRequestId = 0;
     const metadataCache = new Map();
+    let technicalTrackId = null;
+    let currentSourceFormat = null;
     const AUDIOBOOK_PROGRESS_KEY = "dantalian_audiobook_progress_v1";
     const PLAYLIST_AUDIOBOOK_PROGRESS_KEY = "dantalian_playlist_audiobook_progress_v1";
     const PLAYER_AUDIO_SETTINGS_KEY = "dantalian_player_audio_settings_v1";
@@ -319,7 +324,9 @@ function createPlayerUI(rootEl) {
         return ext.toUpperCase();
     }
     function paintTrackTechnicalInfo(track, metadata) {
-        const fileType = metadata && metadata.file_type
+        const fileType = currentSourceFormat && currentSourceFormat !== "original"
+            ? currentSourceFormat.toUpperCase()
+            : metadata && metadata.file_type
             ? String(metadata.file_type).toUpperCase()
             : fallbackFileType(track);
         el["tech-format"].textContent = fileType;
@@ -328,8 +335,14 @@ function createPlayerUI(rootEl) {
     async function loadTrackTechnicalInfo(cd, track) {
         const requestId = ++metadataRequestId;
         if (!track) {
+            technicalTrackId = null;
+            currentSourceFormat = null;
             el.tech.hidden = true;
             return;
+        }
+        if (technicalTrackId !== track.id) {
+            technicalTrackId = track.id;
+            currentSourceFormat = null;
         }
         el.tech.hidden = false;
         paintTrackTechnicalInfo(track, metadataCache.get(track.id));
@@ -377,6 +390,88 @@ function createPlayerUI(rootEl) {
             el["mini-cover-fallback"].style.display = "flex";
         }
         setAmbient(url);
+    }
+
+    function renderResumeButton() {
+        if (!viewCd) return;
+        const resume = getAudiobookProgress(viewCd);
+        const showResume = !!resume && viewMode !== "live";
+        el["resume-button"].hidden = !showResume;
+        if (!showResume) return;
+        const source = resume.sourceCd ? `${resume.sourceCd.title} / ` : "";
+        el["resume-label"].textContent = `続きから再生 · ${source}${resume.track.title} (${formatTime(resume.position)})`;
+    }
+
+    async function updateAudioCacheButton(cd) {
+        const button = el["cache-album-button"];
+        if (!button) return;
+        const requestId = (updateAudioCacheButton.requestId || 0) + 1;
+        updateAudioCacheButton.requestId = requestId;
+        const playlist = Number.isFinite(Number(cd && cd.playlist_id));
+        const tracks = cd ? playableTracks(cd) : [];
+        if (playlist || tracks.length === 0 || typeof getAudioCacheStatus !== "function" || typeof indexedDB === "undefined") {
+            button.hidden = true;
+            return;
+        }
+
+        button.hidden = false;
+        button.disabled = true;
+        try {
+            const status = await getAudioCacheStatus(tracks);
+            if (requestId !== updateAudioCacheButton.requestId || viewCd !== cd) return;
+            const label = isAudiobook(cd) ? "オーディオブック" : "CD";
+            const allCached = status.allCached;
+            el["cache-album-icon"].textContent = allCached ? "delete_sweep" : "download_for_offline";
+            el["cache-album-label"].textContent = allCached
+                ? "キャッシュを削除"
+                : `キャッシュに保存 (${status.cached}/${status.total})`;
+            button.disabled = false;
+            button.setAttribute("aria-label", allCached
+                ? `この${label}のキャッシュを削除`
+                : `この${label}をキャッシュに保存`);
+            button.title = button.getAttribute("aria-label");
+        } catch {
+            button.hidden = true;
+        }
+    }
+
+    async function cacheCurrentAlbum() {
+        const cd = viewCd;
+        const tracks = cd ? playableTracks(cd) : [];
+        if (!cd || Number.isFinite(Number(cd.playlist_id)) || tracks.length === 0
+            || typeof getAudioCacheStatus !== "function" || typeof cacheAudioAlbum !== "function") return;
+
+        const button = el["cache-album-button"];
+        if (button.disabled) return;
+        const status = await getAudioCacheStatus(tracks);
+        if (viewCd !== cd) return;
+        const mediaLabel = isAudiobook(cd) ? "オーディオブック" : "CD";
+        const isRemoving = status.allCached;
+        const message = isRemoving
+            ? `${mediaLabel}「${cd.title}」の端末キャッシュを削除しますか？`
+            : `${mediaLabel}「${cd.title}」の${status.total}曲をこの端末に保存しますか？\nブラウザの容量を使用します。`;
+        const confirmed = typeof showConfirm === "function"
+            ? await showConfirm({ message, okLabel: isRemoving ? "削除" : "保存" })
+            : window.confirm(message);
+        if (!confirmed || viewCd !== cd) return;
+
+        button.disabled = true;
+        try {
+            if (isRemoving) {
+                await deleteAudioCacheAlbum(cd);
+            } else {
+                const result = await cacheAudioAlbum(cd, ({ index, total }) => {
+                    if (viewCd === cd) el["cache-album-label"].textContent = `保存中 ${index}/${total}`;
+                });
+                if (result.failed.length > 0) {
+                    window.alert(`${result.succeeded.length}曲を保存しました。${result.failed.length}曲は保存できませんでした。`);
+                }
+            }
+        } catch (error) {
+            window.alert(error?.message || "音声キャッシュの処理に失敗しました");
+        } finally {
+            if (viewCd === cd) updateAudioCacheButton(cd);
+        }
     }
 
     // ---------- トラックリスト ----------
@@ -475,14 +570,9 @@ function createPlayerUI(rootEl) {
         if (!viewCd) return;
         const track = trackById(viewCd, viewTrackId) || firstPlayable(viewCd);
         viewTrackId = track ? track.id : viewTrackId;
-        const resume = getAudiobookProgress(viewCd);
-        const showResume = !!resume && viewMode !== "live";
-        el["resume-button"].hidden = !showResume;
+        renderResumeButton();
         el["remove-playlist-button"].hidden = !Number.isFinite(Number(viewCd.playlist_id));
-        if (showResume) {
-            const source = resume.sourceCd ? `${resume.sourceCd.title} / ` : "";
-            el["resume-label"].textContent = `続きから再生 · ${source}${resume.track.title} (${formatTime(resume.position)})`;
-        }
+        updateAudioCacheButton(viewCd);
         paintCover(viewCd);
         el["track-title"].textContent = track ? track.title : viewCd.title;
         el["album-title"].textContent = viewCd.title;
@@ -841,6 +931,7 @@ function createPlayerUI(rootEl) {
     engine.on("trackchange", (t) => {
         const entry = engine.currentEntry();
         if (entry && entry.album) currentCd = entry.album;
+        currentSourceFormat = null;
         const pending = pendingAudiobookResume;
         const isPendingResume = pending && entry && entry.album
             && pending.cdId === entry.album.id && pending.trackId === entry.track.id;
@@ -864,6 +955,7 @@ function createPlayerUI(rootEl) {
     engine.on("time", (pos) => {
         saveAudiobookProgress();
         setMiniProgress(pos);
+        renderResumeButton();
         if (fullVisible && viewMode === "live") setViewProgress(pos);
     });
     engine.on("duration", (dur) => {
@@ -872,6 +964,12 @@ function createPlayerUI(rootEl) {
             el["time-total"].textContent = formatTime(dur);
             if (restored) setViewProgress(engine.getPosition());
         }
+    });
+    engine.on("sourcechange", (source) => {
+        const entry = engine.currentEntry();
+        if (!source || !entry || source.track?.id !== entry.track.id) return;
+        currentSourceFormat = source.format === "original" ? null : source.format;
+        paintTrackTechnicalInfo(entry.track, metadataCache.get(entry.track.id));
     });
     engine.on("shuffle", (enabled) => {
         el["shuffle-button"].classList.toggle("is-active", enabled);
@@ -953,6 +1051,7 @@ function createPlayerUI(rootEl) {
         else if (act === "repeat") engine.toggleRepeatMode();
         else if (act === "add-album") appendAlbumToQueue(viewCd);
         else if (act === "add-track") appendTrackToQueue(viewCd, parseInt(btn.dataset.trackId, 10));
+        else if (act === "cache-album") cacheCurrentAlbum();
         else if (act === "add-album-playlist") appendTracksToPlaylist(playableTracks(viewCd).map((track) => track.id));
         else if (act === "add-track-playlist") appendTracksToPlaylist([parseInt(btn.dataset.trackId, 10)]);
         else if (act === "remove-playlist-track") removeCurrentPlaylistTracks(

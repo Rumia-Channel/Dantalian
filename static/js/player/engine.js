@@ -14,9 +14,20 @@ class PlayerEngine {
         this._sourceCandidates = [];
         this._sourceIndex = 0;
         this._playRequested = false;
+        this._cacheObjectUrl = null;
+        this._cacheFormat = null;
+        this._loadToken = 0;
+        this._loading = false;
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
-        this.audio.addEventListener("loadedmetadata", () => this._emit("duration", this.getDuration()));
+        this.audio.addEventListener("loadedmetadata", () => {
+            this._emit("duration", this.getDuration());
+            this._emit("sourcechange", {
+                track: this.current(),
+                format: this._sourceFormat(),
+                url: this.audio.currentSrc || this._sourceCandidates[this._sourceIndex] || "",
+            });
+        });
         this.audio.addEventListener("ended", () => this._emit("ended", this.current()));
         this.audio.addEventListener("play", () => this._emit("playstate", true));
         this.audio.addEventListener("pause", () => this._emit("playstate", false));
@@ -74,6 +85,10 @@ class PlayerEngine {
         this._emit("queuechange", this.queue);
         if (this.index >= 0) this._loadCurrent(false);
         else {
+            this._loadToken += 1;
+            this._loading = false;
+            this._releaseCachedObjectUrl();
+            this._sourceCandidates = [];
             this.audio.removeAttribute("src");
             this._emit("empty", true);
         }
@@ -117,7 +132,34 @@ class PlayerEngine {
         return [`/audio/${encodeURIComponent(track.file_hash)}`];
     }
 
+    _sourceFormat() {
+        const source = this.audio.currentSrc || this._sourceCandidates[this._sourceIndex] || "";
+        if (this._cacheObjectUrl && source === this._cacheObjectUrl) {
+            return this._cacheFormat || "original";
+        }
+        try {
+            const parsed = new URL(source, window.location.href);
+            const path = parsed.pathname;
+            if (path.includes("/audio/encoded/opus/")) return "opus";
+            if (path.includes("/audio/encoded/aac/")) return "aac";
+            if (path.includes("/api/audio/stream/") && ["opus", "aac"].includes(parsed.searchParams.get("format"))) {
+                return parsed.searchParams.get("format");
+            }
+        } catch {}
+        return "original";
+    }
+
+    _releaseCachedObjectUrl() {
+        if (!this._cacheObjectUrl) return;
+        if (typeof releaseCachedAudioSource === "function") {
+            releaseCachedAudioSource(this._cacheObjectUrl);
+        }
+        this._cacheObjectUrl = null;
+        this._cacheFormat = null;
+    }
+
     _handleSourceError() {
+        if (this._loading || this._sourceCandidates.length === 0) return;
         if (this._sourceIndex + 1 < this._sourceCandidates.length) {
             const shouldPlay = this._playRequested || this.isPlaying;
             this._sourceIndex += 1;
@@ -129,20 +171,47 @@ class PlayerEngine {
         if (this.index >= 0) this._emit("error", this.current());
     }
 
-    _loadCurrent(autoplay) {
+    async _loadCurrent(autoplay) {
+        const token = ++this._loadToken;
         const entry = this.currentEntry();
+        this._loading = true;
+        this._playRequested = Boolean(autoplay);
+        this.audio.pause();
+        this._releaseCachedObjectUrl();
+        this._sourceCandidates = [];
+        this._sourceIndex = 0;
         if (!entry) {
             this.audio.removeAttribute("src");
+            this._loading = false;
             this._emit("empty", true);
             return;
         }
-        this._sourceCandidates = this._url(entry.track);
+
+        const networkCandidates = this._url(entry.track);
+        let cachedSource = null;
+        if (typeof getCachedAudioSource === "function") {
+            cachedSource = await getCachedAudioSource(entry.track);
+        }
+        if (token !== this._loadToken || this.currentEntry() !== entry) {
+            if (cachedSource && typeof releaseCachedAudioSource === "function") {
+                releaseCachedAudioSource(cachedSource.url);
+            }
+            return;
+        }
+
+        this._cacheObjectUrl = cachedSource?.url || null;
+        this._cacheFormat = cachedSource?.format || null;
+        this._sourceCandidates = cachedSource
+            ? [cachedSource.url, ...networkCandidates]
+            : networkCandidates;
         this._sourceIndex = 0;
-        this._playRequested = Boolean(autoplay);
         this.audio.src = this._sourceCandidates[0] || "";
         this.audio.load();
+        this._loading = false;
         this._emit("trackchange", entry.track);
-        if (autoplay) this.audio.play().catch(() => this._emit("playstate", false));
+        if (autoplay || this._playRequested) {
+            this.audio.play().catch(() => this._emit("playstate", false));
+        }
     }
 
     play() {
@@ -151,7 +220,11 @@ class PlayerEngine {
             this.index = 0;
             this._rebuildPlayOrder(this.index);
         }
-        if (this.current() && !this.audio.src) this._loadCurrent(false);
+        if (this._loading) return;
+        if (this.current() && !this.audio.src) {
+            this._loadCurrent(true);
+            return;
+        }
         this.audio.play().catch(() => {});
     }
 
@@ -283,7 +356,10 @@ class PlayerEngine {
     }
 
     clearQueue() {
+        this._loadToken += 1;
+        this._loading = false;
         this.audio.pause();
+        this._releaseCachedObjectUrl();
         this.queue = [];
         this.index = -1;
         this.playOrder = [];

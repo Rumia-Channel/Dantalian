@@ -51,6 +51,7 @@ fn main() {
         "static/js/borrowers.js",
         "static/js/settings-manage.js",
         "static/js/player/audio-source.js",
+        "static/js/player/audio-cache.js",
         "static/js/player/engine.js",
         "static/js/player/ui.js",
         "static/js/music/playlists.js",
