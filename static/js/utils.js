@@ -8,8 +8,9 @@ let previewAudio = null;
 const dataLoadErrors = {};
 
 // CD/オーディオブックを一覧・音楽ページ・プレイヤーで同じアーティスト名に揃える。
-// track_artist はアップロード音声の artist タグ、artist は CD/AB 基本情報、
-// authors はアプリ内で紐付けたアーティスト、album_artist は最後のフォールバック。
+// authors は編集画面の「アーティスト」欄(cd_authors)を指し、最優先で使う。
+// track_artist はアップロード音声の artist タグ、artist は CD/AB 基本情報の
+// 旧来の文字列値、album_artist は最後のフォールバック。
 function getCdArtistIdentity(cd) {
     if (!cd || typeof cd !== "object") return null;
 
@@ -17,12 +18,6 @@ function getCdArtistIdentity(cd) {
         const text = String(value == null ? "" : value).trim();
         return text || null;
     };
-
-    const trackArtist = nonEmpty(cd.track_artist);
-    if (trackArtist) return { source: "track_artist", name: trackArtist };
-
-    const artist = nonEmpty(cd.artist);
-    if (artist) return { source: "artist", name: artist };
 
     const authors = Array.isArray(cd.authors) ? cd.authors : [];
     const primaryAuthor = authors
@@ -36,6 +31,12 @@ function getCdArtistIdentity(cd) {
             name: nonEmpty(primaryAuthor.name),
         };
     }
+
+    const trackArtist = nonEmpty(cd.track_artist);
+    if (trackArtist) return { source: "track_artist", name: trackArtist };
+
+    const artist = nonEmpty(cd.artist);
+    if (artist) return { source: "artist", name: artist };
 
     const albumArtist = nonEmpty(cd.album_artist);
     return albumArtist ? { source: "album_artist", name: albumArtist } : null;
