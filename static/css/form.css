@@ -410,3 +410,135 @@
     border-color: var(--color-primary);
     box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
 }
+
+/* --- MusicBrainz candidate picker --- */
+.cd-candidate-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(3, 8, 18, 0.78);
+}
+
+.cd-candidate-modal[hidden] {
+    display: none;
+}
+
+.cd-candidate-dialog {
+    width: min(42rem, 100%);
+    max-height: min(44rem, calc(100vh - 2rem));
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-surface);
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.4);
+}
+
+.cd-candidate-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.4rem 1rem;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.cd-candidate-kicker {
+    color: var(--color-primary);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+}
+
+.cd-candidate-header h2 {
+    margin: 0.35rem 0 0;
+    color: var(--color-text-primary);
+    font-size: 1.15rem;
+}
+
+.cd-candidate-close {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.cd-candidate-close:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.cd-candidate-body {
+    max-height: calc(min(44rem, 100vh - 2rem) - 5rem);
+    overflow-y: auto;
+    padding: 1rem 1.4rem 1.3rem;
+}
+
+.cd-candidate-intro {
+    margin: 0 0 0.9rem;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.cd-candidate-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.cd-candidate-item {
+    display: grid;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.cd-candidate-item:hover,
+.cd-candidate-item:focus-visible {
+    border-color: var(--color-primary);
+    background: var(--color-bg-hover);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.cd-candidate-item:disabled {
+    cursor: wait;
+    opacity: 0.55;
+    transform: none;
+}
+
+.cd-candidate-item strong {
+    font-size: 0.95rem;
+}
+
+.cd-candidate-item span {
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.cd-candidate-status {
+    min-height: 1.3rem;
+    margin: 0.8rem 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.82rem;
+}
+
+.cd-candidate-status.error {
+    color: var(--color-danger, #ef7878);
+}

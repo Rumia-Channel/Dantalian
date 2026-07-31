@@ -32,6 +32,21 @@ cdForm.addEventListener("submit", async (e) => {
         });
         const data = await res.json();
 
+        if (res.status === 300 && data.code === "musicbrainz_candidates") {
+            openMusicBrainzCandidatePicker({
+                jan,
+                parentBookId: parentId,
+                amazonTitle: data.amazon_title,
+                candidates: data.candidates,
+                onRegistered: (registered) => {
+                    cdStatus.textContent = `「${registered.cd?.title || registered.title}」をMusicBrainzから登録しました`;
+                    cdStatus.className = "success";
+                    cdInput.value = "";
+                },
+            });
+            return;
+        }
+
         if (!res.ok) {
             cdStatus.textContent = data.error || "登録に失敗しました";
             cdStatus.className = "error";
@@ -202,7 +217,9 @@ async function startCdQueue() {
 
             if (!res.ok) {
                 item.status = "error";
-                item.error = data.error || "登録失敗";
+                item.error = data.code === "musicbrainz_candidates"
+                    ? "候補が複数あります（単体登録で選択してください）"
+                    : (data.error || "登録失敗");
                 cdQueueFailed++;
             } else {
                 item.status = "success";
