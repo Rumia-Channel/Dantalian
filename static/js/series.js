@@ -31,9 +31,9 @@ function renderSeriesManager() {
         const gsLabel = gs ? ` <span class="series-belong-grand">→ ${escapeHtml(gs.name)}</span>` : "";
         return `
         <div class="series-list-item" id="series-item-${s.id}">
-            <span class="series-list-name" ondblclick="startRenameSeries(${s.id}, '${escapeJs(s.name)}')">${escapeHtml(s.name)}${gsLabel}</span>
+            <span class="series-list-name" ondblclick="startRenameSeries(${s.id})">${escapeHtml(s.name)}${gsLabel}</span>
             <div class="series-list-actions">
-                <button class="btn btn-xs btn-outline-success" onclick="startRenameSeries(${s.id}, '${escapeJs(s.name)}')">改名</button>
+                <button class="btn btn-xs btn-outline-success" onclick="startRenameSeries(${s.id})">改名</button>
                 <button class="btn btn-xs btn-outline-danger" onclick="deleteSeries(${s.id})">削除</button>
             </div>
         </div>`;
@@ -60,7 +60,10 @@ async function createSeries() {
     } catch {}
 }
 
-async function startRenameSeries(id, oldName) {
+async function startRenameSeries(id) {
+    const series = allSeries.find((item) => item.id === id);
+    if (!series) return;
+    const oldName = series.name;
     const el = document.getElementById(`series-item-${id}`);
     if (!el) return;
     const nameEl = el.querySelector(".series-list-name");
@@ -70,28 +73,53 @@ async function startRenameSeries(id, oldName) {
     input.className = "inline-edit-input";
     input.value = oldName;
 
+    let settled = false;
     const save = async () => {
+        if (settled) return;
         const newName = input.value.trim();
-        if (newName && newName !== oldName) {
-            await fetch(`/api/series/${id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newName }),
-            });
+        if (!newName) {
+            input.focus();
+            return;
         }
-        await loadSeries();
-        renderSeriesManager();
-        loadBooks();
+        settled = true;
+        input.disabled = true;
+        try {
+            if (newName !== oldName) {
+                const res = await fetch(`/api/series/${id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: newName }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            }
+            await loadSeries();
+            renderSeriesManager();
+            loadBooks();
+        } catch (error) {
+            settled = false;
+            input.disabled = false;
+            input.focus();
+            console.error("renameSeries failed:", error);
+            alert("シリーズ名の変更に失敗しました");
+        }
     };
 
     const cancel = () => {
+        if (settled) return;
+        settled = true;
         nameEl.textContent = oldName;
         actionsEl.style.display = "";
     };
 
     input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") save();
-        if (e.key === "Escape") cancel();
+        if (e.key === "Enter") {
+            e.preventDefault();
+            input.blur();
+        }
+        if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+        }
     });
     input.addEventListener("blur", save);
 
@@ -139,9 +167,9 @@ function renderGrandSeriesManager() {
         return `
         <div class="gs-list-item" id="gs-item-${gs.id}">
             <div class="gs-list-header">
-                <span class="gs-list-name" ondblclick="startRenameGrandSeries(${gs.id}, '${escapeJs(gs.name)}')">${escapeHtml(gs.name)}</span>
+                <span class="gs-list-name" ondblclick="startRenameGrandSeries(${gs.id})">${escapeHtml(gs.name)}</span>
                 <div class="series-list-actions">
-                    <button class="btn btn-xs btn-outline-success" onclick="startRenameGrandSeries(${gs.id}, '${escapeJs(gs.name)}')">改名</button>
+                    <button class="btn btn-xs btn-outline-success" onclick="startRenameGrandSeries(${gs.id})">改名</button>
                     <button class="btn btn-xs btn-outline-danger" onclick="deleteGrandSeries(${gs.id})">削除</button>
                 </div>
             </div>
@@ -213,7 +241,10 @@ async function createGrandSeries() {
     } catch {}
 }
 
-async function startRenameGrandSeries(id, oldName) {
+async function startRenameGrandSeries(id) {
+    const grandSeries = allGrandSeries.find((item) => item.id === id);
+    if (!grandSeries) return;
+    const oldName = grandSeries.name;
     const el = document.getElementById(`gs-item-${id}`);
     if (!el) return;
     const nameEl = el.querySelector(".gs-list-name");
@@ -223,28 +254,53 @@ async function startRenameGrandSeries(id, oldName) {
     input.className = "inline-edit-input";
     input.value = oldName;
 
+    let settled = false;
     const save = async () => {
+        if (settled) return;
         const newName = input.value.trim();
-        if (newName && newName !== oldName) {
-            await fetch(`/api/grand-series/${id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newName }),
-            });
+        if (!newName) {
+            input.focus();
+            return;
         }
-        await loadGrandSeries();
-        renderGrandSeriesManager();
-        loadBooks();
+        settled = true;
+        input.disabled = true;
+        try {
+            if (newName !== oldName) {
+                const res = await fetch(`/api/grand-series/${id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: newName }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            }
+            await loadGrandSeries();
+            renderGrandSeriesManager();
+            loadBooks();
+        } catch (error) {
+            settled = false;
+            input.disabled = false;
+            input.focus();
+            console.error("renameGrandSeries failed:", error);
+            alert("大シリーズ名の変更に失敗しました");
+        }
     };
 
     const cancel = () => {
+        if (settled) return;
+        settled = true;
         nameEl.textContent = oldName;
         actionsEl.style.display = "";
     };
 
     input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") save();
-        if (e.key === "Escape") cancel();
+        if (e.key === "Enter") {
+            e.preventDefault();
+            input.blur();
+        }
+        if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+        }
     });
     input.addEventListener("blur", save);
 
