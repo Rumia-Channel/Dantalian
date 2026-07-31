@@ -5,8 +5,13 @@ const AUDIO_CACHE_DB_NAME = "dantalian-audio-cache-v1";
 const AUDIO_CACHE_DB_VERSION = 1;
 const AUDIO_CACHE_STORE = "tracks";
 const AUDIO_CACHE_MANIFEST_KEY = "dantalian_audio_cache_manifest_v1";
+const AUDIO_CACHE_FETCH_TIMEOUT_MS = 120_000;
 
 let audioCacheDbPromise = null;
+
+function isAudioCacheBlob(value) {
+    return value && typeof value.size === "number" && value.size > 0;
+}
 
 function openAudioCacheDb() {
     if (typeof indexedDB === "undefined") {
@@ -22,8 +27,19 @@ function openAudioCacheDb() {
                 db.createObjectStore(AUDIO_CACHE_STORE, { keyPath: "fileHash" });
             }
         };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error || new Error("音声キャッシュDBを開けません"));
+        request.onsuccess = () => {
+            const db = request.result;
+            db.onversionchange = () => db.close();
+            resolve(db);
+        };
+        request.onblocked = () => {
+            audioCacheDbPromise = null;
+            reject(new Error("音声キャッシュDBが別のタブで使用中です"));
+        };
+        request.onerror = () => {
+            audioCacheDbPromise = null;
+            reject(request.error || new Error("音声キャッシュDBを開けません"));
+        };
     });
     return audioCacheDbPromise;
 }
@@ -107,6 +123,7 @@ function audioCacheEncodedUrl(fileHash, extension, format) {
         ext: extension,
         format,
         cache: "true",
+        wait: "false",
     });
     return `/api/audio/stream/${encodeURIComponent(fileHash)}?${query.toString()}`;
 }
@@ -140,6 +157,27 @@ function audioCacheIsEncodedResponse(response, fileHash, format) {
     }
 }
 
+async function fetchAudioCacheCandidate(url) {
+    if (typeof AbortController === "undefined") {
+        return fetch(url, {
+            cache: "no-store",
+            credentials: "same-origin",
+        });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AUDIO_CACHE_FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(url, {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 function audioCacheCandidates(track) {
     const fileHash = String(track?.file_hash || "");
     if (!fileHash) return [];
@@ -168,7 +206,7 @@ async function cacheAudioTrack(track, context = {}) {
     if (!fileHash) return { ok: false, error: "音声ファイルがありません" };
 
     const existing = await readAudioCacheRecord(fileHash).catch(() => null);
-    if (existing?.blob instanceof Blob && existing.blob.size > 0) {
+    if (isAudioCacheBlob(existing?.blob)) {
         return { ok: true, format: existing.format, size: existing.size, reused: true };
     }
 
@@ -179,10 +217,7 @@ async function cacheAudioTrack(track, context = {}) {
         }
 
         try {
-            const response = await fetch(candidate.url, {
-                cache: "no-store",
-                credentials: "same-origin",
-            });
+            const response = await fetchAudioCacheCandidate(candidate.url);
             if (!response.ok) {
                 lastError = new Error(`HTTP ${response.status}`);
                 continue;
@@ -228,10 +263,13 @@ async function cacheAudioAlbum(cd, onProgress) {
     const results = [];
     for (let index = 0; index < tracks.length; index += 1) {
         const track = tracks[index];
+        if (typeof onProgress === "function") {
+            onProgress({ index: index + 1, total: tracks.length, track, phase: "start" });
+        }
         const result = await cacheAudioTrack(track, { cdId: cd?.id });
         results.push({ track, ...result });
         if (typeof onProgress === "function") {
-            onProgress({ index: index + 1, total: tracks.length, track, result });
+            onProgress({ index: index + 1, total: tracks.length, track, result, phase: "complete" });
         }
     }
     return {
@@ -251,7 +289,7 @@ async function getAudioCacheStatus(tracks) {
     const records = await Promise.all(uniqueTracks.map((track) =>
         readAudioCacheRecord(String(track.file_hash)).catch(() => null)
     ));
-    const cached = records.filter((record) => record?.blob instanceof Blob && record.blob.size > 0);
+    const cached = records.filter((record) => isAudioCacheBlob(record?.blob));
     return {
         total: uniqueTracks.length,
         cached: cached.length,

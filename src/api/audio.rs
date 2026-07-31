@@ -8,6 +8,7 @@ pub struct StreamQuery {
     pub ext: Option<String>,
     pub format: Option<String>,
     pub cache: Option<bool>,
+    pub wait: Option<bool>,
 }
 
 pub async fn stream(
@@ -37,7 +38,7 @@ pub async fn stream(
         return original;
     }
 
-    if query.cache == Some(true) {
+    if query.cache == Some(true) && query.wait != Some(false) {
         // 明示的なオフラインキャッシュ操作だけは、選択した形式を確実に
         // 保存できるよう、従来どおりこのリクエスト内で生成完了を待つ。
         let audio_dir = state.audio_dir.as_ref().clone();
