@@ -278,6 +278,15 @@ class PlayerEngine {
         this.audio.currentTime = Math.min(Math.max(fraction, 0), 1) * dur;
     }
 
+    setPosition(seconds) {
+        const position = Number(seconds);
+        if (!Number.isFinite(position) || position < 0) return false;
+        const duration = this.getDuration();
+        this.audio.currentTime = duration > 0 ? Math.min(position, duration) : position;
+        this._emit("time", this.getPosition());
+        return true;
+    }
+
     getPosition() {
         return this.audio.currentTime || 0;
     }
