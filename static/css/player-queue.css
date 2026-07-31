@@ -101,6 +101,16 @@
     font-size: 1.05rem;
 }
 
+.player-album-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: -0.55rem;
+}
+
+.player-track {
+    grid-template-columns: 2.4rem minmax(0, 1fr) auto 1.8rem;
+}
+
 .player-queue-topbtn {
     color: var(--color-text-secondary);
 }
@@ -177,6 +187,28 @@
     font-size: 1.25rem;
 }
 
+.player-queue-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.player-queue-clear {
+    padding: 0.35rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    font-size: 0.7rem;
+}
+
+.player-queue-clear:hover {
+    border-color: rgba(79, 140, 255, 0.3);
+    background: var(--player-accent-alpha);
+    color: var(--player-accent);
+}
+
 .player-queue-list {
     min-height: 0;
     margin: 0.75rem 0 0;
@@ -209,7 +241,7 @@
 
 .player-queue-track {
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    grid-template-columns: 2rem minmax(0, 1fr) auto 1.8rem;
     align-items: center;
     gap: 0.55rem;
     padding: 0.55rem;
@@ -277,6 +309,41 @@
     font-variant-numeric: tabular-nums;
 }
 
+.player-queue-remove,
+.player-track-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    opacity: 0;
+    transition: color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+
+.player-queue-track:hover .player-queue-remove,
+.player-queue-track:focus-within .player-queue-remove,
+.player-track:hover .player-track-add,
+.player-track:focus-within .player-track-add {
+    opacity: 1;
+}
+
+.player-queue-remove:hover,
+.player-track-add:hover {
+    background: var(--player-accent-alpha);
+    color: var(--player-accent);
+}
+
+.player-queue-remove .material-icons,
+.player-track-add .material-icons {
+    font-size: 1.05rem;
+}
+
 .player-queue-empty {
     padding: 2rem 0.55rem;
     color: var(--color-text-dim);
@@ -295,6 +362,11 @@
 
     .player-queue {
         width: min(26rem, calc(100vw - 0.5rem));
+    }
+
+    .player-queue-remove,
+    .player-track-add {
+        opacity: 1;
     }
 }
 

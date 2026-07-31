@@ -52,7 +52,7 @@ function renderGrid() {
             <div class="music-album-coverwrap">
                 ${cover}
                 ${badge}
-                <div class="music-album-play">
+                <div class="music-album-play" data-album-action="play">
                     <span class="music-album-play-btn"><span class="material-icons">play_arrow</span></span>
                 </div>
             </div>
@@ -72,7 +72,8 @@ function openAlbum(cdId, autoplay) {
 musicGrid.addEventListener("click", (e) => {
     const card = e.target.closest(".music-album");
     if (!card) return;
-    openAlbum(parseInt(card.dataset.cdId, 10), false);
+    const play = Boolean(e.target.closest("[data-album-action=\"play\"]"));
+    openAlbum(parseInt(card.dataset.cdId, 10), play);
 });
 musicGrid.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;

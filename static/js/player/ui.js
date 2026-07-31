@@ -58,6 +58,11 @@ function createPlayerUI(rootEl) {
                         <span class="player-tech-chip"><span class="material-icons">data_usage</span><strong data-el="tech-size">—</strong></span>
                         <span class="player-tech-chip player-tech-chip--encoder" data-el="tech-encoder-wrap"><span class="material-icons">memory</span><strong data-el="tech-encoder">—</strong></span>
                     </div>
+                    <div class="player-album-actions">
+                        <button class="player-secondary-btn" data-act="add-album" aria-label="このCDを再生キューに追加" title="このCDを再生キューに追加">
+                            <span class="material-icons">playlist_add</span><span>CDをキューに追加</span>
+                        </button>
+                    </div>
                     <div class="player-progress">
                         <div class="player-progress-bar" data-el="progress-bar" role="slider" aria-label="再生位置" tabindex="0">
                             <div class="player-progress-fill" data-el="progress-fill"></div>
@@ -91,6 +96,9 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="shuffle" data-el="shuffle-button" aria-pressed="false" aria-label="シャッフル" title="シャッフル">
                             <span class="material-icons">shuffle</span><span>シャッフル</span>
                         </button>
+                        <button class="player-secondary-btn" data-act="repeat" data-el="repeat-button" aria-pressed="true" aria-label="キューをループ" title="ループモード">
+                            <span class="material-icons" data-el="repeat-icon">repeat</span><span data-el="repeat-label">キュー</span>
+                        </button>
                         <button class="player-secondary-btn" data-act="toggle-queue" aria-label="再生キューを開く" title="再生キュー">
                             <span class="material-icons">queue_music</span><span>再生キュー</span>
                         </button>
@@ -119,9 +127,12 @@ function createPlayerUI(rootEl) {
                     <span class="player-queue-kicker">PLAY QUEUE</span>
                     <h2>再生キュー</h2>
                 </div>
-                <button class="player-iconbtn" data-act="close-queue" aria-label="再生キューを閉じる" title="閉じる">
-                    <span class="material-icons">close</span>
-                </button>
+                <div class="player-queue-header-actions">
+                    <button class="player-queue-clear" data-act="clear-queue" aria-label="キューを空にする">クリア</button>
+                    <button class="player-iconbtn" data-act="close-queue" aria-label="再生キューを閉じる" title="閉じる">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
             </header>
             <ol class="player-queue-list" data-el="queue-list"></ol>
         </aside>
@@ -157,12 +168,10 @@ function createPlayerUI(rootEl) {
     const engine = new PlayerEngine();
 
     let albums = [];
-    let currentCd = null;     // 再生中のアルバム (engine のキュー元)
+    let currentCd = null;     // 現在再生中の曲が属するアルバム
     let viewCd = null;        // フル表示中のアルバム
     let viewTrackId = null;   // フル表示で選択/再生中のトラック
     let viewMode = "idle";    // 'live' | 'queued' | 'idle'
-    let stagedCd = null;      // Up Next 予約
-    let stagedTrackId = null;
     let fullVisible = false;
     let ambientFlip = false;
     let queueVisible = false;
@@ -283,6 +292,7 @@ function createPlayerUI(rootEl) {
                 </span>
                 <span class="player-track-title-cell">${escapeHtml(t.title)}</span>
                 <span class="player-track-dur">${t.duration ? escapeHtml(t.duration) : (playable ? "" : "—")}</span>
+                ${playable ? `<button class="player-track-add" data-act="add-track" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をキューに追加" title="キューに追加"><span class="material-icons">playlist_add</span></button>` : ""}
             </li>`;
         }
         el.tracklist.innerHTML = html || '<li class="player-track-empty">トラックがありません</li>';
@@ -290,35 +300,41 @@ function createPlayerUI(rootEl) {
     }
 
     function renderQueue() {
-        if (!currentCd) {
+        const entries = engine.queue || [];
+        if (entries.length === 0) {
             el["queue-list"].innerHTML = '<li class="player-queue-empty">再生中のトラックはありません</li>';
             return;
         }
 
-        const renderSection = (label, cd, tracks, isNext) => {
-            if (!tracks.length) return "";
-            const rows = tracks.map((t, index) => {
-                const active = !isNext && engine.current() && engine.current().id === t.id;
-                const staged = isNext && stagedTrackId === t.id;
-                return `
-                <li class="player-queue-track${active ? " is-current" : ""}${staged ? " is-staged" : ""}"
-                    data-queue-cd-id="${cd.id}" data-queue-track-id="${t.id}">
-                    <span class="player-queue-track-index">${active ? '<span class="material-icons">equalizer</span>' : String(index + 1).padStart(2, "0")}</span>
-                    <span class="player-queue-track-copy">
-                        <strong>${escapeHtml(t.title)}</strong>
-                        <small>${escapeHtml(cd.title)}</small>
-                    </span>
-                    <span class="player-queue-track-duration">${t.duration ? escapeHtml(t.duration) : "—"}</span>
-                </li>`;
-            }).join("");
-            return `<li class="player-queue-section"><span>${label}</span><strong>${escapeHtml(cd.title)}</strong></li>${rows}`;
-        };
-
-        const currentTracks = playableTracks(currentCd);
-        const stagedTracks = stagedCd ? playableTracks(stagedCd) : [];
-        const html = renderSection("NOW PLAYING", currentCd, currentTracks, false) +
-            renderSection("UP NEXT", stagedCd, stagedTracks, true);
-        el["queue-list"].innerHTML = html || '<li class="player-queue-empty">再生できるトラックはありません</li>';
+        const orderedIndexes = engine.playOrder.length
+            ? engine.playOrder
+            : entries.map((_, index) => index);
+        const currentPosition = orderedIndexes.indexOf(engine.index);
+        let html = "";
+        let previousAlbumId = null;
+        orderedIndexes.forEach((queueIndex, displayIndex) => {
+            const entry = entries[queueIndex];
+            const track = entry.track;
+            const album = entry.album;
+            const albumId = album ? album.id : "unknown";
+            if (albumId !== previousAlbumId) {
+                const label = displayIndex === currentPosition ? "NOW PLAYING" : (displayIndex > currentPosition ? "UP NEXT" : "PLAYED");
+                html += `<li class="player-queue-section"><span>${label}</span><strong>${escapeHtml(album ? album.title : "音声ファイル")}</strong></li>`;
+                previousAlbumId = albumId;
+            }
+            const active = queueIndex === engine.index;
+            html += `
+            <li class="player-queue-track${active ? " is-current" : ""}" data-queue-index="${queueIndex}">
+                <span class="player-queue-track-index">${active ? '<span class="material-icons">equalizer</span>' : String(displayIndex + 1).padStart(2, "0")}</span>
+                <span class="player-queue-track-copy">
+                    <strong>${escapeHtml(track.title)}</strong>
+                    <small>${escapeHtml(album ? album.title : (track.file_name || "音声ファイル"))}</small>
+                </span>
+                <span class="player-queue-track-duration">${track.duration ? escapeHtml(track.duration) : "—"}</span>
+                <button class="player-queue-remove" data-act="remove-queue" data-queue-index="${queueIndex}" aria-label="${escapeAttr(track.title)}をキューから削除" title="キューから削除"><span class="material-icons">close</span></button>
+            </li>`;
+        });
+        el["queue-list"].innerHTML = html;
         el["queue-list"].classList.toggle("is-playing", engine.isPlaying);
     }
 
@@ -379,17 +395,14 @@ function createPlayerUI(rootEl) {
     // ---------- ミニ描画 (常に再生中を反映) ----------
     function renderMini() {
         const t = engine.current();
+        const entry = engine.currentEntry();
+        if (entry && entry.album) currentCd = entry.album;
         el["mini-title"].textContent = t ? t.title : "—";
         el["mini-artist"].textContent = currentCd ? (currentCd.artist || currentCd.title) : "";
         if (currentCd) paintCover(currentCd);
         const playing = engine.isPlaying;
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
-        if (stagedCd) {
-            el["mini-next-text"].textContent = stagedCd.title;
-            el["mini-next"].hidden = false;
-        } else {
-            el["mini-next"].hidden = true;
-        }
+        el["mini-next"].hidden = true;
         renderQueue();
     }
     function setMiniProgress(pos) {
@@ -437,8 +450,9 @@ function createPlayerUI(rootEl) {
         viewCd = cd;
         viewTrackId = t.id;
         viewMode = "live";
-        stagedCd = null; stagedTrackId = null;
-        engine.loadTracks(cd.tracks, t.id);
+        const entries = playableTracks(cd).map((track) => ({ track, album: cd }));
+        const startIndex = entries.findIndex((entry) => entry.track.id === t.id);
+        engine.loadQueue(entries, startIndex >= 0 ? startIndex : 0);
         engine.play();
         renderView();
         renderMini();
@@ -448,6 +462,39 @@ function createPlayerUI(rootEl) {
     function startViewFromTrack(trackId) {
         if (!viewCd) return;
         startAlbumFromTrack(viewCd, trackId);
+    }
+
+    function appendAlbumToQueue(cd) {
+        if (!cd) return;
+        const entries = playableTracks(cd).map((track) => ({ track, album: cd }));
+        if (entries.length === 0) return;
+        if (engine.queue.length === 0) {
+            currentCd = cd;
+            viewCd = cd;
+            viewTrackId = entries[0].track.id;
+            viewMode = "live";
+            engine.loadQueue(entries, 0);
+        } else {
+            engine.appendQueue(entries);
+        }
+        if (fullVisible) renderView();
+        renderQueue();
+    }
+
+    function appendTrackToQueue(cd, trackId) {
+        const track = trackById(cd, trackId);
+        if (!cd || !track || !track.file_hash) return;
+        if (engine.queue.length === 0) {
+            currentCd = cd;
+            viewCd = cd;
+            viewTrackId = track.id;
+            viewMode = "live";
+            engine.loadQueue([{ track, album: cd }], 0);
+        } else {
+            engine.appendQueue([{ track, album: cd }]);
+        }
+        if (fullVisible) renderView();
+        renderQueue();
     }
 
     function viewStepTrack(delta) {
@@ -465,8 +512,6 @@ function createPlayerUI(rootEl) {
         viewCd = cd;
         viewTrackId = (firstPlayable(cd) || {}).id || null;
         viewMode = computeViewMode();
-        if (viewMode === "queued") { stagedCd = cd; stagedTrackId = null; }
-        else if (viewMode === "idle") { stagedCd = null; stagedTrackId = null; }
         renderView();
         renderQueue();
     }
@@ -509,17 +554,36 @@ function createPlayerUI(rootEl) {
 
     // ---------- エンジンイベント ----------
     engine.on("trackchange", (t) => {
+        const entry = engine.currentEntry();
+        if (entry && entry.album) currentCd = entry.album;
         renderMini();
         renderQueue();
         updateMediaSession();
         if (fullVisible && viewMode === "live") { viewTrackId = t.id; renderView(); }
         else if (fullVisible && viewMode === "queued") { renderView(); } // バナーの現在再生中を更新
     });
+    engine.on("queuechange", () => renderQueue());
+    engine.on("empty", () => {
+        currentCd = null;
+        if (fullVisible && viewCd) {
+            viewMode = "idle";
+            renderView();
+        }
+        renderMini();
+        renderQueue();
+    });
     engine.on("time", (pos) => { setMiniProgress(pos); if (fullVisible && viewMode === "live") setViewProgress(pos); });
     engine.on("duration", (dur) => { if (fullVisible && viewMode === "live") el["time-total"].textContent = formatTime(dur); });
     engine.on("shuffle", (enabled) => {
         el["shuffle-button"].classList.toggle("is-active", enabled);
         el["shuffle-button"].setAttribute("aria-pressed", String(enabled));
+    });
+    engine.on("repeat", (mode) => {
+        const labels = { queue: "キュー", track: "1曲", off: "オフ" };
+        el["repeat-button"].classList.toggle("is-active", mode !== "off");
+        el["repeat-button"].setAttribute("aria-pressed", String(mode !== "off"));
+        el["repeat-label"].textContent = labels[mode] || "オフ";
+        el["repeat-icon"].textContent = mode === "track" ? "repeat_one" : "repeat";
     });
     engine.on("playstate", (playing) => {
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
@@ -534,17 +598,12 @@ function createPlayerUI(rootEl) {
         }
     });
     engine.on("ended", () => {
-        if (stagedCd) {
-            const cd = stagedCd; const tid = stagedTrackId;
-            stagedCd = null; stagedTrackId = null;
-            startAlbumFromTrack(cd, tid);
-        } else {
-            engine.next();
-        }
+        engine.advanceAfterEnded();
     });
     engine.on("error", () => { setTimeout(() => engine.next(), 300); });
 
     el.tracklist.addEventListener("click", (e) => {
+        if (e.target.closest("[data-act]")) return;
         const li = e.target.closest(".player-track");
         if (!li || li.classList.contains("player-track--disabled")) return;
         const id = parseInt(li.dataset.trackId, 10);
@@ -553,19 +612,18 @@ function createPlayerUI(rootEl) {
     });
 
     el["queue-list"].addEventListener("click", (e) => {
+        if (e.target.closest("[data-act]")) return;
         const item = e.target.closest(".player-queue-track");
         if (!item) return;
-        const cd = albums.find((album) => album.id === parseInt(item.dataset.queueCdId, 10));
-        const trackId = parseInt(item.dataset.queueTrackId, 10);
-        if (!cd || !Number.isFinite(trackId)) return;
-        if (currentCd && cd.id === currentCd.id) {
-            viewCd = cd;
-            viewTrackId = trackId;
+        const queueIndex = parseInt(item.dataset.queueIndex, 10);
+        const entry = engine.queue[queueIndex];
+        if (!entry || !engine.playQueueIndex(queueIndex)) return;
+        currentCd = entry.album || currentCd;
+        if (entry.album) {
+            viewCd = entry.album;
+            viewTrackId = entry.track.id;
             viewMode = "live";
-            engine.playTrackById(trackId);
             renderView();
-        } else {
-            startAlbumFromTrack(cd, trackId);
         }
     });
 
@@ -582,6 +640,14 @@ function createPlayerUI(rootEl) {
         }
         else if (act === "close-queue") setQueueVisibility(false);
         else if (act === "shuffle") engine.toggleShuffle();
+        else if (act === "repeat") engine.toggleRepeatMode();
+        else if (act === "add-album") appendAlbumToQueue(viewCd);
+        else if (act === "add-track") appendTrackToQueue(viewCd, parseInt(btn.dataset.trackId, 10));
+        else if (act === "remove-queue") engine.removeQueueIndex(parseInt(btn.dataset.queueIndex, 10));
+        else if (act === "clear-queue") {
+            engine.clearQueue();
+            setQueueVisibility(false);
+        }
         else if (act === "play") {
             if (viewMode === "live") engine.toggle();
             else startViewFromTrack(viewTrackId);
@@ -601,7 +667,7 @@ function createPlayerUI(rootEl) {
     if ("mediaSession" in navigator) {
         navigator.mediaSession.setActionHandler("play", () => engine.play());
         navigator.mediaSession.setActionHandler("pause", () => engine.pause());
-        navigator.mediaSession.setActionHandler("nexttrack", () => engine.next(false));
+        navigator.mediaSession.setActionHandler("nexttrack", () => engine.next());
         navigator.mediaSession.setActionHandler("previoustrack", () => engine.prev());
     }
 
@@ -613,12 +679,9 @@ function createPlayerUI(rootEl) {
             const cd = albums.find((c) => c.id === cdId);
             if (!cd) return;
             if (autoplay) {
-                viewCd = cd; viewTrackId = (firstPlayable(cd) || {}).id || null;
-                currentCd = cd; viewMode = "live";
-                stagedCd = null; stagedTrackId = null;
-                engine.loadTracks(cd.tracks, viewTrackId);
-                engine.play();
-                renderView(); renderMini();
+                const first = firstPlayable(cd);
+                if (!first) return;
+                startAlbumFromTrack(cd, first.id);
             } else {
                 browseAlbum(cd);
             }
@@ -648,7 +711,6 @@ function createPlayerUI(rootEl) {
         },
         close() {
             engine.pause();
-            stagedCd = null; stagedTrackId = null;
             setQueueVisibility(false);
             setVisibility("closed");
             renderMini();
