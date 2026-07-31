@@ -128,7 +128,7 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 {DATA_DIR}/audio/encoded/aac/{hash}.aac
 ```
 
-Opus は `shiguredo_opus` による内蔵 encoder、入力音声の読み取りと変換は Symphonia を使用します。AAC は Linux で `fdk-aac` feature と FDK AAC ライブラリが利用できる場合は FDK AAC を使い、利用できない場合は FFmpeg の AAC encoder へフォールバックします。
+変換はサーバー側で行われ、再生時に生成済みのファイルを再利用します。
 
 ### API
 
