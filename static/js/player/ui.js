@@ -266,7 +266,6 @@ function createPlayerUI(rootEl) {
         const audiobookPlaylist = isAudiobookPlaylist(cd);
         if (!audiobook && !audiobookPlaylist) return false;
         const now = Date.now();
-        if (!force && now - lastProgressSaveAt < 1000) return false;
         if (audiobook) {
             audiobookProgress[String(cd.id)] = {
                 trackId: entry.track.id,
@@ -285,6 +284,10 @@ function createPlayerUI(rootEl) {
                 updatedAt: now,
             };
         }
+
+        // 表示用の進捗は timeupdate ごとにメモリへ反映し、localStorage だけを
+        // 1秒間隔に制限する。これで「続きから再生」のラベルが遅れて見えない。
+        if (!force && now - lastProgressSaveAt < 1000) return true;
         lastProgressSaveAt = now;
         try {
             if (typeof localStorage !== "undefined") {
