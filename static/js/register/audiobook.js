@@ -43,6 +43,23 @@ audiobookForm.addEventListener("submit", async (e) => {
         });
         const data = await res.json();
 
+        if (res.status === 300 || data.code === "musicbrainz_candidates") {
+            openMusicBrainzCandidatePicker({
+                jan: code,
+                parentBookId: parentId,
+                amazonTitle: data.amazon_title,
+                candidates: data.candidates,
+                mediaType: "audiobook",
+                onRegistered: (registered) => {
+                    audiobookStatus.textContent = `「${registered.cd?.title || registered.title}」をMusicBrainzからオーディオブックとして登録しました`;
+                    audiobookStatus.className = "success";
+                    audiobookInput.value = "";
+                    if (audiobookJanInput) audiobookJanInput.value = "";
+                },
+            });
+            return;
+        }
+
         if (!res.ok) {
             audiobookStatus.textContent = data.error || "登録に失敗しました";
             audiobookStatus.className = "error";

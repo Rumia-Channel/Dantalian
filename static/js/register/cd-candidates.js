@@ -45,6 +45,7 @@ function ensureCdCandidateModal() {
                 musicbrainz_release_id: button.dataset.mbReleaseId,
             };
             if (context.parentBookId) body.parent_book_id = context.parentBookId;
+            if (context.mediaType) body.media_type = context.mediaType;
 
             const res = await fetch("/api/cds", {
                 method: "POST",
@@ -98,20 +99,24 @@ function candidateMeta(candidate) {
     return [first, format].filter(Boolean).join("<br>");
 }
 
-function openMusicBrainzCandidatePicker({ jan, parentBookId = null, amazonTitle = "", candidates, onRegistered } = {}) {
-    const list = Array.isArray(candidates) ? candidates : [];
-    if (!jan || list.length === 0) return;
+function openMusicBrainzCandidatePicker({ jan, parentBookId = null, amazonTitle = "", candidates, mediaType = null, onRegistered } = {}) {
+    const list = Array.isArray(candidates)
+        ? candidates
+        : (Array.isArray(candidates?.candidates) ? candidates.candidates : []);
+    if (!jan) return;
 
     const modal = ensureCdCandidateModal();
-    modal._context = { jan, parentBookId, onRegistered };
+    modal._context = { jan, parentBookId, mediaType, onRegistered };
     modal.querySelector("[data-cd-candidate-intro]").innerHTML =
         `Amazonで取得したタイトル「${escapeHtml(amazonTitle || "（タイトル不明）")}」に一致する候補があります。`;
-    modal.querySelector("[data-cd-candidate-list]").innerHTML = list.map((candidate) => `
+    modal.querySelector("[data-cd-candidate-list]").innerHTML = list.length > 0
+        ? list.map((candidate) => `
         <button type="button" class="cd-candidate-item" data-mb-release-id="${escapeAttr(candidate.id)}">
             <strong>${escapeHtml(candidate.title || "タイトル不明")}</strong>
             <span>${candidateMeta(candidate)}</span>
-        </button>`).join("");
-    setCdCandidateStatus("");
+        </button>`).join("")
+        : `<p class="cd-candidate-status error">候補データを表示できませんでした。もう一度検索してください。</p>`;
+    setCdCandidateStatus(list.length > 0 ? "" : "候補データが空です", list.length === 0);
     modal.hidden = false;
     modal.querySelector("[data-mb-release-id]")?.focus();
 }

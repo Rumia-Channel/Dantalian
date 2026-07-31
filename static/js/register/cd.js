@@ -32,7 +32,7 @@ cdForm.addEventListener("submit", async (e) => {
         });
         const data = await res.json();
 
-        if (res.status === 300 && data.code === "musicbrainz_candidates") {
+        if (res.status === 300 || data.code === "musicbrainz_candidates") {
             openMusicBrainzCandidatePicker({
                 jan,
                 parentBookId: parentId,
