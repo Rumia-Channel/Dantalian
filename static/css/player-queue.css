@@ -103,8 +103,16 @@
 
 .player-album-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-start;
+    gap: 0.4rem;
     margin-top: -0.55rem;
+}
+
+.player-resume-btn {
+    border-color: rgba(79, 140, 255, 0.3);
+    background: var(--player-accent-alpha);
+    color: var(--player-accent);
 }
 
 .player-track {

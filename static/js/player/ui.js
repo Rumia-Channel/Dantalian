@@ -59,6 +59,9 @@ function createPlayerUI(rootEl) {
                         <span class="player-tech-chip player-tech-chip--encoder" data-el="tech-encoder-wrap"><span class="material-icons">memory</span><strong data-el="tech-encoder">—</strong></span>
                     </div>
                     <div class="player-album-actions">
+                        <button class="player-secondary-btn player-resume-btn" data-act="resume-audiobook" data-el="resume-button" hidden aria-label="オーディオブックを続きから再生" title="オーディオブックを続きから再生">
+                            <span class="material-icons">play_circle</span><span data-el="resume-label">続きから再生</span>
+                        </button>
                         <button class="player-secondary-btn" data-act="add-album" aria-label="このCDを再生キューに追加" title="このCDを再生キューに追加">
                             <span class="material-icons">playlist_add</span><span>CDをキューに追加</span>
                         </button>
@@ -177,6 +180,10 @@ function createPlayerUI(rootEl) {
     let queueVisible = false;
     let metadataRequestId = 0;
     const metadataCache = new Map();
+    const AUDIOBOOK_PROGRESS_KEY = "dantalian_audiobook_progress_v1";
+    let audiobookProgress = loadAudiobookProgress();
+    let pendingAudiobookResume = null;
+    let lastProgressSaveAt = 0;
 
     // ---------- ユーティリティ ----------
     function formatTime(sec) {
@@ -189,6 +196,54 @@ function createPlayerUI(rootEl) {
     function playableTracks(cd) { return (cd.tracks || []).filter((t) => t.file_hash); }
     function firstPlayable(cd) { return playableTracks(cd)[0] || null; }
     function trackById(cd, id) { return (cd.tracks || []).find((t) => t.id === id) || null; }
+    function isAudiobook(cd) { return !!cd && cd.media_type === "audiobook"; }
+    function loadAudiobookProgress() {
+        try {
+            if (typeof localStorage === "undefined") return {};
+            const value = JSON.parse(localStorage.getItem(AUDIOBOOK_PROGRESS_KEY) || "{}");
+            return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+        } catch {
+            return {};
+        }
+    }
+    function getAudiobookProgress(cd) {
+        if (!isAudiobook(cd)) return null;
+        const saved = audiobookProgress[String(cd.id)];
+        if (!saved) return null;
+        const track = playableTracks(cd).find((item) => item.id === Number(saved.trackId));
+        const position = Number(saved.position);
+        if (!track || !Number.isFinite(position) || position < 0) return null;
+        return { track, position };
+    }
+    function saveAudiobookProgress(force = false) {
+        const entry = engine.currentEntry();
+        const cd = entry && entry.album;
+        if (!isAudiobook(cd)) return false;
+        const now = Date.now();
+        if (!force && now - lastProgressSaveAt < 1000) return false;
+        audiobookProgress[String(cd.id)] = {
+            trackId: entry.track.id,
+            position: Math.max(0, engine.getPosition()),
+            updatedAt: now,
+        };
+        lastProgressSaveAt = now;
+        try {
+            if (typeof localStorage !== "undefined") {
+                localStorage.setItem(AUDIOBOOK_PROGRESS_KEY, JSON.stringify(audiobookProgress));
+            }
+        } catch {}
+        return true;
+    }
+    function applyPendingAudiobookResume() {
+        const pending = pendingAudiobookResume;
+        const entry = engine.currentEntry();
+        if (!pending || !entry || !entry.album || entry.album.id !== pending.cdId || entry.track.id !== pending.trackId) return false;
+        if (engine.getDuration() <= 0) return false;
+        pendingAudiobookResume = null;
+        engine.setPosition(pending.position);
+        saveAudiobookProgress(true);
+        return true;
+    }
     function parseDur(str) {
         if (!str) return 0;
         const p = String(str).split(":").map((x) => parseInt(x, 10));
@@ -343,6 +398,12 @@ function createPlayerUI(rootEl) {
         if (!viewCd) return;
         const track = trackById(viewCd, viewTrackId) || firstPlayable(viewCd);
         viewTrackId = track ? track.id : viewTrackId;
+        const resume = getAudiobookProgress(viewCd);
+        const showResume = !!resume && viewMode !== "live";
+        el["resume-button"].hidden = !showResume;
+        if (showResume) {
+            el["resume-label"].textContent = `続きから再生 · ${resume.track.title} (${formatTime(resume.position)})`;
+        }
         paintCover(viewCd);
         el["track-title"].textContent = track ? track.title : viewCd.title;
         el["album-title"].textContent = viewCd.title;
@@ -442,26 +503,37 @@ function createPlayerUI(rootEl) {
     }
 
     // ---------- 再生開始 (ビューのアルバムから) ----------
-    function startAlbumFromTrack(cd, trackId) {
+    function startAlbumFromTrack(cd, trackId, options = {}) {
         if (!cd) return;
-        const t = trackById(cd, trackId) || firstPlayable(cd);
+        const saved = isAudiobook(cd) ? getAudiobookProgress(cd) : null;
+        const preferSaved = !!options.preferSaved && !!saved;
+        const t = preferSaved ? saved.track : (trackById(cd, trackId) || firstPlayable(cd));
         if (!t) return;
+        const resumePosition = Number.isFinite(options.resumePosition)
+            ? Math.max(0, options.resumePosition)
+            : (preferSaved ? saved.position : 0);
+        saveAudiobookProgress(true);
         currentCd = cd;
         viewCd = cd;
         viewTrackId = t.id;
         viewMode = "live";
+        pendingAudiobookResume = isAudiobook(cd) && resumePosition > 0
+            ? { cdId: cd.id, trackId: t.id, position: resumePosition }
+            : null;
         const entries = playableTracks(cd).map((track) => ({ track, album: cd }));
         const startIndex = entries.findIndex((entry) => entry.track.id === t.id);
         engine.loadQueue(entries, startIndex >= 0 ? startIndex : 0);
+        if (!pendingAudiobookResume) saveAudiobookProgress(true);
         engine.play();
+        applyPendingAudiobookResume();
         renderView();
         renderMini();
         renderQueue();
     }
 
-    function startViewFromTrack(trackId) {
+    function startViewFromTrack(trackId, options = {}) {
         if (!viewCd) return;
-        startAlbumFromTrack(viewCd, trackId);
+        startAlbumFromTrack(viewCd, trackId, options);
     }
 
     function appendAlbumToQueue(cd) {
@@ -510,7 +582,8 @@ function createPlayerUI(rootEl) {
     function browseAlbum(cd) {
         if (!cd) return;
         viewCd = cd;
-        viewTrackId = (firstPlayable(cd) || {}).id || null;
+        const resume = getAudiobookProgress(cd);
+        viewTrackId = (resume ? resume.track : firstPlayable(cd))?.id || null;
         viewMode = computeViewMode();
         renderView();
         renderQueue();
@@ -556,6 +629,10 @@ function createPlayerUI(rootEl) {
     engine.on("trackchange", (t) => {
         const entry = engine.currentEntry();
         if (entry && entry.album) currentCd = entry.album;
+        const pending = pendingAudiobookResume;
+        const isPendingResume = pending && entry && entry.album
+            && pending.cdId === entry.album.id && pending.trackId === entry.track.id;
+        if (!isPendingResume) saveAudiobookProgress(true);
         renderMini();
         renderQueue();
         updateMediaSession();
@@ -572,8 +649,18 @@ function createPlayerUI(rootEl) {
         renderMini();
         renderQueue();
     });
-    engine.on("time", (pos) => { setMiniProgress(pos); if (fullVisible && viewMode === "live") setViewProgress(pos); });
-    engine.on("duration", (dur) => { if (fullVisible && viewMode === "live") el["time-total"].textContent = formatTime(dur); });
+    engine.on("time", (pos) => {
+        saveAudiobookProgress();
+        setMiniProgress(pos);
+        if (fullVisible && viewMode === "live") setViewProgress(pos);
+    });
+    engine.on("duration", (dur) => {
+        const restored = applyPendingAudiobookResume();
+        if (fullVisible && viewMode === "live") {
+            el["time-total"].textContent = formatTime(dur);
+            if (restored) setViewProgress(engine.getPosition());
+        }
+    });
     engine.on("shuffle", (enabled) => {
         el["shuffle-button"].classList.toggle("is-active", enabled);
         el["shuffle-button"].setAttribute("aria-pressed", String(enabled));
@@ -586,6 +673,8 @@ function createPlayerUI(rootEl) {
         el["repeat-icon"].textContent = mode === "track" ? "repeat_one" : "repeat";
     });
     engine.on("playstate", (playing) => {
+        if (playing) applyPendingAudiobookResume();
+        else saveAudiobookProgress(true);
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
         rootEl.classList.toggle("is-playing", playing);
         el["queue-list"].classList.toggle("is-playing", playing);
@@ -598,16 +687,24 @@ function createPlayerUI(rootEl) {
         }
     });
     engine.on("ended", () => {
+        saveAudiobookProgress(true);
         engine.advanceAfterEnded();
+        saveAudiobookProgress(true);
     });
-    engine.on("error", () => { setTimeout(() => engine.next(), 300); });
+    engine.on("error", () => {
+        saveAudiobookProgress(true);
+        setTimeout(() => engine.next(), 300);
+    });
 
     el.tracklist.addEventListener("click", (e) => {
         if (e.target.closest("[data-act]")) return;
         const li = e.target.closest(".player-track");
         if (!li || li.classList.contains("player-track--disabled")) return;
         const id = parseInt(li.dataset.trackId, 10);
-        if (viewMode === "live") engine.playTrackById(id);
+        if (viewMode === "live") {
+            saveAudiobookProgress(true);
+            engine.playTrackById(id);
+        }
         else startViewFromTrack(id);
     });
 
@@ -617,6 +714,7 @@ function createPlayerUI(rootEl) {
         if (!item) return;
         const queueIndex = parseInt(item.dataset.queueIndex, 10);
         const entry = engine.queue[queueIndex];
+        saveAudiobookProgress(true);
         if (!entry || !engine.playQueueIndex(queueIndex)) return;
         currentCd = entry.album || currentCd;
         if (entry.album) {
@@ -648,12 +746,22 @@ function createPlayerUI(rootEl) {
             engine.clearQueue();
             setQueueVisibility(false);
         }
+        else if (act === "resume-audiobook") {
+            const resume = getAudiobookProgress(viewCd);
+            if (resume) startAlbumFromTrack(viewCd, resume.track.id, { resumePosition: resume.position });
+        }
         else if (act === "play") {
             if (viewMode === "live") engine.toggle();
-            else startViewFromTrack(viewTrackId);
+            else startViewFromTrack(viewTrackId, { preferSaved: isAudiobook(viewCd) });
         }
-        else if (act === "next") { if (viewMode === "live") engine.next(); else viewStepTrack(1); }
-        else if (act === "prev") { if (viewMode === "live") engine.prev(); else viewStepTrack(-1); }
+        else if (act === "next") {
+            if (viewMode === "live") { saveAudiobookProgress(true); engine.next(); }
+            else viewStepTrack(1);
+        }
+        else if (act === "prev") {
+            if (viewMode === "live") { saveAudiobookProgress(true); engine.prev(); }
+            else viewStepTrack(-1);
+        }
         else if (act === "next-album") navAlbum(1);
         else if (act === "prev-album") navAlbum(-1);
         else if (act === "mute") { engine.toggleMute(); updateVolumeIcon(); }
@@ -667,9 +775,14 @@ function createPlayerUI(rootEl) {
     if ("mediaSession" in navigator) {
         navigator.mediaSession.setActionHandler("play", () => engine.play());
         navigator.mediaSession.setActionHandler("pause", () => engine.pause());
-        navigator.mediaSession.setActionHandler("nexttrack", () => engine.next());
-        navigator.mediaSession.setActionHandler("previoustrack", () => engine.prev());
+        navigator.mediaSession.setActionHandler("nexttrack", () => { saveAudiobookProgress(true); engine.next(); });
+        navigator.mediaSession.setActionHandler("previoustrack", () => { saveAudiobookProgress(true); engine.prev(); });
     }
+
+    window.addEventListener("pagehide", () => saveAudiobookProgress(true));
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") saveAudiobookProgress(true);
+    });
 
     const api = {
         engine,
@@ -679,9 +792,8 @@ function createPlayerUI(rootEl) {
             const cd = albums.find((c) => c.id === cdId);
             if (!cd) return;
             if (autoplay) {
-                const first = firstPlayable(cd);
-                if (!first) return;
-                startAlbumFromTrack(cd, first.id);
+                if (!firstPlayable(cd)) return;
+                startAlbumFromTrack(cd, null, { preferSaved: isAudiobook(cd) });
             } else {
                 browseAlbum(cd);
             }
@@ -710,6 +822,7 @@ function createPlayerUI(rootEl) {
             else api.close();
         },
         close() {
+            saveAudiobookProgress(true);
             engine.pause();
             setQueueVisibility(false);
             setVisibility("closed");
