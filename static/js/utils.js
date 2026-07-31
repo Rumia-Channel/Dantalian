@@ -4,6 +4,7 @@ let allSeries = [];
 let allGrandSeries = [];
 let allStorageLocations = [];
 let allLabels = [];
+let previewAudio = null;
 
 function escapeHtml(text) {
     if (text == null) return "";
@@ -204,7 +205,48 @@ function showConfirm(opts) {
     });
 }
 
+function stopPreviewAudio() {
+    if (!previewAudio) return;
+    previewAudio.pause();
+    previewAudio.removeAttribute("src");
+    previewAudio.load();
+    previewAudio.remove();
+    previewAudio = null;
+}
+
+function playPreviewAudio(url, title) {
+    stopPreviewAudio();
+    const persistentPlayer = document.getElementById("dantalian-audio-player");
+    if (persistentPlayer) {
+        persistentPlayer.pause();
+        persistentPlayer.remove();
+    }
+
+    const player = document.createElement("audio");
+    player.preload = "auto";
+    player.hidden = true;
+    player.setAttribute("aria-hidden", "true");
+    player.setAttribute("data-title", title || "");
+    player.src = url;
+    player.addEventListener("ended", () => {
+        if (previewAudio === player) stopPreviewAudio();
+    }, { once: true });
+    player.addEventListener("error", () => {
+        if (previewAudio === player) stopPreviewAudio();
+    }, { once: true });
+    document.body.appendChild(player);
+    previewAudio = player;
+
+    const playPromise = player.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {
+            if (previewAudio === player) stopPreviewAudio();
+        });
+    }
+}
+
 function playAudio(url, title) {
+    stopPreviewAudio();
     let player = document.getElementById("dantalian-audio-player");
     if (!player) {
         player = document.createElement("audio");

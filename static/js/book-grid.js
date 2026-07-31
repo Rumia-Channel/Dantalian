@@ -378,7 +378,7 @@ function renderCdCard(item) {
             const audioUrl = t.file_hash ? `/audio/${encodeURIComponent(t.file_hash)}` : "";
             const audioActions = t.file_hash ? `
                     <span class="cd-card-track-actions">
-                        <button type="button" class="cd-card-track-action" onclick="event.stopPropagation();playAudio('${audioUrl}','${escapeJs(t.title)}')" aria-label="${escapeAttr(t.title)}を再生">
+                        <button type="button" class="cd-card-track-action" onclick="event.stopPropagation();playPreviewAudio('${audioUrl}','${escapeJs(t.title)}')" aria-label="${escapeAttr(t.title)}を再生">
                             <span class="material-icons" aria-hidden="true">play_arrow</span>
                         </button>
                         <a class="cd-card-track-action" href="${audioUrl}" download="${escapeAttr(t.file_name || fallbackFileName)}" onclick="event.stopPropagation()" aria-label="${escapeAttr(t.title)}をダウンロード">

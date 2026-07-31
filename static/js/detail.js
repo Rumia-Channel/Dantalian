@@ -206,7 +206,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                             <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
-                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
+                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
                                 <span class="material-icons" aria-hidden="true">play_arrow</span>
                             </button>` : ""}
                         </div>
@@ -440,7 +440,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
                             <span class="detail-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel(t.track_number)}</span>
                             <span class="detail-track-title">${escapeHtml(t.title)}</span>
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
-                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
+                            ${t.file_hash ? ` <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${t.file_hash}','${escapeJs(t.title)}')" aria-label="再生">
                                 <span class="material-icons" aria-hidden="true">play_arrow</span>
                             </button>` : ""}
                         </div>
