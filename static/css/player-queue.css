@@ -1,0 +1,327 @@
+/* UAPP-inspired player details: technical metadata, queue drawer and blue playback accent. */
+
+.player-root {
+    --player-accent: var(--color-primary);
+    --player-accent-strong: var(--color-primary-hover);
+    --player-accent-alpha: var(--color-primary-alpha);
+}
+
+.player-root .player-eyebrow-dot.is-playing,
+.player-root .player-progress-fill,
+.player-root .player-mini-progress-fill,
+.player-root .player-eq i {
+    background: var(--player-accent);
+}
+
+.player-root .player-playbtn {
+    background: linear-gradient(135deg, var(--player-accent), var(--player-accent-strong));
+    box-shadow: 0 0.5rem 1.5rem rgba(79, 140, 255, 0.36);
+}
+
+.player-root .player-playbtn:hover {
+    box-shadow: 0 0.6rem 2rem rgba(79, 140, 255, 0.5);
+}
+
+.player-root .player-track--current .player-track-title-cell,
+.player-root .player-track--current .player-track-num-text {
+    color: var(--player-accent);
+}
+
+.player-root .player-mini-play {
+    color: var(--player-accent);
+    background: var(--player-accent-alpha);
+}
+
+.player-root .player-mini-play:hover {
+    color: #17120b;
+    background: var(--player-accent);
+}
+
+.player-tech {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-height: 1.75rem;
+}
+
+.player-tech-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 1.75rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid rgba(79, 140, 255, 0.25);
+    border-radius: 999px;
+    background: rgba(79, 140, 255, 0.08);
+    color: var(--color-text-secondary);
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.player-tech-chip .material-icons {
+    color: var(--player-accent);
+    font-size: 0.95rem;
+}
+
+.player-tech-chip strong {
+    color: var(--color-text-faint);
+    font-weight: 700;
+}
+
+.player-secondary-controls {
+    display: flex;
+    justify-content: center;
+    gap: 0.35rem;
+    margin-top: -0.45rem;
+}
+
+.player-secondary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.player-secondary-btn:hover,
+.player-secondary-btn.is-active {
+    border-color: rgba(79, 140, 255, 0.3);
+    background: var(--player-accent-alpha);
+    color: var(--player-accent);
+}
+
+.player-secondary-btn .material-icons {
+    font-size: 1.05rem;
+}
+
+.player-queue-topbtn {
+    color: var(--color-text-secondary);
+}
+
+.player-root.queue-open .player-queue-topbtn {
+    color: var(--player-accent);
+    background: var(--player-accent-alpha);
+}
+
+.player-queue-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.player-queue {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    width: min(26rem, 92vw);
+    padding: 1.35rem 1rem 1rem;
+    border-left: 1px solid var(--color-border-light);
+    background: rgba(12, 14, 26, 0.96);
+    box-shadow: -1rem 0 3rem rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(1.2rem);
+    transform: translateX(100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
+}
+
+.player-root.queue-open .player-queue-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.player-root.queue-open .player-queue {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.player-queue-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 0.35rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.player-queue-kicker {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--player-accent);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+}
+
+.player-queue-header h2 {
+    margin: 0;
+    border: none;
+    padding: 0;
+    color: var(--color-text-primary);
+    font-size: 1.25rem;
+}
+
+.player-queue-list {
+    min-height: 0;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.player-queue-section {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.85rem 0.55rem 0.35rem;
+    color: var(--color-text-dim);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.player-queue-section strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.player-queue-track {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.player-queue-track:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.player-queue-track.is-current {
+    background: var(--player-accent-alpha);
+}
+
+.player-queue-track-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-dim);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.player-queue-track.is-current .player-queue-track-index {
+    color: var(--player-accent);
+}
+
+.player-queue-track-index .material-icons {
+    font-size: 1.1rem;
+}
+
+.player-queue-track-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.player-queue-track-copy strong,
+.player-queue-track-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.player-queue-track-copy strong {
+    color: var(--color-text-faint);
+    font-size: 0.85rem;
+    font-weight: 650;
+}
+
+.player-queue-track.is-current .player-queue-track-copy strong {
+    color: var(--player-accent);
+}
+
+.player-queue-track-copy small {
+    color: var(--color-text-dim);
+    font-size: 0.7rem;
+}
+
+.player-queue-track-duration {
+    color: var(--color-text-dim);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.player-queue-empty {
+    padding: 2rem 0.55rem;
+    color: var(--color-text-dim);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+@media (max-width: 48rem) {
+    .player-tech {
+        justify-content: center;
+    }
+
+    .player-secondary-controls {
+        flex-wrap: wrap;
+    }
+
+    .player-queue {
+        width: min(26rem, calc(100vw - 0.5rem));
+    }
+}
+
+@media (max-width: 40rem) {
+    .player-mini-body {
+        gap: 0.5rem;
+        padding: 0.45rem 0.6rem;
+    }
+
+    .player-mini-coverbtn {
+        width: 2.6rem;
+        height: 2.6rem;
+    }
+
+    .player-mini-btn {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .player-mini-btn .material-icons {
+        font-size: 1.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .player-queue,
+    .player-queue-backdrop {
+        transition: none;
+    }
+}

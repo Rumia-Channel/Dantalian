@@ -21,6 +21,7 @@ fn main() {
         "static/css/settings.css",
         "static/css/responsive.css",
         "static/css/player.css",
+        "static/css/player-queue.css",
         "static/css/music.css",
     ];
 
