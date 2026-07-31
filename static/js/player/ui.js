@@ -187,8 +187,10 @@ function createPlayerUI(rootEl) {
     let metadataRequestId = 0;
     const metadataCache = new Map();
     const AUDIOBOOK_PROGRESS_KEY = "dantalian_audiobook_progress_v1";
+    const PLAYLIST_AUDIOBOOK_PROGRESS_KEY = "dantalian_playlist_audiobook_progress_v1";
     const PLAYER_AUDIO_SETTINGS_KEY = "dantalian_player_audio_settings_v1";
     let audiobookProgress = loadAudiobookProgress();
+    let playlistAudiobookProgress = loadProgress(PLAYLIST_AUDIOBOOK_PROGRESS_KEY);
     let pendingAudiobookResume = null;
     let lastProgressSaveAt = 0;
 
@@ -218,39 +220,79 @@ function createPlayerUI(rootEl) {
             return defaults;
         }
     }
-    function loadAudiobookProgress() {
+    function loadProgress(key) {
         try {
             if (typeof localStorage === "undefined") return {};
-            const value = JSON.parse(localStorage.getItem(AUDIOBOOK_PROGRESS_KEY) || "{}");
+            const value = JSON.parse(localStorage.getItem(key) || "{}");
             return value && typeof value === "object" && !Array.isArray(value) ? value : {};
         } catch {
             return {};
         }
     }
+    function loadAudiobookProgress() { return loadProgress(AUDIOBOOK_PROGRESS_KEY); }
+    function isAudiobookPlaylist(cd) {
+        const playlistId = Number(cd && cd.playlist_id);
+        const entries = cd && cd.playlistTrackEntries;
+        return Number.isInteger(playlistId) && playlistId > 0
+            && Array.isArray(entries) && entries.length > 0
+            && entries.every((entry) => entry && entry.track && entry.cd
+                && entry.cd.media_type === "audiobook");
+    }
+    function isResumableAudiobook(cd) {
+        return isAudiobook(cd) || isAudiobookPlaylist(cd);
+    }
     function getAudiobookProgress(cd) {
-        if (!isAudiobook(cd)) return null;
-        const saved = audiobookProgress[String(cd.id)];
+        if (isAudiobook(cd)) {
+            const saved = audiobookProgress[String(cd.id)];
+            if (!saved) return null;
+            const track = playableTracks(cd).find((item) => item.id === Number(saved.trackId));
+            const position = Number(saved.position);
+            if (!track || !Number.isFinite(position) || position < 0) return null;
+            return { track, position };
+        }
+        if (!isAudiobookPlaylist(cd)) return null;
+        const saved = playlistAudiobookProgress[String(cd.playlist_id)];
         if (!saved) return null;
         const track = playableTracks(cd).find((item) => item.id === Number(saved.trackId));
+        const entry = (cd.playlistTrackEntries || []).find((item) => item.track && item.track.id === track?.id);
+        const sourceCd = entry && entry.cd;
         const position = Number(saved.position);
-        if (!track || !Number.isFinite(position) || position < 0) return null;
-        return { track, position };
+        if (!track || !sourceCd || sourceCd.id !== Number(saved.sourceCdId)
+            || !Number.isFinite(position) || position < 0) return null;
+        return { track, position, sourceCd };
     }
     function saveAudiobookProgress(force = false) {
         const entry = engine.currentEntry();
         const cd = entry && entry.album;
-        if (!isAudiobook(cd)) return false;
+        const audiobook = isAudiobook(cd);
+        const audiobookPlaylist = isAudiobookPlaylist(cd);
+        if (!audiobook && !audiobookPlaylist) return false;
         const now = Date.now();
         if (!force && now - lastProgressSaveAt < 1000) return false;
-        audiobookProgress[String(cd.id)] = {
-            trackId: entry.track.id,
-            position: Math.max(0, engine.getPosition()),
-            updatedAt: now,
-        };
+        if (audiobook) {
+            audiobookProgress[String(cd.id)] = {
+                trackId: entry.track.id,
+                position: Math.max(0, engine.getPosition()),
+                updatedAt: now,
+            };
+        } else {
+            const playlistEntry = (cd.playlistTrackEntries || [])
+                .find((item) => item.track && item.track.id === entry.track.id);
+            const sourceCd = playlistEntry && playlistEntry.cd;
+            if (!sourceCd) return false;
+            playlistAudiobookProgress[String(cd.playlist_id)] = {
+                sourceCdId: sourceCd.id,
+                trackId: entry.track.id,
+                position: Math.max(0, engine.getPosition()),
+                updatedAt: now,
+            };
+        }
         lastProgressSaveAt = now;
         try {
             if (typeof localStorage !== "undefined") {
-                localStorage.setItem(AUDIOBOOK_PROGRESS_KEY, JSON.stringify(audiobookProgress));
+                const key = audiobook ? AUDIOBOOK_PROGRESS_KEY : PLAYLIST_AUDIOBOOK_PROGRESS_KEY;
+                const value = audiobook ? audiobookProgress : playlistAudiobookProgress;
+                localStorage.setItem(key, JSON.stringify(value));
             }
         } catch {}
         return true;
@@ -449,7 +491,8 @@ function createPlayerUI(rootEl) {
         el["resume-button"].hidden = !showResume;
         el["remove-playlist-button"].hidden = !Number.isFinite(Number(viewCd.playlist_id));
         if (showResume) {
-            el["resume-label"].textContent = `続きから再生 · ${resume.track.title} (${formatTime(resume.position)})`;
+            const source = resume.sourceCd ? `${resume.sourceCd.title} / ` : "";
+            el["resume-label"].textContent = `続きから再生 · ${source}${resume.track.title} (${formatTime(resume.position)})`;
         }
         paintCover(viewCd);
         el["track-title"].textContent = track ? track.title : viewCd.title;
@@ -552,7 +595,7 @@ function createPlayerUI(rootEl) {
     // ---------- 再生開始 (ビューのアルバムから) ----------
     function startAlbumFromTrack(cd, trackId, options = {}) {
         if (!cd) return;
-        const saved = isAudiobook(cd) ? getAudiobookProgress(cd) : null;
+        const saved = isResumableAudiobook(cd) ? getAudiobookProgress(cd) : null;
         const preferSaved = !!options.preferSaved && !!saved;
         const t = preferSaved ? saved.track : (trackById(cd, trackId) || firstPlayable(cd));
         if (!t) return;
@@ -564,7 +607,7 @@ function createPlayerUI(rootEl) {
         viewCd = cd;
         viewTrackId = t.id;
         viewMode = "live";
-        pendingAudiobookResume = isAudiobook(cd) && resumePosition > 0
+        pendingAudiobookResume = isResumableAudiobook(cd) && resumePosition > 0
             ? { cdId: cd.id, trackId: t.id, position: resumePosition }
             : null;
         const entries = playableTracks(cd).map((track) => ({ track, album: cd }));
@@ -698,10 +741,17 @@ function createPlayerUI(rootEl) {
     function startExternalQueue(entries, startIndex = 0) {
         const playable = (entries || []).filter((entry) => entry && entry.track && entry.track.file_hash && entry.album);
         if (playable.length === 0) return false;
-        const index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        let index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        const resume = getAudiobookProgress(playable[0].album);
+        if (resume) {
+            const resumeIndex = playable.findIndex((entry) => entry.track.id === resume.track.id);
+            if (resumeIndex >= 0) index = resumeIndex;
+        }
         const first = playable[index];
         saveAudiobookProgress(true);
-        pendingAudiobookResume = null;
+        pendingAudiobookResume = isResumableAudiobook(first.album) && resume && resume.position > 0
+            ? { cdId: first.album.id, trackId: first.track.id, position: resume.position }
+            : null;
         currentCd = first.album;
         viewCd = first.album;
         viewTrackId = first.track.id;
@@ -717,7 +767,12 @@ function createPlayerUI(rootEl) {
     function browseExternalQueue(entries, startIndex = 0) {
         const playable = (entries || []).filter((entry) => entry && entry.track && entry.track.file_hash && entry.album);
         if (playable.length === 0) return false;
-        const index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        let index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        const resume = getAudiobookProgress(playable[0].album);
+        if (resume) {
+            const resumeIndex = playable.findIndex((entry) => entry.track.id === resume.track.id);
+            if (resumeIndex >= 0) index = resumeIndex;
+        }
         const first = playable[index];
         viewCd = first.album;
         viewTrackId = first.track.id;
@@ -937,7 +992,7 @@ function createPlayerUI(rootEl) {
         }
         else if (act === "play") {
             if (viewMode === "live") engine.toggle();
-            else startViewFromTrack(viewTrackId, { preferSaved: isAudiobook(viewCd) });
+            else startViewFromTrack(viewTrackId, { preferSaved: isResumableAudiobook(viewCd) });
         }
         else if (act === "next") {
             if (viewMode === "live") { saveAudiobookProgress(true); engine.next(); }
@@ -986,7 +1041,7 @@ function createPlayerUI(rootEl) {
             if (!cd) return;
             if (autoplay) {
                 if (!firstPlayable(cd)) return;
-                startAlbumFromTrack(cd, null, { preferSaved: isAudiobook(cd) });
+                startAlbumFromTrack(cd, null, { preferSaved: isResumableAudiobook(cd) });
             } else {
                 browseAlbum(cd);
             }
