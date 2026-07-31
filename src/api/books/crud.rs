@@ -517,9 +517,15 @@ pub async fn upload_cover(
                             "total_parts": total_parts,
                         })));
                     }
-                    StoreResult::Complete { bytes, cleanup_dir } => {
+                    StoreResult::Complete { path, cleanup_dir } => {
+                        let result = std::fs::read(&path).map_err(|e| {
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                        });
                         let _ = std::fs::remove_dir_all(cleanup_dir);
-                        bytes
+                        result?
                     }
                 },
                 None => bytes,
@@ -656,6 +662,7 @@ pub async fn upload_epub(
     })?;
 
     let mut data: Option<Vec<u8>> = None;
+    let mut chunked_path: Option<(std::path::PathBuf, std::path::PathBuf)> = None;
     let mut original_name: Option<String> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
@@ -680,7 +687,7 @@ pub async fn upload_epub(
                     )
                 })?
                 .to_vec();
-            let bytes = match chunk_info.as_ref() {
+            match chunk_info.as_ref() {
                 Some(info) => match crate::api::upload_chunks::store_chunk(
                     state.uploads_dir.as_str(),
                     "file",
@@ -701,24 +708,16 @@ pub async fn upload_epub(
                             "total_parts": total_parts,
                         })));
                     }
-                    StoreResult::Complete { bytes, cleanup_dir } => {
-                        let _ = std::fs::remove_dir_all(cleanup_dir);
-                        bytes
+                    StoreResult::Complete { path, cleanup_dir } => {
+                        chunked_path = Some((path, cleanup_dir));
                     }
                 },
-                None => bytes,
-            };
-            data = Some(bytes);
+                None => data = Some(bytes),
+            }
             original_name = Some(file_name);
         }
     }
 
-    let bytes = data.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "No file uploaded"})),
-        )
-    })?;
     let original_name = original_name.unwrap_or_else(|| "upload.epub".to_string());
 
     let file_max = crate::api::upload_limit_bytes(
@@ -726,12 +725,29 @@ pub async fn upload_epub(
         crate::api::KEY_UPLOAD_FILE_MB,
         crate::api::EPUB_MAX_BYTES,
     );
-    let (saved_name, _ext) = crate::external::save_uploaded_file(
-        &bytes,
-        &original_name,
-        state.epubs_dir.as_str(),
-        file_max,
-    )
+    let (saved_name, _ext) = if let Some((path, cleanup_dir)) = chunked_path {
+        let result = crate::external::save_uploaded_file_path(
+            &path,
+            &original_name,
+            state.epubs_dir.as_str(),
+            file_max,
+        );
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+        result
+    } else {
+        let bytes = data.ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "No file uploaded"})),
+            )
+        })?;
+        crate::external::save_uploaded_file(
+            &bytes,
+            &original_name,
+            state.epubs_dir.as_str(),
+            file_max,
+        )
+    }
     .map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

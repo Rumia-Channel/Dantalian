@@ -165,7 +165,12 @@ pub async fn upload_track_audio(
             .bytes()
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-        let data = match chunk_info.as_ref() {
+        let audio_max = crate::api::upload_limit_bytes(
+            &state,
+            crate::api::KEY_UPLOAD_AUDIO_MB,
+            crate::api::AUDIO_MAX_BYTES,
+        );
+        let (saved_name, _ext) = match chunk_info.as_ref() {
             Some(info) => match crate::api::upload_chunks::store_chunk(
                 state.uploads_dir.as_str(),
                 "audio",
@@ -182,26 +187,24 @@ pub async fn upload_track_audio(
                         "total_parts": total_parts,
                     })));
                 }
-                StoreResult::Complete { bytes, cleanup_dir } => {
+                StoreResult::Complete { path, cleanup_dir } => {
+                    let result = crate::external::save_uploaded_audio_path(
+                        &path, &name, audio_dir, audio_max,
+                    );
                     let _ = std::fs::remove_dir_all(cleanup_dir);
-                    bytes
+                    result
                 }
-            },
-            None => data.to_vec(),
+            }
+            .map_err(|e| {
+                tracing::warn!(track_id, "Audio save failed: {}", e);
+                axum::http::StatusCode::BAD_REQUEST
+            })?,
+            None => crate::external::save_uploaded_audio(&data, &name, audio_dir, audio_max)
+                .map_err(|e| {
+                    tracing::warn!(track_id, "Audio save failed: {}", e);
+                    axum::http::StatusCode::BAD_REQUEST
+                })?,
         };
-
-        let audio_max = crate::api::upload_limit_bytes(
-            &state,
-            crate::api::KEY_UPLOAD_AUDIO_MB,
-            crate::api::AUDIO_MAX_BYTES,
-        );
-        let (saved_name, _ext) = crate::external::save_uploaded_audio(
-            &data, &name, &audio_dir, audio_max,
-        )
-        .map_err(|e| {
-            tracing::warn!(track_id, "Audio save failed: {}", e);
-            axum::http::StatusCode::BAD_REQUEST
-        })?;
 
         file_hash = Some(saved_name);
         file_name = Some(name);

@@ -953,7 +953,12 @@ pub async fn upload_cd_track_audio(
     {
         let name = field.file_name().unwrap_or("unknown").to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-        let data = match chunk_info.as_ref() {
+        let audio_max = crate::api::upload_limit_bytes(
+            &state,
+            crate::api::KEY_UPLOAD_AUDIO_MB,
+            crate::api::AUDIO_MAX_BYTES,
+        );
+        let (saved_name, _ext) = match chunk_info.as_ref() {
             Some(info) => match crate::api::upload_chunks::store_chunk(
                 state.uploads_dir.as_str(),
                 "audio",
@@ -970,24 +975,24 @@ pub async fn upload_cd_track_audio(
                         "total_parts": total_parts,
                     })));
                 }
-                StoreResult::Complete { bytes, cleanup_dir } => {
+                StoreResult::Complete { path, cleanup_dir } => {
+                    let result =
+                        external::save_uploaded_audio_path(&path, &name, audio_dir, audio_max);
                     let _ = std::fs::remove_dir_all(cleanup_dir);
-                    bytes
+                    result
                 }
-            },
-            None => data.to_vec(),
-        };
-
-        let audio_max = crate::api::upload_limit_bytes(
-            &state,
-            crate::api::KEY_UPLOAD_AUDIO_MB,
-            crate::api::AUDIO_MAX_BYTES,
-        );
-        let (saved_name, _ext) = external::save_uploaded_audio(&data, &name, &audio_dir, audio_max)
+            }
             .map_err(|e| {
                 tracing::warn!(track_id, cd_id, "Audio save failed: {}", e);
                 StatusCode::BAD_REQUEST
-            })?;
+            })?,
+            None => {
+                external::save_uploaded_audio(&data, &name, audio_dir, audio_max).map_err(|e| {
+                    tracing::warn!(track_id, cd_id, "Audio save failed: {}", e);
+                    StatusCode::BAD_REQUEST
+                })?
+            }
+        };
 
         file_hash = Some(saved_name);
         file_name = Some(name);
@@ -1276,9 +1281,15 @@ pub async fn upload_cd_cover(
                             "total_parts": total_parts,
                         })));
                     }
-                    StoreResult::Complete { bytes, cleanup_dir } => {
+                    StoreResult::Complete { path, cleanup_dir } => {
+                        let result = std::fs::read(&path).map_err(|e| {
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": e.to_string()})),
+                            )
+                        });
                         let _ = std::fs::remove_dir_all(cleanup_dir);
-                        bytes
+                        result?
                     }
                 },
                 None => bytes,

@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::fs;
-use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -25,14 +25,8 @@ pub(crate) struct ChunkInfo {
 }
 
 pub(crate) enum StoreResult {
-    Partial {
-        part: usize,
-        total_parts: usize,
-    },
-    Complete {
-        bytes: Vec<u8>,
-        cleanup_dir: PathBuf,
-    },
+    Partial { part: usize, total_parts: usize },
+    Complete { path: PathBuf, cleanup_dir: PathBuf },
 }
 
 impl ChunkQuery {
@@ -108,15 +102,17 @@ pub(crate) fn store_chunk(
         }
     }
 
-    let mut combined = Vec::with_capacity(total_size);
+    let combined_path = upload_dir.join("combined.bin");
+    let mut combined = fs::File::create(&combined_path).map_err(|_| ())?;
     for part in 0..info.total_parts {
         let path = upload_dir.join(format!("part-{:06}.bin", part));
         let mut file = fs::File::open(path).map_err(|_| ())?;
-        file.read_to_end(&mut combined).map_err(|_| ())?;
+        std::io::copy(&mut file, &mut combined).map_err(|_| ())?;
     }
+    combined.flush().map_err(|_| ())?;
 
     Ok(StoreResult::Complete {
-        bytes: combined,
+        path: combined_path,
         cleanup_dir: upload_dir,
     })
 }
@@ -215,8 +211,8 @@ mod tests {
         let complete = store_chunk(&uploads_dir.to_string_lossy(), "audio", second, b"second")
             .expect("last chunk should be reassembled");
         match complete {
-            StoreResult::Complete { bytes, cleanup_dir } => {
-                assert_eq!(bytes, b"firstsecond");
+            StoreResult::Complete { path, cleanup_dir } => {
+                assert_eq!(fs::read(&path).expect("combined file"), b"firstsecond");
                 fs::remove_dir_all(cleanup_dir).expect("test upload directory should be removed");
             }
             StoreResult::Partial { .. } => panic!("last chunk should complete the upload"),

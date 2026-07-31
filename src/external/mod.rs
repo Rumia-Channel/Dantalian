@@ -101,11 +101,28 @@ fn parse_month(value: &str) -> Option<u32> {
 }
 
 pub(crate) use self::save_uploaded_audio::save_uploaded_audio;
+pub(crate) use self::save_uploaded_audio::save_uploaded_audio_path;
 pub(crate) use self::save_uploaded_file::save_uploaded_file;
+pub(crate) use self::save_uploaded_file::save_uploaded_file_path;
 
 mod save_uploaded_audio {
     use base64::Engine;
     use sha3::{Digest, Sha3_256};
+    use std::io::Read;
+
+    fn audio_extension(original_name: &str) -> Result<String, String> {
+        std::path::Path::new(original_name)
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase())
+            .filter(|s| {
+                matches!(
+                    s.as_str(),
+                    "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "webm"
+                )
+            })
+            .ok_or_else(|| format!("Unsupported audio extension: {}", original_name))
+    }
 
     pub(crate) fn save_uploaded_audio(
         bytes: &[u8],
@@ -121,17 +138,7 @@ mod save_uploaded_audio {
             ));
         }
 
-        let ext = std::path::Path::new(original_name)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase())
-            .filter(|s| {
-                matches!(
-                    s.as_str(),
-                    "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "webm"
-                )
-            })
-            .ok_or_else(|| format!("Unsupported audio extension: {}", original_name))?;
+        let ext = audio_extension(original_name)?;
 
         let hash = Sha3_256::digest(bytes);
         let hash_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash);
@@ -145,11 +152,62 @@ mod save_uploaded_audio {
 
         Ok((save_name, ext.to_string()))
     }
+
+    pub(crate) fn save_uploaded_audio_path(
+        source_path: &std::path::Path,
+        original_name: &str,
+        audio_dir: &str,
+        max_bytes: usize,
+    ) -> Result<(String, String), String> {
+        let ext = audio_extension(original_name)?;
+        let size = std::fs::metadata(source_path)
+            .map_err(|e| format!("Failed to inspect uploaded audio: {}", e))?
+            .len();
+        if size > max_bytes as u64 {
+            return Err(format!(
+                "Audio too large: {} bytes (max {} MB)",
+                size,
+                max_bytes / 1024 / 1024
+            ));
+        }
+
+        let mut input = std::fs::File::open(source_path)
+            .map_err(|e| format!("Failed to open uploaded audio: {}", e))?;
+        let mut hasher = Sha3_256::new();
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let read = input
+                .read(&mut buffer)
+                .map_err(|e| format!("Failed to hash uploaded audio: {}", e))?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+        }
+        let hash_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let save_name = format!("{}.{}", hash_b64, ext);
+        std::fs::create_dir_all(audio_dir)
+            .map_err(|e| format!("Failed to create audio dir: {}", e))?;
+        let save_path = std::path::Path::new(audio_dir).join(&save_name);
+        std::fs::copy(source_path, &save_path)
+            .map_err(|e| format!("Failed to save audio: {}", e))?;
+        Ok((save_name, ext))
+    }
 }
 
 mod save_uploaded_file {
     use base64::Engine;
     use sha3::{Digest, Sha3_256};
+    use std::io::Read;
+
+    fn file_extension(original_name: &str) -> Result<String, String> {
+        std::path::Path::new(original_name)
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase())
+            .filter(|s| matches!(s.as_str(), "epub" | "pdf" | "zip"))
+            .ok_or_else(|| format!("Unsupported file extension: {}", original_name))
+    }
 
     pub(crate) fn save_uploaded_file(
         bytes: &[u8],
@@ -165,12 +223,7 @@ mod save_uploaded_file {
             ));
         }
 
-        let ext = std::path::Path::new(original_name)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase())
-            .filter(|s| matches!(s.as_str(), "epub" | "pdf" | "zip"))
-            .ok_or_else(|| format!("Unsupported file extension: {}", original_name))?;
+        let ext = file_extension(original_name)?;
 
         match ext.as_str() {
             "epub" | "zip" => {
@@ -202,6 +255,68 @@ mod save_uploaded_file {
         std::fs::write(&save_path, bytes).map_err(|e| format!("Failed to save file: {}", e))?;
 
         Ok((save_name, ext.to_string()))
+    }
+
+    pub(crate) fn save_uploaded_file_path(
+        source_path: &std::path::Path,
+        original_name: &str,
+        epubs_dir: &str,
+        max_bytes: usize,
+    ) -> Result<(String, String), String> {
+        let ext = file_extension(original_name)?;
+        let size = std::fs::metadata(source_path)
+            .map_err(|e| format!("Failed to inspect uploaded file: {}", e))?
+            .len();
+        if size > max_bytes as u64 {
+            return Err(format!(
+                "File too large: {} bytes (max {} MB)",
+                size,
+                max_bytes / 1024 / 1024
+            ));
+        }
+
+        let mut input = std::fs::File::open(source_path)
+            .map_err(|e| format!("Failed to open uploaded file: {}", e))?;
+        let mut header = [0u8; 5];
+        let header_len = input
+            .read(&mut header)
+            .map_err(|e| format!("Failed to inspect uploaded file: {}", e))?;
+        match ext.as_str() {
+            "epub" | "zip" => {
+                if header_len < 4
+                    || &header[0..2] != b"PK"
+                    || !matches!(&header[2..4], [0x03, 0x04] | [0x05, 0x06] | [0x07, 0x08])
+                {
+                    return Err("File is not a valid ZIP archive".to_string());
+                }
+            }
+            "pdf" if header_len < 5 || &header != b"%PDF-" => {
+                return Err("File is not a valid PDF".to_string());
+            }
+            _ => {}
+        }
+
+        let mut input = std::fs::File::open(source_path)
+            .map_err(|e| format!("Failed to open uploaded file: {}", e))?;
+        let mut hasher = Sha3_256::new();
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let read = input
+                .read(&mut buffer)
+                .map_err(|e| format!("Failed to hash uploaded file: {}", e))?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+        }
+        let hash_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let save_name = format!("{}.{}", hash_b64, ext);
+        std::fs::create_dir_all(epubs_dir)
+            .map_err(|e| format!("Failed to create epubs dir: {}", e))?;
+        let save_path = std::path::Path::new(epubs_dir).join(&save_name);
+        std::fs::copy(source_path, &save_path)
+            .map_err(|e| format!("Failed to save file: {}", e))?;
+        Ok((save_name, ext))
     }
 }
 
