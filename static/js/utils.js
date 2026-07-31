@@ -1,5 +1,6 @@
 let allBooks = [];
 let allCds = [];
+let allLibraryPlaylists = [];
 let allSeries = [];
 let allGrandSeries = [];
 let allStorageLocations = [];
@@ -75,6 +76,17 @@ async function loadCds() {
     } catch (err) {
         console.error("loadCds failed:", err);
         allCds = [];
+    }
+}
+
+async function loadLibraryPlaylists() {
+    try {
+        const res = await fetch("/api/playlists");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        allLibraryPlaylists = await res.json();
+    } catch (err) {
+        console.error("loadLibraryPlaylists failed:", err);
+        allLibraryPlaylists = [];
     }
 }
 

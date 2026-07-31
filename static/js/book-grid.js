@@ -55,10 +55,34 @@ function normalizeCd(cd) {
     };
 }
 
+function normalizePlaylist(playlist) {
+    return {
+        id: playlist.id,
+        sourceType: "playlist",
+        originalId: playlist.id,
+        title: playlist.name,
+        cover_url: playlist.cover_url,
+        description: playlist.description,
+        tracks: playlist.tracks || [],
+        media_type: "playlist",
+        artist: "プレイリスト",
+        authors: [],
+        copies_count: 0,
+        lent_count: 0,
+        publish_date: null,
+        series_id: null,
+        volume: null,
+        series_number: null,
+    };
+}
+
 function getAllItems() {
     let items = allBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b));
     if (allCds && allCds.length > 0) {
         items = items.concat(allCds.map(normalizeCd));
+    }
+    if (allLibraryPlaylists && allLibraryPlaylists.length > 0) {
+        items = items.concat(allLibraryPlaylists.map(normalizePlaylist));
     }
     return items;
 }
@@ -137,6 +161,9 @@ function getPrimaryCreator(item) {
         const artist = String(item.artist || getPrimaryAuthor(item)?.name || "").trim();
         return artist ? { key: `artist:${normalizeSearchText(artist)}`, name: artist } : null;
     }
+    if (item.sourceType === "playlist") {
+        return { key: "playlist", name: "プレイリスト" };
+    }
     const author = getPrimaryAuthor(item);
     return author ? { key: `author:${author.id}`, name: author.name } : null;
 }
@@ -187,6 +214,8 @@ function getFilteredItems() {
             items = items.filter((item) => item.sourceType === "cd" && item.media_type === "cd");
         } else if (currentTypeFilter === "audiobook") {
             items = items.filter((item) => item.sourceType === "cd" && item.media_type === "audiobook");
+        } else if (currentTypeFilter === "playlist") {
+            items = items.filter((item) => item.sourceType === "playlist");
         } else {
             items = items.filter((item) => item.sourceType === "book" && item.media_type !== "cd" && item.media_type !== "audiobook");
         }
@@ -381,6 +410,24 @@ function renderCdCard(item) {
     </div>`;
 }
 
+function renderPlaylistCard(item) {
+    const trackCount = (item.tracks || []).filter((entry) => entry.track && entry.track.file_hash).length;
+    return `
+    <div class="book-card cd-card-v playlist-card" onclick="location.href='/music/?playlist=${item.originalId}'">
+        ${
+            item.cover_url
+                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
+                : '<div class="book-cover-placeholder"><span class="material-icons">queue_music</span></div>'
+        }
+        <span class="media-badge media-badge--playlist">PL</span>
+        <div class="book-info">
+            <div class="book-title">${escapeHtml(item.title)}</div>
+            <div class="book-author">プレイリスト</div>
+            <div class="cd-card-tracks-empty">${trackCount} 曲</div>
+        </div>
+    </div>`;
+}
+
 function renderSeriesCard(series, books) {
     const coversHtml = books.slice(0, 8).map((b) =>
         b.cover_url
@@ -501,6 +548,8 @@ function buildGridHtml(items) {
             html += renderSeriesCard(item.series, sortedBooks);
         } else if (item.item.sourceType === "cd") {
             html += renderCdCard(item.item);
+        } else if (item.item.sourceType === "playlist") {
+            html += renderPlaylistCard(item.item);
         } else {
             html += renderBookCard(item.item);
         }
