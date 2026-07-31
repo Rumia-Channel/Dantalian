@@ -1,4 +1,5 @@
 mod api;
+mod audio_encoding;
 mod backup;
 mod db;
 mod db_models;

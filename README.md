@@ -119,6 +119,17 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 
 上限は 4096MB (4GB) まで。これは**アプリ側**の上限です。前面のリバースプロキシ (nginx: `client_max_body_size` 等) や Cloudflare の上限も、これ以上に引き上げる必要があります (実効上限は両者の小さい方)。
 
+### 省データ再生
+
+管理画面の「省データ再生」を有効にすると、指定した拡張子の音声を初回再生時に Opus と AAC へ変換します。生成物は次の場所へ保存され、以後の再生とメディア同期で再利用されます。
+
+```
+{DATA_DIR}/audio/encoded/opus/{hash}.opus
+{DATA_DIR}/audio/encoded/aac/{hash}.aac
+```
+
+Opus は `shiguredo_opus` による内蔵 encoder、入力音声の読み取りと変換は Symphonia を使用します。AAC は Linux で `fdk-aac` feature と FDK AAC ライブラリが利用できる場合は FDK AAC を使い、利用できない場合は FFmpeg の AAC encoder へフォールバックします。
+
 ### API
 
 - `POST /api/media-sync/run` — 手動実行。レスポンスは `ok` / `scanned` / `uploaded` / `skipped` / `failed` / `missing_local` を含む summary JSON。

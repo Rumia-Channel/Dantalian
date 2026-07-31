@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod books;
 pub mod borrowers;
 pub mod cds;
@@ -46,6 +47,7 @@ pub(crate) fn upload_limit_bytes(
 
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
+        .route("/audio/stream/{file_hash}", get(audio::stream))
         .route("/books", post(books::register))
         .route("/books/isdn", post(books::isdn_register))
         .route("/books/manual", post(books::manual_register))
