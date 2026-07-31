@@ -501,7 +501,7 @@ async function saveBook(e, bookId) {
 
 // アップロード失敗時のメッセージを組み立てる。
 // 413 でアプリ由来のエラー本文が無い場合は、リバースプロキシの上限超過とみなして
-// 対処法を案内する (Dantalian 本体は cover 10MB / audio 100MB / file 500MB まで許可)。
+// 対処法を案内する (Dantalian 本体の初期値は cover 10MB / audio 100MB / file 500MB)。
 async function describeUploadError(res, label) {
     let serverMsg = "";
     try {
@@ -512,7 +512,7 @@ async function describeUploadError(res, label) {
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
             `ファイルサイズが上限を超えています。` +
             `前面のリバースプロキシ (nginx: client_max_body_size / Caddy / Cloudflare 等) の上限をまず確認してください。` +
-            `(参考: Dantalian 本体の上限は file 500MB / audio 100MB / cover 10MB)`;
+            `(参考: Dantalian 本体の初期値は file 500MB / audio 100MB / cover 10MB。設定画面で変更可能)`;
     }
     const detail = serverMsg ? `: ${serverMsg}` : "";
     return `${label}のアップロードに失敗しました (${res.status})${detail}`;

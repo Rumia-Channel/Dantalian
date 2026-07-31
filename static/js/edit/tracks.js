@@ -57,7 +57,7 @@ function renderTracksHtml(tracks, editType, parentId) {
                                    <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
                                        <span class="material-icons" aria-hidden="true">info</span>
                                    </button>`
-                                : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、最大 100 MB）">
+                                : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、設定画面の上限まで）">
                                        <span class="material-icons" aria-hidden="true">upload</span>
                                        音声
                                        <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
@@ -245,7 +245,22 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
 }
 
 const ALLOWED_AUDIO_EXTS = ["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"];
-const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+const DEFAULT_AUDIO_MAX_MB = 100;
+const MAX_UPLOAD_SETTING_MB = 4096;
+
+async function getConfiguredAudioMaxMb() {
+    try {
+        const res = await fetch("/api/settings", { cache: "no-store" });
+        if (res.ok) {
+            const settings = await res.json();
+            const configured = Number(settings["upload.audio_max_mb"]);
+            if (Number.isSafeInteger(configured) && configured > 0) {
+                return Math.min(configured, MAX_UPLOAD_SETTING_MB);
+            }
+        }
+    } catch {}
+    return DEFAULT_AUDIO_MAX_MB;
+}
 
 async function uploadTrackAudio(editType, parentId, trackId, input) {
     const file = input.files[0];
@@ -257,8 +272,10 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
         return;
     }
-    if (file.size > MAX_AUDIO_BYTES) {
-        alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${MAX_AUDIO_BYTES / 1024 / 1024} MB`);
+    const maxAudioMb = await getConfiguredAudioMaxMb();
+    const maxAudioBytes = maxAudioMb * 1024 * 1024;
+    if (file.size > maxAudioBytes) {
+        alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
         return;
     }
 

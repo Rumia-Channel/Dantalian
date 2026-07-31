@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 9;
+const SCHEMA_VERSION: u32 = 10;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS track_metadata (
     year               INTEGER,
     genre              TEXT,
     composer           TEXT,
+    publisher          TEXT,
+    label              TEXT,
     encoder            TEXT,
     comment            TEXT,
     lyrics             TEXT,
@@ -434,6 +436,22 @@ CREATE TABLE IF NOT EXISTS labels (
 ALTER TABLE books ADD COLUMN label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL;
 "#;
 
+fn ensure_track_metadata_columns(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(track_metadata)")?;
+        let rows = stmt.query_map([], |row| row.get(1))?;
+        rows.collect::<Result<_, _>>()?
+    };
+
+    if !columns.iter().any(|column| column == "publisher") {
+        conn.execute("ALTER TABLE track_metadata ADD COLUMN publisher TEXT", [])?;
+    }
+    if !columns.iter().any(|column| column == "label") {
+        conn.execute("ALTER TABLE track_metadata ADD COLUMN label TEXT", [])?;
+    }
+    Ok(())
+}
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -443,6 +461,7 @@ impl Db {
 
         if current_version == 0 {
             conn.execute_batch(SCHEMA_SQL)?;
+            ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema initialized");
         } else if current_version < SCHEMA_VERSION {
@@ -475,6 +494,7 @@ impl Db {
             if current_version < 9 {
                 conn.execute_batch(MIGRATE_V8_TO_V9_SQL)?;
             }
+            ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
         } else if current_version > SCHEMA_VERSION {
@@ -485,6 +505,7 @@ impl Db {
             );
             conn.execute_batch(DROP_ALL_SQL)?;
             conn.execute_batch(SCHEMA_SQL)?;
+            ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
         }
 
