@@ -28,6 +28,7 @@ function normalizeCd(cd) {
         originalId: cd.id,
         title: cd.title,
         cover_url: cd.cover_url,
+        artist: cd.artist,
         publisher: cd.publisher,
         publish_date: cd.publish_date,
         authors: cd.authors || [],
@@ -131,6 +132,15 @@ function getPrimaryAuthor(book) {
     );
 }
 
+function getPrimaryCreator(item) {
+    if (item.sourceType === "cd") {
+        const artist = String(item.artist || getPrimaryAuthor(item)?.name || "").trim();
+        return artist ? { key: `artist:${normalizeSearchText(artist)}`, name: artist } : null;
+    }
+    const author = getPrimaryAuthor(item);
+    return author ? { key: `author:${author.id}`, name: author.name } : null;
+}
+
 function normalizeSearchText(value) {
     return String(value || "")
         .toLowerCase()
@@ -156,6 +166,7 @@ function getItemSearchText(item) {
         item.isbn,
         item.jan_code,
         item.publisher,
+        item.artist,
         item.jpno,
         item.ndl_url,
         series?.name,
@@ -345,7 +356,9 @@ function renderCdCard(item) {
     }
 
     const subParts = [];
-    if (item.authors && item.authors.length > 0) {
+    if (item.artist) {
+        subParts.push(escapeHtml(item.artist));
+    } else if (item.authors && item.authors.length > 0) {
         subParts.push(item.authors.map((a) => escapeHtml(a.name)).join(", "));
     }
     if (item.label || item.catalog_number) {
@@ -499,16 +512,16 @@ function renderItemsByAuthor(items) {
     const authorMap = new Map();
 
     for (const item of items) {
-        const primary = getPrimaryAuthor(item);
+        const primary = getPrimaryCreator(item);
         if (!primary) {
             if (!authorMap.has("__none__")) authorMap.set("__none__", { author: null, books: [] });
             authorMap.get("__none__").books.push(item);
             continue;
         }
-        if (!authorMap.has(primary.id)) {
-            authorMap.set(primary.id, { author: primary, books: [] });
+        if (!authorMap.has(primary.key)) {
+            authorMap.set(primary.key, { author: primary, books: [] });
         }
-        authorMap.get(primary.id).books.push(item);
+        authorMap.get(primary.key).books.push(item);
     }
 
     const entries = [...authorMap.entries()].sort((a, b) => {

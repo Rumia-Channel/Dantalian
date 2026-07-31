@@ -569,6 +569,25 @@ function createPlayerUI(rootEl) {
         renderQueue();
     }
 
+    function startExternalQueue(entries, startIndex = 0) {
+        const playable = (entries || []).filter((entry) => entry && entry.track && entry.track.file_hash && entry.album);
+        if (playable.length === 0) return false;
+        const index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        const first = playable[index];
+        saveAudiobookProgress(true);
+        pendingAudiobookResume = null;
+        currentCd = first.album;
+        viewCd = first.album;
+        viewTrackId = first.track.id;
+        viewMode = "live";
+        engine.loadQueue(playable, index);
+        engine.play();
+        renderView();
+        renderMini();
+        renderQueue();
+        return true;
+    }
+
     function viewStepTrack(delta) {
         if (!viewCd) return;
         const list = playableTracks(viewCd);
@@ -787,6 +806,10 @@ function createPlayerUI(rootEl) {
     const api = {
         engine,
         setAlbums(list) { albums = list || []; },
+        openQueue(entries, startIndex) {
+            if (!startExternalQueue(entries, startIndex)) return;
+            api.show();
+        },
         // autoplay=false: 閲覧/予約のみ (自動再生しない)。true: 即再生。
         openAlbum(cdId, autoplay) {
             const cd = albums.find((c) => c.id === cdId);

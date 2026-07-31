@@ -8,6 +8,7 @@ let allAlbums = [];           // 再生可能トラックを持つ CD 一覧
 let currentFilter = "all";
 
 const player = createPlayerUI(playerRoot);
+window.musicPlayer = player;
 
 function albumMediaType(cd) {
     return cd.media_type === "audiobook" ? "audiobook" : "cd";
@@ -17,17 +18,20 @@ function playableAlbums() {
     return allAlbums.filter((cd) => (cd.tracks || []).some((t) => t.file_hash));
 }
 
-function filteredAlbums() {
+function filteredMedia() {
     const list = playableAlbums();
-    if (currentFilter === "all") return list;
-    return list.filter((cd) => albumMediaType(cd) === currentFilter);
+    const playlists = getPlaylists();
+    if (currentFilter === "all") return { albums: list, playlists };
+    if (currentFilter === "playlist") return { albums: [], playlists };
+    return { albums: list.filter((cd) => albumMediaType(cd) === currentFilter), playlists: [] };
 }
 
 function renderGrid() {
-    const albums = filteredAlbums();
-    musicCount.textContent = `(${albums.length}件)`;
+    const media = filteredMedia();
+    const count = media.albums.length + media.playlists.length;
+    musicCount.textContent = `(${count}件)`;
 
-    if (albums.length === 0) {
+    if (count === 0) {
         musicGrid.innerHTML = `
             <div class="music-empty">
                 <span class="material-icons">library_music</span>
@@ -37,7 +41,7 @@ function renderGrid() {
         return;
     }
 
-    musicGrid.innerHTML = albums.map((cd) => {
+    const albumHtml = media.albums.map((cd) => {
         const type = albumMediaType(cd);
         const badge = type === "audiobook"
             ? '<span class="music-album-badge music-album-badge--audiobook">AB</span>'
@@ -61,6 +65,7 @@ function renderGrid() {
             <div class="music-album-meta">${trackCount} 曲</div>
         </div>`;
     }).join("");
+    musicGrid.innerHTML = albumHtml + media.playlists.map(renderPlaylistCard).join("");
 }
 
 function openAlbum(cdId, autoplay) {
@@ -72,6 +77,12 @@ function openAlbum(cdId, autoplay) {
 musicGrid.addEventListener("click", (e) => {
     const card = e.target.closest(".music-album");
     if (!card) return;
+    const playlistId = card.dataset.playlistId;
+    if (playlistId) {
+        if (e.target.closest("[data-playlist-action=\"edit\"]")) openPlaylistEditor(playlistId);
+        else openPlaylist(playlistId);
+        return;
+    }
     const play = Boolean(e.target.closest("[data-album-action=\"play\"]"));
     openAlbum(parseInt(card.dataset.cdId, 10), play);
 });
@@ -80,7 +91,8 @@ musicGrid.addEventListener("keydown", (e) => {
     const card = e.target.closest(".music-album");
     if (!card) return;
     e.preventDefault();
-    openAlbum(parseInt(card.dataset.cdId, 10), false);
+    if (card.dataset.playlistId) openPlaylist(card.dataset.playlistId);
+    else openAlbum(parseInt(card.dataset.cdId, 10), false);
 });
 
 // フィルタ
@@ -102,6 +114,7 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
     } catch {
         allAlbums = [];
     }
+    await loadPlaylists();
     renderGrid();
 
     // ?play={cdId} があれば自動再生 (CD詳細の「再生」ボタンから遷移)

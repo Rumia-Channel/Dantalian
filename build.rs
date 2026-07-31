@@ -23,6 +23,7 @@ fn main() {
         "static/css/player.css",
         "static/css/player-queue.css",
         "static/css/music.css",
+        "static/css/playlist.css",
     ];
 
     let js_files = [
@@ -50,6 +51,7 @@ fn main() {
         "static/js/settings-manage.js",
         "static/js/player/engine.js",
         "static/js/player/ui.js",
+        "static/js/music/playlists.js",
         "static/js/music/main.js",
         "static/js/app.js",
     ];
