@@ -51,12 +51,14 @@ function renderGrid() {
         const trackCount = (cd.tracks || []).filter((t) => t.file_hash).length;
         const artist = cd.artist ? escapeHtml(cd.artist) : "&nbsp;";
         return `
-        <div class="music-album" data-cd-id="${cd.id}" tabindex="0" role="button" aria-label="${escapeAttr(cd.title)} を再生">
+        <div class="music-album" data-cd-id="${cd.id}" tabindex="0" role="button" aria-label="${escapeAttr(cd.title)} を表示">
             <div class="music-album-coverwrap">
                 ${cover}
                 ${badge}
-                <div class="music-album-play" data-album-action="play">
-                    <span class="music-album-play-btn"><span class="material-icons">play_arrow</span></span>
+                <div class="music-album-play">
+                    <button type="button" class="music-album-play-btn" data-album-action="play" aria-label="${escapeAttr(cd.title)}を再生">
+                        <span class="material-icons">play_arrow</span>
+                    </button>
                 </div>
             </div>
             <div class="music-album-name">${escapeHtml(cd.title)}</div>
@@ -83,10 +85,10 @@ musicGrid.addEventListener("click", (e) => {
             confirmDeletePlaylist(playlistId).catch((err) => console.error("deletePlaylist failed:", err));
             return;
         }
-        openPlaylist(playlistId);
+        openPlaylist(playlistId, Boolean(e.target.closest(".music-album-play-btn")));
         return;
     }
-    const play = Boolean(e.target.closest("[data-album-action=\"play\"]"));
+    const play = Boolean(e.target.closest(".music-album-play-btn"));
     openAlbum(parseInt(card.dataset.cdId, 10), play);
 });
 musicGrid.addEventListener("keydown", (e) => {

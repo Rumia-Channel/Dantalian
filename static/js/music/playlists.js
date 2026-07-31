@@ -26,12 +26,14 @@ function renderPlaylistCard(playlist) {
         : "<div class=\"music-album-coverfallback\"><span class=\"material-icons\">queue_music</span></div>";
     const trackCount = (playlist.tracks || []).filter((entry) => entry.track && entry.track.file_hash).length;
     return `
-    <div class="music-album music-playlist" data-playlist-id="${playlist.id}" tabindex="0" role="button" aria-label="${escapeAttr(playlist.name)} を再生">
+    <div class="music-album music-playlist" data-playlist-id="${playlist.id}" tabindex="0" role="button" aria-label="${escapeAttr(playlist.name)} を表示">
         <div class="music-album-coverwrap">
             ${cover}
             <span class="music-album-badge music-album-badge--playlist">PL</span>
-            <div class="music-album-play" data-album-action="play">
-                <span class="music-album-play-btn"><span class="material-icons">play_arrow</span></span>
+            <div class="music-album-play">
+                <button type="button" class="music-album-play-btn" data-album-action="play" aria-label="${escapeAttr(playlist.name)}を再生">
+                    <span class="material-icons">play_arrow</span>
+                </button>
             </div>
             <button type="button" class="music-playlist-delete" data-playlist-action="delete" aria-label="${escapeAttr(playlist.name)}を削除" title="プレイリストを削除">
                 <span class="material-icons">delete</span>
@@ -251,7 +253,7 @@ async function openPlaylistPicker({ trackIds, defaultCoverCdId = null } = {}) {
     modal.querySelector("[data-playlist-picker-name]").focus();
 }
 
-function openPlaylist(id) {
+function openPlaylist(id, autoplay = false) {
     const playlist = allPlaylists.find((item) => item.id === Number(id));
     if (!playlist || !window.musicPlayer) return;
     const playlistEntries = (playlist.tracks || [])
@@ -278,5 +280,6 @@ function openPlaylist(id) {
         album: playlistAlbum,
         sourceAlbum: entry.cd,
     }));
-    window.musicPlayer.openQueue(entries, 0);
+    if (autoplay) window.musicPlayer.openQueue(entries, 0);
+    else window.musicPlayer.openQueuePreview(entries, 0);
 }

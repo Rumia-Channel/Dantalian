@@ -133,6 +133,7 @@
     box-shadow: 0 0.4rem 1.2rem rgba(79, 140, 255, 0.45);
     transform: scale(0.8);
     transition: transform 0.22s ease;
+    cursor: pointer;
 }
 
 .music-album:hover .music-album-play-btn {

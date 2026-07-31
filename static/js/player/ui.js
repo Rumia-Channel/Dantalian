@@ -699,6 +699,19 @@ function createPlayerUI(rootEl) {
         return true;
     }
 
+    function browseExternalQueue(entries, startIndex = 0) {
+        const playable = (entries || []).filter((entry) => entry && entry.track && entry.track.file_hash && entry.album);
+        if (playable.length === 0) return false;
+        const index = Math.min(Math.max(Number(startIndex) || 0, 0), playable.length - 1);
+        const first = playable[index];
+        viewCd = first.album;
+        viewTrackId = first.track.id;
+        viewMode = computeViewMode();
+        renderView();
+        renderQueue();
+        return true;
+    }
+
     function viewStepTrack(delta) {
         if (!viewCd) return;
         const list = playableTracks(viewCd);
@@ -927,6 +940,10 @@ function createPlayerUI(rootEl) {
         setAlbums(list) { albums = list || []; },
         openQueue(entries, startIndex) {
             if (!startExternalQueue(entries, startIndex)) return;
+            api.show();
+        },
+        openQueuePreview(entries, startIndex) {
+            if (!browseExternalQueue(entries, startIndex)) return;
             api.show();
         },
         // autoplay=false: 閲覧/予約のみ (自動再生しない)。true: 即再生。
