@@ -340,6 +340,21 @@ pub async fn update_author(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn delete_author(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, StatusCode> {
+    if state
+        .db
+        .delete_author(id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 pub async fn list_authors(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<crate::db::Author>>, StatusCode> {

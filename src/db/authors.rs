@@ -73,6 +73,12 @@ impl Db {
         Ok(affected > 0)
     }
 
+    pub fn delete_author(&self, id: i64) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let affected = conn.execute("DELETE FROM authors WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
+
     pub fn create_author(
         &self,
         name: &str,
@@ -99,5 +105,64 @@ impl Db {
             conn.prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")?;
         let rows = stmt.query_map([], Self::row_to_author)?;
         rows.collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deleting_author_removes_relationships_but_keeps_tracks() {
+        let db = Db::new(":memory:").expect("database");
+        let author = db.create_author("Test artist", None, None).expect("author");
+        let cd = db
+            .insert_cd(&NewCd {
+                jan: None,
+                title: "Test CD".to_string(),
+                artist: None,
+                publisher: None,
+                label: None,
+                catalog_number: None,
+                publish_date: None,
+                cover_url: None,
+                description: None,
+                disc_count: Some(1),
+                volume: None,
+                tracks: None,
+                parent_book_id: None,
+                media_type: Some("cd".to_string()),
+                series_id: None,
+            })
+            .expect("CD");
+        let track = db
+            .insert_track_for_cd(
+                cd.id,
+                &NewTrack {
+                    disc_number: Some(1),
+                    track_number: 1,
+                    title: "Test track".to_string(),
+                    duration: None,
+                },
+            )
+            .expect("track");
+        db.add_cd_author(cd.id, author.id).expect("CD author");
+        db.add_track_author(track.id, author.id)
+            .expect("track author");
+
+        assert!(db.delete_author(author.id).expect("delete author"));
+        assert!(
+            db.get_author_by_id(author.id)
+                .expect("author read")
+                .is_none()
+        );
+        assert!(db.get_cd_authors(cd.id).expect("CD authors").is_empty());
+        assert!(
+            db.list_track_authors(track.id)
+                .expect("track authors")
+                .is_empty()
+        );
+        assert!(db.find_track_by_id(track.id).expect("track read").is_some());
+        assert!(!db.delete_author(author.id).expect("delete missing author"));
     }
 }

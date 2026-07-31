@@ -79,6 +79,7 @@ function renderAuthorEdit(id) {
             </div>
             <div class="edit-actions">
                 <button type="button" class="btn btn-md btn-ghost" onclick="renderAuthorList()">一覧に戻る</button>
+                <button type="button" class="btn btn-md btn-outline-danger" onclick="deleteAuthor(${author.id})">削除</button>
                 <button type="submit" class="btn btn-md btn-primary">保存</button>
             </div>
         </form>
@@ -127,4 +128,27 @@ async function saveAuthor(e, authorId) {
             renderAuthorEdit(authorId);
         }
     } catch {}
+}
+
+async function deleteAuthor(authorId) {
+    const author = authors.find((item) => item.id === authorId);
+    if (!author) return;
+    const ok = await showConfirm({
+        message: `アーティスト「${author.name}」を削除しますか？\n書籍・CD・曲との関連付けも解除されます。`,
+        okLabel: "削除",
+    });
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/authors/${authorId}`, { method: "DELETE" });
+        if (res.ok) {
+            await loadAuthors();
+            renderAuthorList();
+        } else {
+            const body = await res.json().catch(() => ({}));
+            alert(`アーティストの削除に失敗しました (HTTP ${res.status})${body.error ? `: ${body.error}` : ""}`);
+        }
+    } catch {
+        alert("アーティストの削除中に通信エラーが発生しました");
+    }
 }
