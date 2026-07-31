@@ -710,8 +710,20 @@
     font-variant-numeric: tabular-nums;
 }
 
-.detail-track-play {
+.detail-track-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+
+.detail-track-play,
+.detail-track-download {
     padding: 0.2rem 0.3rem;
+}
+
+.detail-track-download {
+    text-decoration: none;
 }
 
 .detail-track-has-audio:hover {

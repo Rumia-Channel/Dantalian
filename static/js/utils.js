@@ -5,6 +5,7 @@ let allGrandSeries = [];
 let allStorageLocations = [];
 let allLabels = [];
 let previewAudio = null;
+let previewAudioButton = null;
 const dataLoadErrors = {};
 
 // CD/オーディオブックを一覧・音楽ページ・プレイヤーで同じアーティスト名に揃える。
@@ -377,16 +378,41 @@ function showConfirm(opts) {
     });
 }
 
-function stopPreviewAudio() {
-    if (!previewAudio) return;
-    previewAudio.pause();
-    previewAudio.removeAttribute("src");
-    previewAudio.load();
-    previewAudio.remove();
-    previewAudio = null;
+function setPreviewButtonState(button, playing) {
+    if (!button) return;
+    const icon = button.querySelector(".material-icons");
+    if (icon) icon.textContent = playing ? "pause" : "play_arrow";
+    button.setAttribute("aria-label", playing ? "一時停止" : "再生");
+    button.title = playing ? "一時停止" : "再生";
 }
 
-function playPreviewAudio(url, title) {
+function stopPreviewAudio() {
+    const player = previewAudio;
+    const button = previewAudioButton;
+    previewAudio = null;
+    previewAudioButton = null;
+    if (player) {
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+        player.remove();
+    }
+    setPreviewButtonState(button, false);
+}
+
+function playPreviewAudio(url, title, button = null) {
+    if (previewAudio && previewAudio.dataset.previewUrl === url) {
+        if (previewAudio.paused) {
+            const playPromise = previewAudio.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => {});
+            }
+        } else {
+            previewAudio.pause();
+        }
+        return;
+    }
+
     stopPreviewAudio();
     const persistentPlayer = document.getElementById("dantalian-audio-player");
     if (persistentPlayer) {
@@ -399,7 +425,14 @@ function playPreviewAudio(url, title) {
     player.hidden = true;
     player.setAttribute("aria-hidden", "true");
     player.setAttribute("data-title", title || "");
+    player.dataset.previewUrl = url;
     player.src = url;
+    player.addEventListener("play", () => {
+        if (previewAudio === player) setPreviewButtonState(button, true);
+    });
+    player.addEventListener("pause", () => {
+        if (previewAudio === player) setPreviewButtonState(button, false);
+    });
     player.addEventListener("ended", () => {
         if (previewAudio === player) stopPreviewAudio();
     }, { once: true });
@@ -408,6 +441,7 @@ function playPreviewAudio(url, title) {
     }, { once: true });
     document.body.appendChild(player);
     previewAudio = player;
+    previewAudioButton = button;
 
     const playPromise = player.play();
     if (playPromise && typeof playPromise.catch === "function") {
