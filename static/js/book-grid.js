@@ -329,6 +329,30 @@ function renderBookCard(item) {
     </div>`;
 }
 
+function downloadCdOriginals(cdId) {
+    const cd = (allCds || []).find((item) => item.id === cdId);
+    const tracks = (cd?.tracks || []).filter((track) => track.file_hash);
+    if (tracks.length === 0) return;
+
+    const triggerDownload = (track) => {
+        const link = document.createElement("a");
+        link.href = `/audio/${encodeURIComponent(track.file_hash)}`;
+        link.download = track.file_name || `${cd.title}-${String(track.track_number).padStart(2, "0")}`;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        window.setTimeout(() => link.remove(), 1000);
+    };
+
+    tracks.forEach((track, index) => {
+        if (index === 0) {
+            triggerDownload(track);
+        } else {
+            window.setTimeout(() => triggerDownload(track), index * 200);
+        }
+    });
+}
+
 function renderCdCard(item) {
     const mediaType = item.media_type || "cd";
     const mediaBadges = { cd: "CD", audiobook: "AB" };
@@ -373,6 +397,19 @@ function renderCdCard(item) {
         subParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
     }
 
+    const hasAudio = tracks.some((track) => track.file_hash);
+    const actionsHtml = hasAudio ? `
+            <div class="cd-card-actions">
+                <button type="button" class="cd-card-action cd-card-action--play" onclick="event.stopPropagation();openCdPlayer(${item.originalId})">
+                    <span class="material-icons" aria-hidden="true">play_arrow</span>
+                    <span>再生</span>
+                </button>
+                <button type="button" class="cd-card-action cd-card-action--download" onclick="event.stopPropagation();downloadCdOriginals(${item.originalId})" title="原音トラックをダウンロード">
+                    <span class="material-icons" aria-hidden="true">download</span>
+                    <span>DL</span>
+                </button>
+            </div>` : "";
+
     return `
     <div class="book-card cd-card-v" onclick="showCdDetail(${item.originalId})">
         ${
@@ -385,6 +422,7 @@ function renderCdCard(item) {
             <div class="book-title">${escapeHtml(item.title)}</div>
             ${subParts.length > 0 ? `<div class="book-author">${subParts.join(" / ")}</div>` : ""}
             ${tracksHtml}
+            ${actionsHtml}
         </div>
     </div>`;
 }

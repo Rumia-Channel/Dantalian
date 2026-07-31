@@ -358,3 +358,44 @@
     color: var(--color-text-label);
     font-style: italic;
 }
+
+.cd-card-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.7rem;
+    padding-top: 0.55rem;
+    border-top: 0.0625rem solid var(--color-border);
+}
+
+.cd-card-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    min-height: 1.9rem;
+    padding: 0.25rem 0.6rem;
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cd-card-action:hover {
+    background: var(--color-primary-alpha);
+    border-color: var(--color-primary);
+    color: var(--color-primary-hover);
+}
+
+.cd-card-action .material-icons {
+    font-size: 0.95rem;
+}
+
+.cd-card-action--download:hover {
+    background: var(--color-success-alpha);
+    border-color: var(--color-success);
+    color: var(--color-success-hover);
+}

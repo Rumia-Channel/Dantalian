@@ -588,7 +588,17 @@ fn format_command_error(command: &str, output: &std::process::Output) -> String 
 
 #[cfg(test)]
 mod tests {
-    use super::{is_safe_hash, normalize_extension, opus_sample_rate};
+    use super::{AudioDataSaverConfig, is_safe_hash, normalize_extension, opus_sample_rate};
+    use crate::db::Db;
+
+    #[test]
+    fn data_saver_is_disabled_when_setting_is_missing() {
+        let db = Db::new(":memory:").expect("database");
+        let config = AudioDataSaverConfig::load(&db);
+
+        assert!(!config.enabled);
+        assert!(!config.applies_to("wav"));
+    }
 
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
