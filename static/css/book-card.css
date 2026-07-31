@@ -330,10 +330,49 @@
 }
 
 .cd-card-track {
-    display: block;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.cd-card-track-copy {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cd-card-track-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.cd-card-track-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.cd-card-track-action:hover {
+    background: var(--color-primary-alpha);
+    color: var(--color-primary-hover);
+}
+
+.cd-card-track-action .material-icons {
+    font-size: 0.85rem;
 }
 
 .cd-card-track-has-audio {

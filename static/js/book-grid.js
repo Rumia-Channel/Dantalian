@@ -373,7 +373,22 @@ function renderCdCard(item) {
 
         const lines = shown.map((t) => {
             const hasAudio = t.file_hash ? ' cd-card-track-has-audio' : '';
-            return `<span class="cd-card-track${hasAudio}">${String(t.track_number).padStart(2, "0")}. ${escapeHtml(t.title)}${t.duration ? ` <span class="cd-card-duration">${escapeHtml(t.duration)}</span>` : ""}</span>`;
+            const trackNumber = String(t.track_number).padStart(2, "0");
+            const fallbackFileName = `${item.title}-${trackNumber}`;
+            const audioUrl = t.file_hash ? `/audio/${encodeURIComponent(t.file_hash)}` : "";
+            const audioActions = t.file_hash ? `
+                    <span class="cd-card-track-actions">
+                        <button type="button" class="cd-card-track-action" onclick="event.stopPropagation();playAudio('${audioUrl}','${escapeJs(t.title)}')" aria-label="${escapeAttr(t.title)}を再生">
+                            <span class="material-icons" aria-hidden="true">play_arrow</span>
+                        </button>
+                        <a class="cd-card-track-action" href="${audioUrl}" download="${escapeAttr(t.file_name || fallbackFileName)}" onclick="event.stopPropagation()" aria-label="${escapeAttr(t.title)}をダウンロード">
+                            <span class="material-icons" aria-hidden="true">download</span>
+                        </a>
+                    </span>` : "";
+            return `<span class="cd-card-track${hasAudio}">
+                <span class="cd-card-track-copy">${trackNumber}. ${escapeHtml(t.title)}${t.duration ? ` <span class="cd-card-duration">${escapeHtml(t.duration)}</span>` : ""}</span>
+                ${audioActions}
+            </span>`;
         }).join("");
 
         if (lines) {
@@ -404,9 +419,9 @@ function renderCdCard(item) {
                     <span class="material-icons" aria-hidden="true">play_arrow</span>
                     <span>再生</span>
                 </button>
-                <button type="button" class="cd-card-action cd-card-action--download" onclick="event.stopPropagation();downloadCdOriginals(${item.originalId})" title="原音トラックをダウンロード">
+                <button type="button" class="cd-card-action cd-card-action--download" onclick="event.stopPropagation();downloadCdOriginals(${item.originalId})" title="CD内の原音トラックをまとめてダウンロード">
                     <span class="material-icons" aria-hidden="true">download</span>
-                    <span>DL</span>
+                    <span>CD DL</span>
                 </button>
             </div>` : "";
 
