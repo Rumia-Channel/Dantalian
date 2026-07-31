@@ -39,6 +39,77 @@ function escapeJs(text) {
         .replace(/\u2029/g, "\\u2029");
 }
 
+function normalizePublishDateInput(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+
+    const ascii = raw
+        .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+        .replace(/[－／．]/g, (ch) => ({ "－": "-", "／": "/", "．": "." })[ch]);
+    let parts;
+    if (/^[0-9]+$/.test(ascii)) {
+        if (ascii.length === 4) parts = [ascii.slice(0, 4)];
+        else if (ascii.length === 6) parts = [ascii.slice(0, 4), ascii.slice(4, 6)];
+        else if (ascii.length === 8) parts = [ascii.slice(0, 4), ascii.slice(4, 6), ascii.slice(6, 8)];
+        else return "";
+    } else {
+        parts = ascii
+            .replace(/年/g, "-")
+            .replace(/月/g, "-")
+            .replace(/日/g, "")
+            .split(/[-/.]/)
+            .filter(Boolean);
+    }
+
+    const year = Number(parts[0]);
+    if (parts.length < 1 || !/^\d{4}$/.test(parts[0]) || year < 1900 || year > 2999) return "";
+    if (parts.length === 1) return `${String(year).padStart(4, "0")}-NN-NN`;
+
+    const monthText = String(parts[1]).toUpperCase();
+    if (parts.length === 2) {
+        if (monthText === "NN") return `${String(year).padStart(4, "0")}-NN-NN`;
+        const month = Number(monthText);
+        return month >= 1 && month <= 12
+            ? `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-NN`
+            : "";
+    }
+    if (parts.length !== 3) return "";
+
+    const dayText = String(parts[2]).toUpperCase();
+    if (monthText === "NN" && dayText === "NN") return `${String(year).padStart(4, "0")}-NN-NN`;
+    const month = Number(monthText);
+    if (month < 1 || month > 12) return "";
+    if (dayText === "NN") return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-NN`;
+
+    const day = Number(dayText);
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return day >= 1 && day <= daysInMonth
+        ? `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        : "";
+}
+
+function bindPublishDateInputs(root = document) {
+    root.querySelectorAll("input[data-publish-date]").forEach((input) => {
+        const normalize = () => {
+            const raw = input.value.trim();
+            if (!raw) {
+                input.setCustomValidity("");
+                return;
+            }
+            const normalized = normalizePublishDateInput(raw);
+            if (normalized) {
+                input.value = normalized;
+                input.setCustomValidity("");
+            } else {
+                input.setCustomValidity("YYYY-MM-DD または YYYY-MM-NN 形式で入力してください");
+            }
+        };
+        normalize();
+        input.addEventListener("input", () => input.setCustomValidity(""));
+        input.addEventListener("blur", normalize);
+    });
+}
+
 async function loadSeries() {
     try {
         const res = await fetch("/api/series");

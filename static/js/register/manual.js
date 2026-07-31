@@ -54,7 +54,7 @@ async function renderManualForm() {
                 </div>
                 <div class="edit-field">
                     <label>出版日 / 発行日</label>
-                    <input type="text" name="publish_date">
+                <input type="text" name="publish_date" data-publish-date placeholder="YYYY-MM-DD / YYYY-MM-NN">
                 </div>
             </div>
             <div class="edit-row">
@@ -239,7 +239,7 @@ async function renderManualForm() {
                 </div>
                 <div class="edit-field">
                     <label>発売日</label>
-                    <input type="text" name="cd_publish_date">
+                    <input type="text" name="cd_publish_date" data-publish-date placeholder="YYYY-MM-DD / YYYY-MM-NN">
                 </div>
             </div>
             <div class="edit-row">
@@ -342,6 +342,8 @@ async function renderManualForm() {
             </div>
         </form>
     `;
+
+    bindPublishDateInputs(container);
 
     document.getElementById("manual-media-type").addEventListener("change", function () {
         const bookFields = document.getElementById("manual-book-fields");

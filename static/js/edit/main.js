@@ -97,7 +97,7 @@ function renderBookEdit(id) {
                 </div>
                 <div class="edit-field">
                     <label>出版日 / 発行日</label>
-                    <input type="text" name="publish_date" value="${escapeAttr(book.publish_date || '')}">
+                    <input type="text" name="publish_date" data-publish-date placeholder="YYYY-MM-DD / YYYY-MM-NN" value="${escapeAttr(book.publish_date || '')}">
                 </div>
             </div>
             <div class="edit-row">
@@ -363,6 +363,8 @@ function renderBookEdit(id) {
     `;
 
     const form = document.getElementById("edit-form");
+
+    bindPublishDateInputs(editContent);
 
     const seriesOpts = allSeries.map((s) => ({ value: s.id, label: s.name }));
     createSearchableSelect(document.getElementById("edit-series-select-container"), {
@@ -690,7 +692,7 @@ async function renderCdEdit(cdId) {
             <div class="edit-row">
                 <div class="edit-field">
                     <label>発売日</label>
-                    <input type="text" name="publish_date" value="${escapeAttr(cd.publish_date || '')}">
+                    <input type="text" name="publish_date" data-publish-date placeholder="YYYY-MM-DD / YYYY-MM-NN" value="${escapeAttr(cd.publish_date || '')}">
                 </div>
                 <div class="edit-field">
                     <label>巻</label>
@@ -756,6 +758,8 @@ async function renderCdEdit(cdId) {
             </div>
         </form>
     `;
+
+    bindPublishDateInputs(editContent);
 
     const seriesOpts = allSeries.map((s) => ({ value: s.id, label: s.name }));
     editCdSeriesSelect = createSearchableSelect(document.getElementById("edit-cd-series-select-container"), {
