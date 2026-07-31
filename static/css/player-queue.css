@@ -115,6 +115,18 @@
     color: var(--player-accent);
 }
 
+.player-cache-btn.is-cached {
+    border-color: var(--color-danger);
+    background: var(--color-danger-alpha);
+    color: var(--color-danger-hover);
+}
+
+.player-cache-btn.is-cached:hover {
+    border-color: var(--color-danger-hover);
+    background: var(--color-danger);
+    color: #fff;
+}
+
 .player-track {
     grid-template-columns: 2.4rem minmax(0, 1fr) auto 1.8rem 1.8rem;
 }

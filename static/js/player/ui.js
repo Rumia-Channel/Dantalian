@@ -417,26 +417,33 @@ function createPlayerUI(rootEl) {
         const tracks = cd ? playableTracks(cd) : [];
         if (playlist || tracks.length === 0 || typeof getAudioCacheStatus !== "function" || typeof indexedDB === "undefined") {
             button.hidden = true;
+            button.classList.remove("is-cached");
             return;
         }
 
         button.hidden = false;
         button.disabled = true;
+        button.classList.remove("is-cached");
+        button.setAttribute("aria-busy", "true");
+        el["cache-album-label"].textContent = "キャッシュ状況を確認中…";
         try {
             const status = await getAudioCacheStatus(tracks);
             if (requestId !== updateAudioCacheButton.requestId || viewCd !== cd) return;
             const label = isAudiobook(cd) ? "オーディオブック" : "CD";
             const allCached = status.allCached;
+            button.classList.toggle("is-cached", allCached);
             el["cache-album-icon"].textContent = allCached ? "delete_sweep" : "download_for_offline";
             el["cache-album-label"].textContent = allCached
                 ? "キャッシュを削除"
                 : `キャッシュに保存 (${status.cached}/${status.total})`;
             button.disabled = false;
+            button.removeAttribute("aria-busy");
             button.setAttribute("aria-label", allCached
                 ? `この${label}のキャッシュを削除`
                 : `この${label}をキャッシュに保存`);
             button.title = button.getAttribute("aria-label");
         } catch {
+            button.removeAttribute("aria-busy");
             button.hidden = true;
         }
     }
@@ -449,25 +456,30 @@ function createPlayerUI(rootEl) {
 
         const button = el["cache-album-button"];
         if (button.disabled) return;
-        const status = await getAudioCacheStatus(tracks);
-        if (viewCd !== cd) return;
-        const mediaLabel = isAudiobook(cd) ? "オーディオブック" : "CD";
-        const isRemoving = status.allCached;
-        const message = isRemoving
-            ? `${mediaLabel}「${cd.title}」の端末キャッシュを削除しますか？`
-            : `${mediaLabel}「${cd.title}」の${status.total}曲をこの端末に保存しますか？\nブラウザの容量を使用します。`;
-        const confirmed = typeof showConfirm === "function"
-            ? await showConfirm({ message, okLabel: isRemoving ? "削除" : "保存" })
-            : window.confirm(message);
-        if (!confirmed || viewCd !== cd) return;
-
         button.disabled = true;
+        button.setAttribute("aria-busy", "true");
         try {
+            const status = await getAudioCacheStatus(tracks);
+            if (viewCd !== cd) return;
+            const mediaLabel = isAudiobook(cd) ? "オーディオブック" : "CD";
+            const isRemoving = status.allCached;
+            const message = isRemoving
+                ? `${mediaLabel}「${cd.title}」の端末キャッシュを削除しますか？`
+                : `${mediaLabel}「${cd.title}」の${status.total}曲をこの端末に保存しますか？\nブラウザの容量を使用します。`;
+            const confirmed = typeof showConfirm === "function"
+                ? await showConfirm({ message, okLabel: isRemoving ? "削除" : "保存" })
+                : window.confirm(message);
+            if (!confirmed || viewCd !== cd) return;
+
             if (isRemoving) {
                 await deleteAudioCacheAlbum(cd);
             } else {
-                const result = await cacheAudioAlbum(cd, ({ index, total }) => {
-                    if (viewCd === cd) el["cache-album-label"].textContent = `保存中 ${index}/${total}`;
+                const result = await cacheAudioAlbum(cd, ({ index, total, phase }) => {
+                    if (viewCd === cd) {
+                        el["cache-album-label"].textContent = phase === "start"
+                            ? `保存中 ${index}/${total}`
+                            : `保存済み ${index}/${total}`;
+                    }
                 });
                 if (result.failed.length > 0) {
                     window.alert(`${result.succeeded.length}曲を保存しました。${result.failed.length}曲は保存できませんでした。`);
@@ -476,7 +488,8 @@ function createPlayerUI(rootEl) {
         } catch (error) {
             window.alert(error?.message || "音声キャッシュの処理に失敗しました");
         } finally {
-            if (viewCd === cd) updateAudioCacheButton(cd);
+            button.removeAttribute("aria-busy");
+            if (viewCd === cd) await updateAudioCacheButton(cd);
         }
     }
 
