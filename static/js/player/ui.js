@@ -187,6 +187,7 @@ function createPlayerUI(rootEl) {
     let metadataRequestId = 0;
     const metadataCache = new Map();
     const AUDIOBOOK_PROGRESS_KEY = "dantalian_audiobook_progress_v1";
+    const PLAYER_AUDIO_SETTINGS_KEY = "dantalian_player_audio_settings_v1";
     let audiobookProgress = loadAudiobookProgress();
     let pendingAudiobookResume = null;
     let lastProgressSaveAt = 0;
@@ -203,6 +204,20 @@ function createPlayerUI(rootEl) {
     function firstPlayable(cd) { return playableTracks(cd)[0] || null; }
     function trackById(cd, id) { return (cd.tracks || []).find((t) => t.id === id) || null; }
     function isAudiobook(cd) { return !!cd && cd.media_type === "audiobook"; }
+    function loadPlayerAudioSettings() {
+        const defaults = { volume: 1, muted: false };
+        try {
+            if (typeof localStorage === "undefined") return defaults;
+            const value = JSON.parse(localStorage.getItem(PLAYER_AUDIO_SETTINGS_KEY) || "{}");
+            const volume = Number(value && value.volume);
+            return {
+                volume: Number.isFinite(volume) ? Math.min(Math.max(volume, 0), 1) : defaults.volume,
+                muted: !!(value && value.muted),
+            };
+        } catch {
+            return defaults;
+        }
+    }
     function loadAudiobookProgress() {
         try {
             if (typeof localStorage === "undefined") return {};
@@ -766,7 +781,26 @@ function createPlayerUI(rootEl) {
         const muted = engine.muted || engine.volume === 0;
         el["vol-icon"].textContent = muted ? "volume_off" : (engine.volume < 0.5 ? "volume_down" : "volume_up");
     }
-    el.volume.addEventListener("input", () => { engine.setVolume(el.volume.value / 100); updateVolumeIcon(); });
+    function savePlayerAudioSettings() {
+        try {
+            if (typeof localStorage !== "undefined") {
+                localStorage.setItem(PLAYER_AUDIO_SETTINGS_KEY, JSON.stringify({
+                    volume: engine.volume,
+                    muted: engine.muted,
+                }));
+            }
+        } catch {}
+    }
+    const savedAudioSettings = loadPlayerAudioSettings();
+    engine.setVolume(savedAudioSettings.volume);
+    if (savedAudioSettings.muted !== engine.muted) engine.toggleMute();
+    el.volume.value = String(Math.round(savedAudioSettings.volume * 100));
+    updateVolumeIcon();
+    el.volume.addEventListener("input", () => {
+        engine.setVolume(Number(el.volume.value) / 100);
+        savePlayerAudioSettings();
+        updateVolumeIcon();
+    });
 
     // ---------- エンジンイベント ----------
     engine.on("trackchange", (t) => {
@@ -915,7 +949,7 @@ function createPlayerUI(rootEl) {
         }
         else if (act === "next-album") navAlbum(1);
         else if (act === "prev-album") navAlbum(-1);
-        else if (act === "mute") { engine.toggleMute(); updateVolumeIcon(); }
+        else if (act === "mute") { engine.toggleMute(); savePlayerAudioSettings(); updateVolumeIcon(); }
         else if (act === "toggle-tracklist") {
             const wrap = btn.closest(".player-tracklist-wrap");
             const collapsed = wrap.classList.toggle("collapsed");
