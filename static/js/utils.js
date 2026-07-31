@@ -1,6 +1,5 @@
 let allBooks = [];
 let allCds = [];
-let allLibraryPlaylists = [];
 let allSeries = [];
 let allGrandSeries = [];
 let allStorageLocations = [];
@@ -76,35 +75,6 @@ async function loadCds() {
     } catch (err) {
         console.error("loadCds failed:", err);
         allCds = [];
-    }
-}
-
-async function loadLibraryPlaylists() {
-    try {
-        const res = await fetch("/api/playlists");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        allLibraryPlaylists = await res.json();
-    } catch (err) {
-        console.error("loadLibraryPlaylists failed:", err);
-        allLibraryPlaylists = [];
-    }
-}
-
-async function deleteLibraryPlaylist(id) {
-    const playlist = allLibraryPlaylists.find((item) => item.id === Number(id));
-    if (!playlist) return;
-    const confirmed = await showConfirm({
-        message: `プレイリスト「${playlist.name}」を削除しますか？`,
-        okLabel: "削除",
-    });
-    if (!confirmed) return;
-    try {
-        const res = await fetch(`/api/playlists/${playlist.id}`, { method: "DELETE" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await loadLibraryPlaylists();
-        if (typeof renderItems === "function") renderItems();
-    } catch (err) {
-        window.alert(err.message || "プレイリストの削除に失敗しました");
     }
 }
 

@@ -10,6 +10,5 @@ const detailContent = document.getElementById("detail-content");
     await loadLabels();
     await loadBooks();
     await loadCds();
-    await loadLibraryPlaylists();
     renderItems();
 })();
