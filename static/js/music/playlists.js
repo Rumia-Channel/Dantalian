@@ -1,4 +1,5 @@
 let allPlaylists = [];
+let playlistLoadError = null;
 
 function getPlaylists() {
     return allPlaylists;
@@ -9,9 +10,13 @@ async function loadPlaylists() {
         const res = await fetch("/api/playlists");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allPlaylists = await res.json();
+        playlistLoadError = null;
+        return true;
     } catch (err) {
         console.error("loadPlaylists failed:", err);
         allPlaylists = [];
+        playlistLoadError = err instanceof Error ? err.message : String(err);
+        return false;
     }
 }
 

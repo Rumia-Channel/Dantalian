@@ -32,6 +32,15 @@ const SETTINGS_KEYS = [
     "media_sync.s3_prefix",
 ];
 
+const SECRET_SETTING_KEYS = new Set([
+    "discogs_token",
+    "backup.webdav_pass",
+    "backup.s3_access_key",
+    "backup.s3_secret_key",
+    "media_sync.s3_access_key",
+    "media_sync.s3_secret_key",
+]);
+
 const TZ_OPTIONS = [
     { value: "Asia/Tokyo", label: "Asia/Tokyo (UTC+9)" },
     { value: "Asia/Seoul", label: "Asia/Seoul (UTC+9)" },
@@ -49,13 +58,11 @@ const TZ_OPTIONS = [
 ];
 
 async function loadSettings() {
-    try {
-        const res = await fetch("/api/settings");
-        if (!res.ok) return {};
-        return await res.json();
-    } catch {
-        return {};
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) {
+        throw new Error(`設定の読み込みに失敗しました (HTTP ${res.status})`);
     }
+    return await res.json();
 }
 
 async function saveSettings(settings) {
@@ -71,13 +78,20 @@ async function saveSettings(settings) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
-        if (res.ok) {
-            alert("設定を保存しました。");
-            return true;
+        if (!res.ok) {
+            let message = `HTTP ${res.status}`;
+            try {
+                const error = await res.json();
+                if (error?.error) message = error.error;
+            } catch {}
+            throw new Error(message);
         }
-    } catch {}
-    alert("設定の保存に失敗しました。");
-    return false;
+        alert("設定を保存しました。");
+        return true;
+    } catch (error) {
+        alert(`設定の保存に失敗しました。${error?.message ? `\n${error.message}` : ""}`);
+        return false;
+    }
 }
 
 function getValue(settings, key, defaultVal) {
@@ -87,10 +101,37 @@ function getValue(settings, key, defaultVal) {
     return defaultVal !== undefined ? defaultVal : "";
 }
 
+function isSettingConfigured(settings, key) {
+    return settings[`${key}.__configured`] === "true";
+}
+
+function secretInput(settings, key, id, type = "password") {
+    const configured = isSettingConfigured(settings, key);
+    const current = settings[key] || "";
+    const placeholder = current ? "" : (configured ? "設定済み（変更時のみ入力）" : "未設定");
+    return `<input type="${type}" id="${id}" value="${escapeAttr(current)}" class="form-input" placeholder="${placeholder}" autocomplete="new-password">`;
+}
+
+function addSecretSetting(settings, key, id) {
+    if (!SECRET_SETTING_KEYS.has(key)) return;
+    const value = document.getElementById(id)?.value || "";
+    if (value.trim() !== "") settings[key] = value;
+}
+
 async function renderSettingsForm() {
-    const settings = await loadSettings();
     const container = document.getElementById("settings-form");
     if (!container) return;
+    let settings;
+    try {
+        settings = await loadSettings();
+    } catch (error) {
+        container.innerHTML = `
+            <div class="load-error" role="alert">
+                <p>${escapeHtml(error?.message || "設定を読み込めませんでした")}</p>
+                <button type="button" class="btn btn-secondary" onclick="renderSettingsForm()">再読み込み</button>
+            </div>`;
+        return;
+    }
 
     const enabled = getValue(settings, "backup.enabled", "false");
     const scheduleTime = getValue(settings, "backup.schedule_time", "");
@@ -135,7 +176,7 @@ async function renderSettingsForm() {
 
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-discogs-token">Discogs Token</label>
-                <input type="password" id="s-discogs-token" value="${escapeAttr(getValue(settings, "discogs_token", ""))}" class="form-input" placeholder="Discogs Personal Access Token">
+                ${secretInput(settings, "discogs_token", "s-discogs-token")}
                 <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);margin-left:0.5rem">CD検索のMusicBrainzフォールバックに使用</span>
             </div>
         </div>
@@ -256,11 +297,11 @@ async function renderSettingsForm() {
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-access-key">アクセスキー</label>
-                <input type="text" id="s-media-sync-s3-access-key" value="${escapeAttr(getValue(settings, "media_sync.s3_access_key", ""))}" class="form-input">
+                ${secretInput(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key", "text")}
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-secret-key">シークレットキー</label>
-                <input type="password" id="s-media-sync-s3-secret-key" value="${escapeAttr(getValue(settings, "media_sync.s3_secret_key", ""))}" class="form-input">
+                ${secretInput(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key")}
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-prefix">プレフィックス</label>
@@ -275,15 +316,34 @@ async function renderSettingsForm() {
             <div id="media-sync-result"></div>
         </div>
 
-        <div class="settings-form-row">
-            <button class="btn btn-primary" onclick="submitSettings()">保存</button>
+        <div class="settings-form-row settings-form-actions">
+            <button class="btn btn-primary" type="button" onclick="submitSettings()">保存</button>
         </div>
     `;
 
     document.getElementById("s-dest-type").addEventListener("change", function () {
+        captureDestinationFields(settings);
+        settings["backup.dest_type"] = this.value;
         const fields = document.getElementById("dest-fields");
         fields.innerHTML = renderDestFields(this.value, settings);
     });
+}
+
+function captureDestinationFields(settings) {
+    const read = (id, key) => {
+        const element = document.getElementById(id);
+        if (element) settings[key] = element.value;
+    };
+    read("s-local-path", "backup.local_path");
+    read("s-webdav-url", "backup.webdav_url");
+    read("s-webdav-user", "backup.webdav_user");
+    read("s-webdav-pass", "backup.webdav_pass");
+    read("s-s3-endpoint", "backup.s3_endpoint");
+    read("s-s3-region", "backup.s3_region");
+    read("s-s3-bucket", "backup.s3_bucket");
+    read("s-s3-access-key", "backup.s3_access_key");
+    read("s-s3-secret-key", "backup.s3_secret_key");
+    read("s-s3-prefix", "backup.s3_prefix");
 }
 
 function renderDestFields(destType, settings) {
@@ -306,7 +366,7 @@ function renderDestFields(destType, settings) {
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-webdav-pass">パスワード</label>
-                    <input type="password" id="s-webdav-pass" value="${escapeAttr(getValue(settings, "backup.webdav_pass", ""))}" class="form-input">
+                    ${secretInput(settings, "backup.webdav_pass", "s-webdav-pass")}
                 </div>`;
         case "s3":
             return `
@@ -324,11 +384,11 @@ function renderDestFields(destType, settings) {
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-access-key">アクセスキー</label>
-                    <input type="text" id="s-s3-access-key" value="${escapeAttr(getValue(settings, "backup.s3_access_key", ""))}" class="form-input">
+                    ${secretInput(settings, "backup.s3_access_key", "s-s3-access-key", "text")}
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-secret-key">シークレットキー</label>
-                    <input type="password" id="s-s3-secret-key" value="${escapeAttr(getValue(settings, "backup.s3_secret_key", ""))}" class="form-input">
+                    ${secretInput(settings, "backup.s3_secret_key", "s-s3-secret-key")}
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-prefix">プレフィックス</label>
@@ -341,7 +401,7 @@ function renderDestFields(destType, settings) {
 
 async function submitSettings() {
     const settings = {};
-    settings["discogs_token"] = document.getElementById("s-discogs-token").value;
+    addSecretSetting(settings, "discogs_token", "s-discogs-token");
     settings["upload.cover_max_mb"] = document.getElementById("s-upload-cover-mb").value;
     settings["upload.audio_max_mb"] = document.getElementById("s-upload-audio-mb").value;
     settings["upload.file_max_mb"] = document.getElementById("s-upload-file-mb").value;
@@ -361,14 +421,14 @@ async function submitSettings() {
         case "webdav":
             settings["backup.webdav_url"] = document.getElementById("s-webdav-url").value;
             settings["backup.webdav_user"] = document.getElementById("s-webdav-user").value;
-            settings["backup.webdav_pass"] = document.getElementById("s-webdav-pass").value;
+            addSecretSetting(settings, "backup.webdav_pass", "s-webdav-pass");
             break;
         case "s3":
             settings["backup.s3_endpoint"] = document.getElementById("s-s3-endpoint").value;
             settings["backup.s3_region"] = document.getElementById("s-s3-region").value;
             settings["backup.s3_bucket"] = document.getElementById("s-s3-bucket").value;
-            settings["backup.s3_access_key"] = document.getElementById("s-s3-access-key").value;
-            settings["backup.s3_secret_key"] = document.getElementById("s-s3-secret-key").value;
+            addSecretSetting(settings, "backup.s3_access_key", "s-s3-access-key");
+            addSecretSetting(settings, "backup.s3_secret_key", "s-s3-secret-key");
             settings["backup.s3_prefix"] = document.getElementById("s-s3-prefix").value;
             break;
     }
@@ -378,7 +438,7 @@ async function submitSettings() {
     if (document.getElementById("s-media-sync-type-images").checked) msTypes.push("images");
     if (document.getElementById("s-media-sync-type-audio").checked) msTypes.push("audio");
     if (document.getElementById("s-media-sync-type-epubs").checked) msTypes.push("epubs");
-    if (msTypes.length === 0) {
+    if (document.getElementById("s-media-sync-enabled").checked && msTypes.length === 0) {
         alert("メディア同期の「対象メディア」が1つも選択されていません。最低1つをチェックしてください。");
         return;
     }
@@ -388,8 +448,8 @@ async function submitSettings() {
     settings["media_sync.s3_endpoint"] = document.getElementById("s-media-sync-s3-endpoint").value;
     settings["media_sync.s3_region"] = document.getElementById("s-media-sync-s3-region").value;
     settings["media_sync.s3_bucket"] = document.getElementById("s-media-sync-s3-bucket").value;
-    settings["media_sync.s3_access_key"] = document.getElementById("s-media-sync-s3-access-key").value;
-    settings["media_sync.s3_secret_key"] = document.getElementById("s-media-sync-s3-secret-key").value;
+    addSecretSetting(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key");
+    addSecretSetting(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key");
     settings["media_sync.s3_prefix"] = document.getElementById("s-media-sync-s3-prefix").value;
 
     await saveSettings(settings);

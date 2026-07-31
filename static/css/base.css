@@ -114,9 +114,32 @@ body {
 }
 
 #app {
-    max-width: var(--content-width, 60rem);
+    max-width: min(var(--content-width, 60rem), 120rem);
     margin: 0 auto;
     padding: 2rem 1rem;
+}
+
+.load-error {
+    display: grid;
+    justify-items: center;
+    gap: 0.65rem;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-surface);
+    border: 0.0625rem solid var(--color-danger-alpha);
+    border-radius: var(--radius-md);
+}
+
+.load-error .material-icons {
+    color: var(--color-danger);
+    font-size: 2rem;
+}
+
+.load-error small {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: var(--color-text-dim);
 }
 
 h1 {

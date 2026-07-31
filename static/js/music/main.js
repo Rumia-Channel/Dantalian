@@ -117,16 +117,38 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
     renderGrid();
 });
 
+function renderMusicLoadError(messages) {
+    musicCount.textContent = "";
+    musicGrid.innerHTML = `
+        <div class="load-error" role="alert">
+            <span class="material-icons" aria-hidden="true">cloud_off</span>
+            <p>音楽ライブラリを読み込めませんでした。登録内容は削除されていません。</p>
+            <small>${escapeHtml(messages.join(" / "))}</small>
+            <button type="button" class="btn btn-secondary" onclick="initMusicPage()">再読み込み</button>
+        </div>`;
+}
+
 // 起動
-(async function init() {
+async function initMusicPage() {
     await loadAudioDataSaverPolicy();
+    let cdsLoaded = true;
     try {
         const res = await fetch("/api/cds");
+        if (!res.ok) throw new Error(`CD一覧: HTTP ${res.status}`);
         allAlbums = await res.json();
-    } catch {
+    } catch (error) {
+        console.error("music cds load failed:", error);
         allAlbums = [];
+        cdsLoaded = false;
     }
-    await loadPlaylists();
+    const playlistsLoaded = await loadPlaylists();
+    if (!cdsLoaded || !playlistsLoaded) {
+        const messages = [];
+        if (!cdsLoaded) messages.push("CD/オーディオブック一覧の取得に失敗");
+        if (!playlistsLoaded) messages.push(`プレイリスト: ${playlistLoadError || "取得に失敗"}`);
+        renderMusicLoadError(messages);
+        return;
+    }
     window.musicAlbums = allAlbums;
     player.setAlbums(playableAlbums());
     renderGrid();
@@ -142,4 +164,6 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
 
     const editPlaylistId = parseInt(new URLSearchParams(location.search).get("edit_playlist"), 10);
     if (!isNaN(editPlaylistId)) openPlaylistEditor(editPlaylistId);
-})();
+}
+
+initMusicPage();

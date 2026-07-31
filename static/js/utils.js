@@ -5,6 +5,20 @@ let allGrandSeries = [];
 let allStorageLocations = [];
 let allLabels = [];
 let previewAudio = null;
+const dataLoadErrors = {};
+
+function recordDataLoadError(key, error) {
+    dataLoadErrors[key] = error instanceof Error ? error.message : String(error || "読み込みに失敗しました");
+    console.error(`${key} load failed:`, error);
+}
+
+function clearDataLoadError(key) {
+    delete dataLoadErrors[key];
+}
+
+function getDataLoadErrors() {
+    return { ...dataLoadErrors };
+}
 
 function escapeHtml(text) {
     if (text == null) return "";
@@ -113,18 +127,28 @@ function bindPublishDateInputs(root = document) {
 async function loadSeries() {
     try {
         const res = await fetch("/api/series");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allSeries = await res.json();
-    } catch {
+        clearDataLoadError("series");
+        return true;
+    } catch (error) {
+        recordDataLoadError("series", error);
         allSeries = [];
+        return false;
     }
 }
 
 async function loadGrandSeries() {
     try {
         const res = await fetch("/api/grand-series");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allGrandSeries = await res.json();
-    } catch {
+        clearDataLoadError("grand-series");
+        return true;
+    } catch (error) {
+        recordDataLoadError("grand-series", error);
         allGrandSeries = [];
+        return false;
     }
 }
 
@@ -133,9 +157,12 @@ async function loadBooks() {
         const res = await fetch("/api/books");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allBooks = await res.json();
+        clearDataLoadError("books");
+        return true;
     } catch (err) {
-        console.error("loadBooks failed:", err);
+        recordDataLoadError("books", err);
         allBooks = [];
+        return false;
     }
 }
 
@@ -144,27 +171,40 @@ async function loadCds() {
         const res = await fetch("/api/cds");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allCds = await res.json();
+        clearDataLoadError("cds");
+        return true;
     } catch (err) {
-        console.error("loadCds failed:", err);
+        recordDataLoadError("cds", err);
         allCds = [];
+        return false;
     }
 }
 
 async function loadStorageLocations() {
     try {
         const res = await fetch("/api/storage-locations");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allStorageLocations = await res.json();
-    } catch {
+        clearDataLoadError("storage-locations");
+        return true;
+    } catch (error) {
+        recordDataLoadError("storage-locations", error);
         allStorageLocations = [];
+        return false;
     }
 }
 
 async function loadLabels() {
     try {
         const res = await fetch("/api/labels");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         allLabels = await res.json();
-    } catch {
+        clearDataLoadError("labels");
+        return true;
+    } catch (error) {
+        recordDataLoadError("labels", error);
         allLabels = [];
+        return false;
     }
 }
 
@@ -227,6 +267,7 @@ function showConfirm(opts) {
     const okLabel = opts.okLabel || "OK";
     const cancelLabel = opts.cancelLabel || "キャンセル";
     const okClass = opts.okClass || "btn btn-sm btn-outline-danger";
+    const previouslyFocused = document.activeElement;
 
     let overlay = document.getElementById("confirm-overlay");
     if (!overlay) {
@@ -234,7 +275,7 @@ function showConfirm(opts) {
         overlay.id = "confirm-overlay";
         overlay.className = "confirm-overlay hidden";
         overlay.innerHTML = `
-            <div class="confirm-box">
+            <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
                 <div class="confirm-message" id="confirm-message"></div>
                 <div class="confirm-actions">
                     <button class="btn btn-sm btn-ghost" id="confirm-cancel"></button>
@@ -261,12 +302,33 @@ function showConfirm(opts) {
             cancelBtn.removeEventListener("click", onCancel);
             overlay.removeEventListener("click", onBg);
             document.removeEventListener("keydown", onKey);
+            if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+                previouslyFocused.focus();
+            }
         }
 
         function onOk() { cleanup(); resolve(true); }
         function onCancel() { cleanup(); resolve(false); }
         function onBg(e) { if (e.target === overlay) { cleanup(); resolve(false); } }
-        function onKey(e) { if (e.key === "Escape") { cleanup(); resolve(false); } }
+        function onKey(e) {
+            if (e.key === "Escape") {
+                cleanup();
+                resolve(false);
+                return;
+            }
+            if (e.key !== "Tab") return;
+            const focusable = [cancelBtn, okBtn].filter((element) => !element.disabled);
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
 
         okBtn.addEventListener("click", onOk);
         cancelBtn.addEventListener("click", onCancel);

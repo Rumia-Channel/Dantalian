@@ -29,14 +29,15 @@ impl Db {
         &self,
         settings: &std::collections::HashMap<String, String>,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap();
+        let tx = conn.transaction()?;
         for (key, value) in settings {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO settings (key, value) VALUES (?1, ?2)
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 params![key, value],
             )?;
         }
-        Ok(())
+        tx.commit()
     }
 }
