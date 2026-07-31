@@ -274,6 +274,11 @@
     box-shadow: var(--shadow-md);
 }
 
+.book-card:focus-visible {
+    outline: 0.15rem solid var(--color-primary-hover);
+    outline-offset: 0.15rem;
+}
+
 .book-cover {
     width: 100%;
     aspect-ratio: 2/3;

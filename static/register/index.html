@@ -13,18 +13,18 @@
 <body data-active-nav="register">
     <div id="app">
 
-        <div class="register-tabs">
-            <button class="register-tab active" data-tab="isbn">ISBN</button>
-            <button class="register-tab" data-tab="isdn">ISDN</button>
-            <button class="register-tab" data-tab="cd">CD</button>
-            <button class="register-tab" data-tab="audiobook">オーディオブック</button>
-            <button class="register-tab" data-tab="manual">手動</button>
+        <div class="register-tabs" role="tablist" aria-label="登録方法">
+            <button class="register-tab active" id="isbn-tab" role="tab" aria-selected="true" aria-controls="isbn-panel" data-tab="isbn">ISBN</button>
+            <button class="register-tab" id="isdn-tab" role="tab" aria-selected="false" aria-controls="isdn-panel" data-tab="isdn">ISDN</button>
+            <button class="register-tab" id="cd-tab" role="tab" aria-selected="false" aria-controls="cd-panel" data-tab="cd">CD</button>
+            <button class="register-tab" id="audiobook-tab" role="tab" aria-selected="false" aria-controls="audiobook-panel" data-tab="audiobook">オーディオブック</button>
+            <button class="register-tab" id="manual-tab" role="tab" aria-selected="false" aria-controls="manual-panel" data-tab="manual">手動</button>
         </div>
 
-        <section class="register" id="isbn-panel">
+        <section class="register" id="isbn-panel" role="tabpanel" aria-labelledby="isbn-tab">
             <h2>ISBNで登録</h2>
             <form id="register-form">
-                <input type="text" id="isbn-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+" required>
+                <input type="text" id="isbn-input" aria-label="ISBN" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+" required>
                 <button type="submit" id="register-btn" class="btn btn-primary">登録</button>
             </form>
             <p id="register-status"></p>
@@ -36,7 +36,7 @@
             <section class="register-bulk-section" id="bulk-section" hidden>
                 <p class="bulk-hint">バーコードリーダーでISBNを読み取ると自動的にキューに追加されます。</p>
                 <form id="bulk-form" class="bulk-form">
-                    <input type="text" id="bulk-isbn-input" placeholder="ISBNを読み取る..." autocomplete="off">
+                    <input type="text" id="bulk-isbn-input" aria-label="一括登録するISBN" placeholder="ISBNを読み取る..." autocomplete="off">
                     <button type="button" id="bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
                 </form>
                 <div class="bulk-controls">
@@ -49,10 +49,10 @@
             </section>
         </section>
 
-        <section class="register" id="isdn-panel" hidden>
+        <section class="register" id="isdn-panel" role="tabpanel" aria-labelledby="isdn-tab" hidden>
             <h2>ISDNで登録</h2>
             <form id="isdn-form">
-                <input type="text" id="isdn-input" placeholder="ISDN (13桁)" pattern="[0-9\-]+" required>
+                <input type="text" id="isdn-input" aria-label="ISDN" placeholder="ISDN (13桁)" pattern="[0-9\-]+" required>
                 <button type="submit" id="isdn-btn" class="btn btn-primary">登録</button>
             </form>
             <p id="isdn-status"></p>
@@ -64,7 +64,7 @@
             <section class="register-bulk-section" id="isdn-bulk-section" hidden>
                 <p class="bulk-hint">バーコードリーダーでISDNを読み取ると自動的にキューに追加されます。</p>
                 <form id="isdn-bulk-form" class="bulk-form">
-                    <input type="text" id="isdn-bulk-input" placeholder="ISDNを読み取る..." autocomplete="off">
+                    <input type="text" id="isdn-bulk-input" aria-label="一括登録するISDN" placeholder="ISDNを読み取る..." autocomplete="off">
                     <button type="button" id="isdn-bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
                 </form>
                 <div class="bulk-controls">
@@ -77,15 +77,15 @@
             </section>
         </section>
 
-        <section class="register" id="manual-panel" hidden>
+        <section class="register" id="manual-panel" role="tabpanel" aria-labelledby="manual-tab" hidden>
             <h2>手動で登録</h2>
             <div id="manual-form-container"></div>
         </section>
 
-        <section class="register" id="cd-panel" hidden>
+        <section class="register" id="cd-panel" role="tabpanel" aria-labelledby="cd-tab" hidden>
             <h2>CD (JANで登録)</h2>
             <form id="cd-form">
-                <input type="text" id="cd-input" placeholder="JANコード (13桁)" pattern="[0-9\-]+" required>
+                <input type="text" id="cd-input" aria-label="JANコード" placeholder="JANコード (13桁)" pattern="[0-9\-]+" required>
                 <div class="register-parent-row">
                     <label for="cd-parent-book-id">親書籍ID (付属CDの場合):</label>
                     <input type="number" id="cd-parent-book-id" placeholder="書籍ID" min="1" step="1">
@@ -101,7 +101,7 @@
             <section class="register-bulk-section" id="cd-bulk-section" hidden>
                 <p class="bulk-hint">バーコードリーダーでJANを読み取ると自動的にキューに追加されます。</p>
                 <form id="cd-bulk-form" class="bulk-form">
-                    <input type="text" id="cd-bulk-input" placeholder="JANを読み取る..." autocomplete="off">
+                    <input type="text" id="cd-bulk-input" aria-label="一括登録するJANコード" placeholder="JANを読み取る..." autocomplete="off">
                     <button type="button" id="cd-bulk-clear-btn" class="btn btn-ghost btn-xs">クリア</button>
                 </form>
                 <div class="bulk-controls">
@@ -114,11 +114,11 @@
             </section>
         </section>
 
-        <section class="register" id="audiobook-panel" hidden>
+        <section class="register" id="audiobook-panel" role="tabpanel" aria-labelledby="audiobook-tab" hidden>
             <h2>オーディオブック (ISBN / JANで登録)</h2>
             <form id="audiobook-form">
-                <input type="text" id="audiobook-input" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+">
-                <input type="text" id="audiobook-jan-input" placeholder="JANコード" pattern="[0-9\-]+">
+                <input type="text" id="audiobook-input" aria-label="オーディオブックのISBN" placeholder="ISBN (10桁または13桁)" pattern="[0-9\-]+">
+                <input type="text" id="audiobook-jan-input" aria-label="オーディオブックのJANコード" placeholder="JANコード" pattern="[0-9\-]+">
                 <div class="register-parent-row">
                     <label for="audiobook-parent-book-id">親書籍ID (原作):</label>
                     <input type="number" id="audiobook-parent-book-id" placeholder="書籍ID" min="1" step="1">

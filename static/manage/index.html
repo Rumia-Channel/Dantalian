@@ -14,29 +14,29 @@
 
         <section class="series-manage">
             <h2>シリーズ管理</h2>
-            <div class="series-tabs">
-                <button class="series-tab active" onclick="switchSeriesTab('series')" id="tab-series">シリーズ</button>
-                <button class="series-tab" onclick="switchSeriesTab('grand-series')" id="tab-grand-series">大シリーズ</button>
-                <button class="series-tab" onclick="switchSeriesTab('storage-locations')" id="tab-storage-locations">保管場所</button>
-                <button class="series-tab" onclick="switchSeriesTab('labels')" id="tab-labels">レーベル</button>
-                <button class="series-tab" onclick="switchSeriesTab('borrowers')" id="tab-borrowers">借り手</button>
-                <button class="series-tab" onclick="switchSeriesTab('settings')" id="tab-settings">設定</button>
+            <div class="series-tabs" role="tablist" aria-label="管理項目">
+                <button class="series-tab active" role="tab" aria-selected="true" aria-controls="panel-series" onclick="switchSeriesTab('series')" id="tab-series">シリーズ</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-grand-series" onclick="switchSeriesTab('grand-series')" id="tab-grand-series">大シリーズ</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-storage-locations" onclick="switchSeriesTab('storage-locations')" id="tab-storage-locations">保管場所</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-labels" onclick="switchSeriesTab('labels')" id="tab-labels">レーベル</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-borrowers" onclick="switchSeriesTab('borrowers')" id="tab-borrowers">借り手</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-settings" onclick="switchSeriesTab('settings')" id="tab-settings">設定</button>
             </div>
-            <div id="panel-series" class="series-tab-panel">
+            <div id="panel-series" class="series-tab-panel" role="tabpanel" aria-labelledby="tab-series" aria-hidden="false">
                 <div class="series-create">
                     <input type="text" id="new-series-name" placeholder="新しいシリーズ名">
                     <button onclick="createSeries()" class="btn btn-primary">作成</button>
                 </div>
                 <div id="series-list"></div>
             </div>
-            <div id="panel-grand-series" class="series-tab-panel hidden">
+            <div id="panel-grand-series" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-grand-series" aria-hidden="true">
                 <div class="series-create">
                     <input type="text" id="new-grand-series-name" placeholder="新しい大シリーズ名">
                     <button onclick="createGrandSeries()" class="btn btn-primary">作成</button>
                 </div>
                 <div id="grand-series-list"></div>
             </div>
-            <div id="panel-storage-locations" class="series-tab-panel hidden">
+            <div id="panel-storage-locations" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-storage-locations" aria-hidden="true">
                 <div class="series-create">
                     <input type="text" id="new-location-name" placeholder="新しい保管場所名">
                     <select id="new-location-parent" class="form-input" style="max-width:12rem;">
@@ -46,21 +46,21 @@
                 </div>
                 <div id="storage-location-list"></div>
             </div>
-            <div id="panel-labels" class="series-tab-panel hidden">
+            <div id="panel-labels" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-labels" aria-hidden="true">
                 <div class="series-create">
                     <input type="text" id="new-label-name" placeholder="新しいレーベル名">
                     <button onclick="createLabel()" class="btn btn-primary">作成</button>
                 </div>
                 <div id="label-list"></div>
             </div>
-            <div id="panel-borrowers" class="series-tab-panel hidden">
+            <div id="panel-borrowers" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-borrowers" aria-hidden="true">
                 <div class="series-create">
                     <input type="text" id="new-borrower-name" placeholder="新しい借り手の名前">
                     <button onclick="createBorrower()" class="btn btn-primary">作成</button>
                 </div>
                 <div id="borrower-list"></div>
             </div>
-            <div id="panel-settings" class="series-tab-panel hidden">
+            <div id="panel-settings" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-settings" aria-hidden="true">
                 <div id="settings-form"></div>
             </div>
         </section>

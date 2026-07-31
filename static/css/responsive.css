@@ -20,6 +20,16 @@
         flex-wrap: wrap;
     }
 
+    .edit-actions,
+    .settings-form-actions {
+        position: sticky;
+        bottom: 0.5rem;
+        z-index: 20;
+        margin-left: -0.25rem;
+        margin-right: -0.25rem;
+        box-shadow: 0 -0.35rem 1rem rgba(0, 0, 0, 0.22);
+    }
+
     .settings-bar {
         align-items: stretch;
     }
@@ -54,6 +64,18 @@
     nav a {
         padding: 0.45rem 0.5rem;
         font-size: 0.8rem;
+    }
+
+    nav {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    nav a {
+        flex: 0 0 auto;
     }
 
     /* 入力行・フォーム行は縦積み */
@@ -201,6 +223,25 @@
 
     .btn-xs {
         padding: 0.4rem 0.6rem;
+    }
+
+    .btn,
+    .width-btn,
+    .view-tab,
+    .register-tab,
+    .series-tab,
+    .music-filter,
+    .music-album-play-btn,
+    .music-playlist-edit,
+    .music-playlist-delete {
+        min-height: 2.75rem;
+    }
+
+    .music-playlist-edit,
+    .music-playlist-delete {
+        min-width: 2.75rem;
+        width: 2.75rem;
+        height: 2.75rem;
     }
 
     .manual-cd-track-meta > summary {

@@ -12,6 +12,7 @@ tabs.forEach((tab) => {
         tabs.forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
         const target = tab.dataset.tab;
+        tabs.forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
         isbnPanel.hidden = target !== "isbn";
         isdnPanel.hidden = target !== "isdn";
         cdPanel.hidden = target !== "cd";

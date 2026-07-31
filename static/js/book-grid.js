@@ -71,6 +71,7 @@ document.querySelectorAll(".view-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
         document.querySelectorAll(".view-tab").forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
+        document.querySelectorAll(".view-tab").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
         currentView = tab.dataset.view;
         localStorage.setItem("dantalian_view", currentView);
         renderItems();
@@ -314,7 +315,7 @@ function renderBookCard(item) {
     const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
     const clickHandler = item.sourceType === "cd" ? `showCdDetail(${item.originalId})` : `showDetail(${item.id})`;
     return `
-    <div class="book-card" onclick="${clickHandler}">
+    <div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
         ${
             item.cover_url
                 ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`

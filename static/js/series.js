@@ -1,4 +1,8 @@
 function switchSeriesTab(tab) {
+    document.querySelectorAll(".series-tab").forEach((button) => {
+        const active = button.id === `tab-${tab}`;
+        button.setAttribute("aria-selected", String(active));
+    });
     document.getElementById("tab-series").classList.toggle("active", tab === "series");
     document.getElementById("tab-grand-series").classList.toggle("active", tab === "grand-series");
     document.getElementById("tab-storage-locations").classList.toggle("active", tab === "storage-locations");
@@ -6,13 +10,21 @@ function switchSeriesTab(tab) {
     document.getElementById("tab-borrowers").classList.toggle("active", tab === "borrowers");
     const tabSettings = document.getElementById("tab-settings");
     if (tabSettings) tabSettings.classList.toggle("active", tab === "settings");
-    document.getElementById("panel-series").classList.toggle("hidden", tab !== "series");
-    document.getElementById("panel-grand-series").classList.toggle("hidden", tab !== "grand-series");
-    document.getElementById("panel-storage-locations").classList.toggle("hidden", tab !== "storage-locations");
-    document.getElementById("panel-labels").classList.toggle("hidden", tab !== "labels");
-    document.getElementById("panel-borrowers").classList.toggle("hidden", tab !== "borrowers");
-    const panelSettings = document.getElementById("panel-settings");
-    if (panelSettings) panelSettings.classList.toggle("hidden", tab !== "settings");
+    const panelStates = {
+        series: "panel-series",
+        "grand-series": "panel-grand-series",
+        "storage-locations": "panel-storage-locations",
+        labels: "panel-labels",
+        borrowers: "panel-borrowers",
+        settings: "panel-settings",
+    };
+    Object.entries(panelStates).forEach(([name, panelId]) => {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        const active = name === tab;
+        panel.classList.toggle("hidden", !active);
+        panel.setAttribute("aria-hidden", String(!active));
+    });
     if (tab === "grand-series") renderGrandSeriesManager();
     if (tab === "storage-locations") renderStorageLocations();
     if (tab === "labels") renderLabels();
