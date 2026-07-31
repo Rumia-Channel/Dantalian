@@ -29,6 +29,7 @@ function normalizeCd(cd) {
         title: cd.title,
         cover_url: cd.cover_url,
         artist: cd.artist,
+        album_artist: cd.album_artist,
         publisher: cd.publisher,
         publish_date: cd.publish_date,
         authors: cd.authors || [],
@@ -158,8 +159,10 @@ function getPrimaryAuthor(book) {
 
 function getPrimaryCreator(item) {
     if (item.sourceType === "cd") {
-        const artist = String(item.artist || getPrimaryAuthor(item)?.name || "").trim();
-        return artist ? { key: `artist:${normalizeSearchText(artist)}`, name: artist } : null;
+        const artist = String(item.artist || "").trim() || String(item.album_artist || "").trim();
+        if (artist) return { key: `artist:${normalizeSearchText(artist)}`, name: artist };
+        const author = getPrimaryAuthor(item);
+        return author ? { key: `author:${author.id}`, name: author.name } : null;
     }
     if (item.sourceType === "playlist") {
         return { key: "playlist", name: "プレイリスト" };
@@ -194,6 +197,7 @@ function getItemSearchText(item) {
         item.jan_code,
         item.publisher,
         item.artist,
+        item.album_artist,
         item.jpno,
         item.ndl_url,
         series?.name,
@@ -385,8 +389,9 @@ function renderCdCard(item) {
     }
 
     const subParts = [];
-    if (item.artist) {
-        subParts.push(escapeHtml(item.artist));
+    const artist = String(item.artist || "").trim() || String(item.album_artist || "").trim();
+    if (artist) {
+        subParts.push(escapeHtml(artist));
     } else if (item.authors && item.authors.length > 0) {
         subParts.push(item.authors.map((a) => escapeHtml(a.name)).join(", "));
     }

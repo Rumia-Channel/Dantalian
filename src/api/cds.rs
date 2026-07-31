@@ -34,6 +34,12 @@ pub struct CdRegisterRequest {
     pub manual: Option<bool>,
 }
 
+fn album_artist_from_metadata(db: &crate::db::Db, cd_id: i64) -> Option<String> {
+    db.get_cd_album_tag_consensus(cd_id)
+        .ok()
+        .and_then(|tags| tags.album_artist)
+}
+
 pub async fn cd_register(
     State(state): State<AppState>,
     Json(req): Json<CdRegisterRequest>,
@@ -61,12 +67,14 @@ pub async fn cd_register(
         if let Some(ref j) = jan {
             if j.len() >= 8 {
                 if let Ok(Some(existing)) = state.db.find_by_cd_jan(j) {
-                    let tracks = state.db.list_tracks_for_cd(existing.id).unwrap_or_default();
-                    let authors = state.db.get_cd_authors(existing.id).unwrap_or_default();
+                    let cd_id = existing.id;
+                    let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
+                    let authors = state.db.get_cd_authors(cd_id).unwrap_or_default();
                     return Ok((
                         StatusCode::OK,
                         Json(CdWithTracks {
                             cd: existing,
+                            album_artist: album_artist_from_metadata(&state.db, cd_id),
                             tracks,
                             authors,
                         }),
@@ -100,12 +108,14 @@ pub async fn cd_register(
             )
         })?;
 
-        let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
-        let authors = state.db.get_cd_authors(cd.id).unwrap_or_default();
+        let cd_id = cd.id;
+        let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
+        let authors = state.db.get_cd_authors(cd_id).unwrap_or_default();
         return Ok((
             StatusCode::CREATED,
             Json(CdWithTracks {
                 cd,
+                album_artist: album_artist_from_metadata(&state.db, cd_id),
                 tracks,
                 authors,
             }),
@@ -125,12 +135,14 @@ pub async fn cd_register(
     }
 
     if let Ok(Some(existing)) = state.db.find_by_cd_jan(&jan) {
-        let tracks = state.db.list_tracks_for_cd(existing.id).unwrap_or_default();
-        let authors = state.db.get_cd_authors(existing.id).unwrap_or_default();
+        let cd_id = existing.id;
+        let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
+        let authors = state.db.get_cd_authors(cd_id).unwrap_or_default();
         return Ok((
             StatusCode::OK,
             Json(CdWithTracks {
                 cd: existing,
+                album_artist: album_artist_from_metadata(&state.db, cd_id),
                 tracks,
                 authors,
             }),
@@ -255,11 +267,13 @@ pub async fn cd_register(
         let _ = state.db.insert_tracks_batch_for_cd(cd.id, tracks);
     }
 
-    let tracks = state.db.list_tracks_for_cd(cd.id).unwrap_or_default();
+    let cd_id = cd.id;
+    let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
     Ok((
         StatusCode::CREATED,
         Json(CdWithTracks {
             cd,
+            album_artist: album_artist_from_metadata(&state.db, cd_id),
             tracks,
             authors: vec![],
         }),
@@ -276,8 +290,10 @@ pub async fn list_cds(
         for cd in cds {
             let tracks = db.list_tracks_for_cd(cd.id).unwrap_or_default();
             let authors = db.get_cd_authors(cd.id).unwrap_or_default();
+            let album_artist = album_artist_from_metadata(&db, cd.id);
             result.push(CdWithTracks {
                 cd,
+                album_artist,
                 tracks,
                 authors,
             });

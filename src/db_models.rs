@@ -296,6 +296,7 @@ pub struct NewCd {
 pub struct CdWithTracks {
     #[serde(flatten)]
     pub cd: Cd,
+    pub album_artist: Option<String>,
     pub tracks: Vec<Track>,
     pub authors: Vec<BookAuthor>,
 }

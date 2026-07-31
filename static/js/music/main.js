@@ -49,7 +49,8 @@ function renderGrid() {
             ? `<img class="music-album-cover" src="/images/${cd.cover_url}" alt="${escapeAttr(cd.title)}" loading="lazy">`
             : `<div class="music-album-coverfallback"><span class="material-icons">album</span></div>`;
         const trackCount = (cd.tracks || []).filter((t) => t.file_hash).length;
-        const artist = cd.artist ? escapeHtml(cd.artist) : "&nbsp;";
+        const artistName = String(cd.artist || "").trim() || String(cd.album_artist || "").trim();
+        const artist = artistName ? escapeHtml(artistName) : "&nbsp;";
         return `
         <div class="music-album" data-cd-id="${cd.id}" tabindex="0" role="button" aria-label="${escapeAttr(cd.title)} を表示">
             <div class="music-album-coverwrap">
