@@ -686,10 +686,19 @@ pub async fn delete_cd_track(
 
 pub async fn upload_cd_track_audio(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
     Query(chunk): Query<ChunkQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    let track = state
+        .db
+        .find_track_by_id(track_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    if track.cd_id != Some(cd_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     let audio_dir = state.audio_dir.as_str();
     let chunk_info = chunk.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -735,7 +744,7 @@ pub async fn upload_cd_track_audio(
         );
         let (saved_name, _ext) = external::save_uploaded_audio(&data, &name, &audio_dir, audio_max)
             .map_err(|e| {
-                tracing::warn!(track_id, cd_id = _cd_id, "Audio save failed: {}", e);
+                tracing::warn!(track_id, cd_id, "Audio save failed: {}", e);
                 StatusCode::BAD_REQUEST
             })?;
 
@@ -758,17 +767,7 @@ pub async fn upload_cd_track_audio(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let cd_id_for_meta = state
-        .db
-        .list_tracks(track_id)
-        .ok()
-        .and_then(|v| v.into_iter().next())
-        .and_then(|t| t.cd_id);
-    let metadata = if let Some(cd_id) = cd_id_for_meta {
-        extract_and_save_metadata(&state, track_id, cd_id, &hash).await
-    } else {
-        extract_and_save_track_only(&state, track_id, &hash).await
-    };
+    let metadata = extract_and_save_metadata(&state, track_id, cd_id, &hash).await;
 
     Ok(Json(serde_json::json!({
         "file_hash": hash,
@@ -827,6 +826,8 @@ async fn extract_and_save_metadata(
         tracing::warn!(cd_id, "CD metadata upsert failed: {}", e);
     }
 
+    synchronize_cd_core_metadata(state, track_id, cd_id, &extracted).await;
+
     if let Some(artist_str) = extracted.artist.clone() {
         let names = crate::external::audio_meta::split_artist_names(&artist_str);
         if !names.is_empty() {
@@ -847,67 +848,107 @@ async fn extract_and_save_metadata(
     serde_json::to_value(&extracted).ok()
 }
 
-async fn extract_and_save_track_only(
+async fn synchronize_cd_core_metadata(
     state: &AppState,
     track_id: i64,
-    file_hash: &str,
-) -> Option<serde_json::Value> {
-    let path = std::path::PathBuf::from(state.audio_dir.as_str()).join(file_hash);
-    let path_for_task = path.clone();
-
-    let extracted =
-        match tokio::task::spawn_blocking(move || external::audio_meta::extract(&path_for_task))
-            .await
-        {
-            Ok(Ok(meta)) => meta,
-            Ok(Err(e)) => {
-                tracing::debug!(
-                    track_id,
-                    file_hash,
-                    "Audio metadata extraction failed: {}",
-                    e
-                );
-                return None;
-            }
-            Err(e) => {
-                tracing::warn!(track_id, "Metadata extraction task failed: {}", e);
-                return None;
-            }
+    cd_id: i64,
+    extracted: &crate::external::audio_meta::TrackMetadata,
+) {
+    let db = state.db.clone();
+    let extracted = extracted.clone();
+    let result = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+        let Some(cd) = db.find_cd_by_id(cd_id)? else {
+            return Ok(());
         };
 
-    let db = state.db.clone();
-    let meta_clone = extracted.clone();
-    if tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &meta_clone))
-        .await
-        .map_err(|e| {
-            tracing::warn!(track_id, "Metadata save task failed: {}", e);
-        })
-        .and_then(|r| {
-            r.map_err(|e| {
-                tracing::warn!(track_id, "Metadata upsert failed: {}", e);
-            })
-        })
-        .is_err()
-    {
-        return None;
-    }
+        let non_empty = non_empty_audio_tag;
+        let positive = |value: Option<i64>| value.filter(|value| *value > 0);
 
-    serde_json::to_value(&extracted).ok()
+        let title = non_empty(extracted.album.as_ref())
+            .unwrap_or(cd.title.as_str())
+            .to_string();
+        let artist = non_empty(extracted.album_artist.as_ref())
+            .or_else(|| non_empty(extracted.artist.as_ref()))
+            .map(str::to_string)
+            .or(cd.artist.clone());
+        let publisher = non_empty(extracted.publisher.as_ref())
+            .map(str::to_string)
+            .or(cd.publisher.clone());
+        let label = non_empty(extracted.label.as_ref())
+            .map(str::to_string)
+            .or(cd.label.clone());
+        let publish_date = positive(extracted.year)
+            .map(|year| year.to_string())
+            .or(cd.publish_date.clone());
+        let disc_count = positive(extracted.disc_total)
+            .or_else(|| {
+                positive(extracted.disc_number).map(|number| cd.disc_count.unwrap_or(1).max(number))
+            })
+            .or(cd.disc_count);
+
+        db.update_cd(
+            cd_id,
+            cd.jan.as_deref(),
+            &title,
+            artist.as_deref(),
+            publisher.as_deref(),
+            label.as_deref(),
+            cd.catalog_number.as_deref(),
+            publish_date.as_deref(),
+            cd.description.as_deref(),
+            disc_count,
+            cd.volume.as_deref(),
+            cd.parent_book_id,
+            cd.media_type.as_deref(),
+            cd.series_id,
+        )?;
+
+        db.update_track(track_id, non_empty(extracted.title.as_ref()), None)?;
+        if let (Some(disc_number), Some(track_number)) = (
+            positive(extracted.disc_number),
+            positive(extracted.track_number),
+        ) {
+            db.update_track_position(track_id, disc_number, track_number)?;
+        }
+        Ok(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::warn!(track_id, cd_id, "Core audio metadata sync failed: {}", e),
+        Err(e) => tracing::warn!(
+            track_id,
+            cd_id,
+            "Core audio metadata sync task failed: {}",
+            e
+        ),
+    }
+}
+
+fn non_empty_audio_tag(value: Option<&String>) -> Option<&str> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then_some(trimmed)
+    })
 }
 
 pub async fn delete_cd_track_audio(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<String>, StatusCode> {
     let db = state.db.clone();
     let audio_dir = state.audio_dir.as_str();
 
-    let tracks = tokio::task::spawn_blocking(move || db.list_tracks(track_id))
+    let track = tokio::task::spawn_blocking(move || db.find_track_by_id(track_id))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some(track) = tracks.first() {
+    if track.as_ref().and_then(|track| track.cd_id) != Some(cd_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    if let Some(track) = track {
         if let Some(ref hash) = track.file_hash {
             let path = format!("{}/{}", audio_dir, hash);
             let _ = fs::remove_file(&path).await;

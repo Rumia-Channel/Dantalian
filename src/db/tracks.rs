@@ -123,6 +123,30 @@ impl Db {
         rows.collect()
     }
 
+    pub fn find_track_by_id(&self, id: i64) -> Result<Option<Track>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(Track {
+                id: row.get(0)?,
+                book_id: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                cd_id: row.get(2)?,
+                disc_number: row.get(3)?,
+                track_number: row.get(4)?,
+                title: row.get(5)?,
+                duration: row.get(6)?,
+                file_hash: row.get(7)?,
+                file_name: row.get(8)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn list_tracks_for_cd(&self, cd_id: i64) -> Result<Vec<Track>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(

@@ -282,17 +282,20 @@ async fn extract_and_save_metadata(
 
 pub async fn delete_track_audio(
     State(state): State<crate::AppState>,
-    Path((_book_id, track_id)): Path<(i64, i64)>,
+    Path((book_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
     let db = state.db.clone();
     let audio_dir = state.audio_dir.as_str();
 
-    let tracks = tokio::task::spawn_blocking(move || db.list_tracks(track_id))
+    let track = tokio::task::spawn_blocking(move || db.find_track_by_id(track_id))
         .await
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some(track) = tracks.first() {
+    if track.as_ref().map(|track| track.book_id) != Some(book_id) {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    }
+    if let Some(track) = track {
         if let Some(ref hash) = track.file_hash {
             let path = format!("{}/{}", audio_dir, hash);
             let _ = fs::remove_file(&path).await;
