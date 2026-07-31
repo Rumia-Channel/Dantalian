@@ -5,6 +5,7 @@ pub mod cd_metadata;
 pub mod cds;
 pub mod copies;
 pub mod labels;
+pub mod playlists;
 pub mod schema;
 pub mod series;
 pub mod settings;

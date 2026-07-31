@@ -2,7 +2,7 @@ use super::Db;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 10;
+const SCHEMA_VERSION: u32 = 11;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -164,6 +164,24 @@ CREATE TABLE IF NOT EXISTS tracks (
     file_name TEXT
 );
 
+CREATE TABLE IF NOT EXISTS playlists (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT,
+    cover_cd_id INTEGER REFERENCES cds(id) ON DELETE SET NULL,
+    created_at  TEXT,
+    updated_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS playlist_tracks (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_playlist_tracks_order
+    ON playlist_tracks(playlist_id, position);
+
 CREATE TABLE IF NOT EXISTS cd_authors (
     cd_id INTEGER NOT NULL REFERENCES cds(id) ON DELETE CASCADE,
     author_id INTEGER NOT NULL REFERENCES authors(id) ON DELETE CASCADE,
@@ -231,6 +249,8 @@ CREATE INDEX IF NOT EXISTS idx_ta_author ON track_authors(author_id);
 "#;
 
 const DROP_ALL_SQL: &str = r#"
+DROP TABLE IF EXISTS playlist_tracks;
+DROP TABLE IF EXISTS playlists;
 DROP TABLE IF EXISTS cd_metadata;
 DROP TABLE IF EXISTS track_metadata;
 DROP TABLE IF EXISTS cd_authors;
@@ -436,6 +456,26 @@ CREATE TABLE IF NOT EXISTS labels (
 ALTER TABLE books ADD COLUMN label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL;
 "#;
 
+const MIGRATE_V10_TO_V11_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS playlists (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT,
+    cover_cd_id INTEGER REFERENCES cds(id) ON DELETE SET NULL,
+    created_at  TEXT,
+    updated_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS playlist_tracks (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_playlist_tracks_order
+    ON playlist_tracks(playlist_id, position);
+"#;
+
 fn ensure_track_metadata_columns(conn: &Connection) -> Result<(), rusqlite::Error> {
     let columns: Vec<String> = {
         let mut stmt = conn.prepare("PRAGMA table_info(track_metadata)")?;
@@ -493,6 +533,9 @@ impl Db {
             }
             if current_version < 9 {
                 conn.execute_batch(MIGRATE_V8_TO_V9_SQL)?;
+            }
+            if current_version < 11 {
+                conn.execute_batch(MIGRATE_V10_TO_V11_SQL)?;
             }
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;

@@ -300,6 +300,31 @@ pub struct CdWithTracks {
     pub authors: Vec<BookAuthor>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Playlist {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub cover_cd_id: Option<i64>,
+    pub cover_url: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlaylistTrackEntry {
+    pub position: i64,
+    pub track: Track,
+    pub cd: Cd,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlaylistWithTracks {
+    #[serde(flatten)]
+    pub playlist: Playlist,
+    pub tracks: Vec<PlaylistTrackEntry>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct CdMetadata {
