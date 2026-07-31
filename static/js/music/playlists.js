@@ -33,6 +33,9 @@ function renderPlaylistCard(playlist) {
             <div class="music-album-play" data-album-action="play">
                 <span class="music-album-play-btn"><span class="material-icons">play_arrow</span></span>
             </div>
+            <button type="button" class="music-playlist-delete" data-playlist-action="delete" aria-label="${escapeAttr(playlist.name)}を削除" title="プレイリストを削除">
+                <span class="material-icons">delete</span>
+            </button>
         </div>
         <div class="music-album-name">${escapeHtml(playlist.name)}</div>
         <div class="music-album-artist">プレイリスト</div>
@@ -46,6 +49,36 @@ async function playlistRequest(url, options) {
     try { data = await res.json(); } catch {}
     if (!res.ok) throw new Error(data && data.error ? data.error : `HTTP ${res.status}`);
     return data;
+}
+
+async function deletePlaylistById(id) {
+    await playlistRequest(`/api/playlists/${id}`, { method: "DELETE" });
+    await loadPlaylists();
+    if (typeof renderGrid === "function") renderGrid();
+}
+
+async function removePlaylistTracksById(playlistId, trackIds) {
+    const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
+    for (const trackId of ids) {
+        await playlistRequest(`/api/playlists/${playlistId}/tracks/${trackId}`, { method: "DELETE" });
+    }
+    await loadPlaylists();
+    if (typeof renderGrid === "function") renderGrid();
+}
+
+async function confirmDeletePlaylist(id) {
+    const playlist = allPlaylists.find((item) => item.id === Number(id));
+    if (!playlist) return;
+    if (typeof showConfirm === "function") {
+        const confirmed = await showConfirm({
+            message: `プレイリスト「${playlist.name}」を削除しますか？`,
+            okLabel: "削除",
+        });
+        if (!confirmed) return;
+    } else if (!window.confirm(`プレイリスト「${playlist.name}」を削除しますか？`)) {
+        return;
+    }
+    await deletePlaylistById(playlist.id);
 }
 
 function playlistTrackIdsFromModal(modal) {
@@ -237,6 +270,7 @@ function openPlaylist(id) {
         cover_url: playlist.cover_url || firstCd.cover_url,
         media_type: "playlist",
         playlist_id: playlist.id,
+        playlistTrackEntries: playlistEntries,
         tracks: playlistEntries.map((entry) => entry.track),
     };
     const entries = playlistEntries.map((entry) => ({

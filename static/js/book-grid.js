@@ -420,6 +420,9 @@ function renderPlaylistCard(item) {
                 : '<div class="book-cover-placeholder"><span class="material-icons">queue_music</span></div>'
         }
         <span class="media-badge media-badge--playlist">PL</span>
+        <button type="button" class="playlist-card-delete" onclick="event.stopPropagation(); deleteLibraryPlaylist(${item.originalId})" aria-label="${escapeAttr(item.title)}を削除" title="プレイリストを削除">
+            <span class="material-icons">delete</span>
+        </button>
         <div class="book-info">
             <div class="book-title">${escapeHtml(item.title)}</div>
             <div class="book-author">プレイリスト</div>

@@ -358,6 +358,14 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![track.id, second_track.id, third_track.id]
         );
+        assert!(
+            db.remove_playlist_track(playlist.id, second_track.id)
+                .unwrap()
+        );
+        let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
+        assert_eq!(loaded.tracks.len(), 2);
+        assert_eq!(loaded.tracks[0].track.id, track.id);
+        assert_eq!(loaded.tracks[1].track.id, third_track.id);
 
         assert!(
             db.set_playlist_tracks(playlist.id, &[track.id, track.id])

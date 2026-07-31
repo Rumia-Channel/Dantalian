@@ -78,6 +78,39 @@
     border-color: rgba(79, 140, 255, 0.45);
 }
 
+.music-playlist-delete {
+    position: absolute;
+    right: 0.45rem;
+    bottom: 0.45rem;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--color-border-light);
+    border-radius: 50%;
+    background: rgba(8, 9, 15, 0.78);
+    color: var(--color-text-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+
+.music-album:hover .music-playlist-delete,
+.music-album:focus-within .music-playlist-delete {
+    opacity: 1;
+}
+
+.music-playlist-delete:hover {
+    background: var(--color-danger);
+    color: #fff;
+}
+
+.music-playlist-delete .material-icons {
+    font-size: 1rem;
+}
+
 .media-badge--playlist {
     color: var(--color-primary-hover);
     border-color: rgba(79, 140, 255, 0.45);
@@ -87,6 +120,39 @@
 .playlist-card .book-cover-placeholder .material-icons {
     color: var(--color-primary);
     font-size: 2.2rem;
+}
+
+.playlist-card-delete {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--color-border-light);
+    border-radius: 50%;
+    background: rgba(8, 9, 15, 0.78);
+    color: var(--color-text-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+
+.playlist-card:hover .playlist-card-delete,
+.playlist-card:focus-within .playlist-card-delete {
+    opacity: 1;
+}
+
+.playlist-card-delete:hover {
+    background: var(--color-danger);
+    color: #fff;
+}
+
+.playlist-card-delete .material-icons {
+    font-size: 1rem;
 }
 
 .playlist-modal {

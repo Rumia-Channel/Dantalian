@@ -519,6 +519,65 @@ body.player-mini-active #app {
     padding: 0.7rem 0.6rem 0.3rem;
 }
 
+.player-tracklist-playlist-cd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.55rem;
+    padding: 0.55rem 0.6rem 0.3rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+.player-tracklist-playlist-cd-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.player-tracklist-playlist-cd-copy strong,
+.player-tracklist-playlist-cd-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.player-tracklist-playlist-cd-copy strong {
+    color: var(--color-primary-hover);
+    font-size: 0.75rem;
+}
+
+.player-tracklist-playlist-cd-copy small {
+    color: var(--color-text-dim);
+    font-size: 0.68rem;
+}
+
+.player-tracklist-playlist-cd-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    flex: 0 0 auto;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid var(--color-border-light);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    font-size: 0.68rem;
+}
+
+.player-tracklist-playlist-cd-remove:hover {
+    border-color: var(--color-danger);
+    background: var(--color-danger-alpha);
+    color: var(--color-danger-hover);
+}
+
+.player-tracklist-playlist-cd-remove .material-icons {
+    font-size: 0.95rem;
+}
+
 .player-track {
     display: grid;
     grid-template-columns: 2.4rem minmax(0, 1fr) auto;

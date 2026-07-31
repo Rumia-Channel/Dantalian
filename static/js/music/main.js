@@ -78,6 +78,11 @@ musicGrid.addEventListener("click", (e) => {
     if (!card) return;
     const playlistId = card.dataset.playlistId;
     if (playlistId) {
+        if (e.target.closest("[data-playlist-action=\"delete\"]")) {
+            e.stopPropagation();
+            confirmDeletePlaylist(playlistId).catch((err) => console.error("deletePlaylist failed:", err));
+            return;
+        }
         openPlaylist(playlistId);
         return;
     }

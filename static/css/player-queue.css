@@ -319,7 +319,8 @@
 
 .player-queue-remove,
 .player-track-add,
-.player-track-playlist-add {
+.player-track-playlist-add,
+.player-track-playlist-remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -340,20 +341,24 @@
 .player-track:hover .player-track-add,
 .player-track:focus-within .player-track-add,
 .player-track:hover .player-track-playlist-add,
-.player-track:focus-within .player-track-playlist-add {
+.player-track:focus-within .player-track-playlist-add,
+.player-track:hover .player-track-playlist-remove,
+.player-track:focus-within .player-track-playlist-remove {
     opacity: 1;
 }
 
 .player-queue-remove:hover,
 .player-track-add:hover,
-.player-track-playlist-add:hover {
+.player-track-playlist-add:hover,
+.player-track-playlist-remove:hover {
     background: var(--player-accent-alpha);
     color: var(--player-accent);
 }
 
 .player-queue-remove .material-icons,
 .player-track-add .material-icons,
-.player-track-playlist-add .material-icons {
+.player-track-playlist-add .material-icons,
+.player-track-playlist-remove .material-icons {
     font-size: 1.05rem;
 }
 
@@ -379,7 +384,8 @@
 
     .player-queue-remove,
     .player-track-add,
-    .player-track-playlist-add {
+    .player-track-playlist-add,
+    .player-track-playlist-remove {
         opacity: 1;
     }
 }

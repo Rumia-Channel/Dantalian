@@ -68,6 +68,9 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="add-album-playlist" aria-label="このCDをプレイリストに追加" title="このCDをプレイリストに追加">
                             <span class="material-icons">playlist_add_check</span><span>プレイリストに追加</span>
                         </button>
+                        <button class="player-secondary-btn player-playlist-delete-btn" data-act="remove-playlist" data-el="remove-playlist-button" hidden aria-label="このプレイリストを削除" title="このプレイリストを削除">
+                            <span class="material-icons">delete</span><span>プレイリストを削除</span>
+                        </button>
                     </div>
                     <div class="player-progress">
                         <div class="player-progress-bar" data-el="progress-bar" role="slider" aria-label="再生位置" tabindex="0">
@@ -335,14 +338,37 @@ function createPlayerUI(rootEl) {
         const cd = viewCd;
         if (!cd) { el.tracklist.innerHTML = ""; return; }
         const tracks = cd.tracks || [];
-        const multiDisc = (cd.disc_count || 1) > 1 || tracks.some((t) => (t.disc_number || 1) > 1);
+        const playlistMode = Number.isFinite(Number(cd.playlist_id));
+        const playlistEntryByTrackId = new Map(
+            (cd.playlistTrackEntries || []).map((entry) => [entry.track.id, entry])
+        );
+        const multiDisc = !playlistMode && ((cd.disc_count || 1) > 1 || tracks.some((t) => (t.disc_number || 1) > 1));
         let html = "";
         let lastDisc = null;
+        let lastPlaylistCdId = null;
         for (const t of tracks) {
+            const playlistEntry = playlistEntryByTrackId.get(t.id);
+            const sourceCd = playlistEntry && playlistEntry.cd;
+            if (playlistMode && sourceCd && sourceCd.id !== lastPlaylistCdId) {
+                html += `
+                <li class="player-tracklist-playlist-cd">
+                    <span class="player-tracklist-playlist-cd-copy">
+                        <strong>${escapeHtml(sourceCd.title)}</strong>
+                        <small>${escapeHtml(sourceCd.artist || "")}</small>
+                    </span>
+                    <button class="player-tracklist-playlist-cd-remove" data-act="remove-playlist-cd" data-cd-id="${sourceCd.id}" aria-label="${escapeAttr(sourceCd.title)}をプレイリストから削除" title="このCDをプレイリストから削除">
+                        <span class="material-icons">delete_sweep</span><span>CDを削除</span>
+                    </button>
+                </li>`;
+                lastPlaylistCdId = sourceCd.id;
+            }
             const disc = t.disc_number || 1;
             if (multiDisc && disc !== lastDisc) { html += `<li class="player-tracklist-disc">DISC ${disc}</li>`; lastDisc = disc; }
             const playable = !!t.file_hash;
             const num = String(t.track_number).padStart(2, "0");
+            const playlistAction = playlistMode
+                ? `<button class="player-track-playlist-remove" data-act="remove-playlist-track" data-track-id="${t.id}" data-track-title="${escapeAttr(t.title)}" aria-label="${escapeAttr(t.title)}をプレイリストから削除" title="プレイリストから削除"><span class="material-icons">playlist_remove</span></button>`
+                : `<button class="player-track-playlist-add" data-act="add-track-playlist" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をプレイリストに追加" title="プレイリストに追加"><span class="material-icons">playlist_add_check</span></button>`;
             html += `
             <li class="player-track${playable ? "" : " player-track--disabled"}${t.id === viewTrackId ? " player-track--current" : ""}" data-track-id="${t.id}">
                 <span class="player-track-num">
@@ -351,8 +377,8 @@ function createPlayerUI(rootEl) {
                 </span>
                 <span class="player-track-title-cell">${escapeHtml(t.title)}</span>
                 <span class="player-track-dur">${t.duration ? escapeHtml(t.duration) : (playable ? "" : "—")}</span>
-                ${playable ? `<button class="player-track-add" data-act="add-track" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をキューに追加" title="キューに追加"><span class="material-icons">playlist_add</span></button>
-                <button class="player-track-playlist-add" data-act="add-track-playlist" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をプレイリストに追加" title="プレイリストに追加"><span class="material-icons">playlist_add_check</span></button>` : ""}
+                ${playable ? `<button class="player-track-add" data-act="add-track" data-track-id="${t.id}" aria-label="${escapeAttr(t.title)}をキューに追加" title="キューに追加"><span class="material-icons">playlist_add</span></button>` : ""}
+                ${playlistMode || playable ? playlistAction : ""}
             </li>`;
         }
         el.tracklist.innerHTML = html || '<li class="player-track-empty">トラックがありません</li>';
@@ -406,6 +432,7 @@ function createPlayerUI(rootEl) {
         const resume = getAudiobookProgress(viewCd);
         const showResume = !!resume && viewMode !== "live";
         el["resume-button"].hidden = !showResume;
+        el["remove-playlist-button"].hidden = !Number.isFinite(Number(viewCd.playlist_id));
         if (showResume) {
             el["resume-label"].textContent = `続きから再生 · ${resume.track.title} (${formatTime(resume.position)})`;
         }
@@ -579,6 +606,78 @@ function createPlayerUI(rootEl) {
         const ids = (trackIds || []).filter(Number.isFinite);
         if (ids.length === 0) return;
         openPlaylistPicker({ trackIds: ids, defaultCoverCdId: viewCd.id });
+    }
+
+    function currentPlaylistId() {
+        const id = Number(viewCd && viewCd.playlist_id);
+        return Number.isFinite(id) ? id : null;
+    }
+
+    async function removeCurrentPlaylistTracks(trackIds, message) {
+        const playlistId = currentPlaylistId();
+        const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
+        if (playlistId == null || ids.length === 0 || typeof removePlaylistTracksById !== "function") return;
+        const confirmed = typeof showConfirm === "function"
+            ? await showConfirm({ message, okLabel: "削除" })
+            : window.confirm(message);
+        if (!confirmed) return;
+
+        try {
+            await removePlaylistTracksById(playlistId, ids);
+            const removed = new Set(ids);
+            const queueIndexes = engine.queue
+                .map((entry, index) => ({ entry, index }))
+                .filter(({ entry }) => entry.album?.playlist_id === playlistId && removed.has(entry.track.id))
+                .map(({ index }) => index)
+                .sort((a, b) => b - a);
+            for (const index of queueIndexes) engine.removeQueueIndex(index);
+
+            viewCd.tracks = (viewCd.tracks || []).filter((track) => !removed.has(track.id));
+            viewCd.playlistTrackEntries = (viewCd.playlistTrackEntries || [])
+                .filter((entry) => !removed.has(entry.track.id));
+            if (viewCd.tracks.length === 0) {
+                api.close();
+                return;
+            }
+            renderView();
+            renderQueue();
+        } catch (err) {
+            window.alert(err.message || "プレイリストからの削除に失敗しました");
+        }
+    }
+
+    async function removeCurrentPlaylistCd(cdId) {
+        const numericCdId = Number(cdId);
+        const entries = (viewCd && viewCd.playlistTrackEntries) || [];
+        const sourceCd = entries.find((entry) => entry.cd && entry.cd.id === numericCdId)?.cd;
+        const trackIds = entries
+            .filter((entry) => entry.cd && entry.cd.id === numericCdId)
+            .map((entry) => entry.track.id);
+        if (!sourceCd || trackIds.length === 0) return;
+        await removeCurrentPlaylistTracks(
+            trackIds,
+            `CD「${sourceCd.title}」の曲をプレイリストから削除しますか？`
+        );
+    }
+
+    async function removeCurrentPlaylist() {
+        const playlistId = currentPlaylistId();
+        if (playlistId == null || typeof deletePlaylistById !== "function") return;
+        const confirmed = typeof showConfirm === "function"
+            ? await showConfirm({ message: "このプレイリストを削除しますか？", okLabel: "削除" })
+            : window.confirm("このプレイリストを削除しますか？");
+        if (!confirmed) return;
+        try {
+            await deletePlaylistById(playlistId);
+            engine.clearQueue();
+            viewCd = null;
+            currentCd = null;
+            viewTrackId = null;
+            viewMode = "idle";
+            api.close();
+        } catch (err) {
+            window.alert(err.message || "プレイリストの削除に失敗しました");
+        }
     }
 
     function startExternalQueue(entries, startIndex = 0) {
@@ -774,6 +873,12 @@ function createPlayerUI(rootEl) {
         else if (act === "add-track") appendTrackToQueue(viewCd, parseInt(btn.dataset.trackId, 10));
         else if (act === "add-album-playlist") appendTracksToPlaylist(playableTracks(viewCd).map((track) => track.id));
         else if (act === "add-track-playlist") appendTracksToPlaylist([parseInt(btn.dataset.trackId, 10)]);
+        else if (act === "remove-playlist-track") removeCurrentPlaylistTracks(
+            [parseInt(btn.dataset.trackId, 10)],
+            `「${btn.dataset.trackTitle || "この曲"}」をプレイリストから削除しますか？`
+        );
+        else if (act === "remove-playlist-cd") removeCurrentPlaylistCd(btn.dataset.cdId);
+        else if (act === "remove-playlist") removeCurrentPlaylist();
         else if (act === "remove-queue") engine.removeQueueIndex(parseInt(btn.dataset.queueIndex, 10));
         else if (act === "clear-queue") {
             engine.clearQueue();
