@@ -188,7 +188,8 @@ impl Db {
             params![id],
         )?;
         let mut seen = HashSet::new();
-        for (position, track_id) in track_ids.iter().enumerate() {
+        let mut position = 0i64;
+        for track_id in track_ids {
             if !seen.insert(*track_id) {
                 continue;
             }
@@ -206,8 +207,9 @@ impl Db {
             tx.execute(
                 "INSERT INTO playlist_tracks (playlist_id, track_id, position)
                  VALUES (?1, ?2, ?3)",
-                params![id, track_id, position as i64],
+                params![id, track_id, position],
             )?;
+            position += 1;
         }
         tx.commit()?;
         Ok(true)
@@ -408,6 +410,30 @@ mod tests {
                 .map(|entry| entry.track.id)
                 .collect::<Vec<_>>(),
             vec![track.id, second_track.id, third_track.id]
+        );
+        assert!(
+            db.update_playlist_with_tracks(
+                playlist.id,
+                "Updated playlist",
+                Some("Updated description"),
+                Some(cd.id),
+                &[third_track.id, track.id, second_track.id],
+            )
+            .unwrap()
+        );
+        let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
+        assert_eq!(loaded.playlist.name, "Updated playlist");
+        assert_eq!(
+            loaded.playlist.description.as_deref(),
+            Some("Updated description")
+        );
+        assert_eq!(
+            loaded
+                .tracks
+                .iter()
+                .map(|entry| entry.track.id)
+                .collect::<Vec<_>>(),
+            vec![third_track.id, track.id, second_track.id]
         );
         assert!(
             db.set_playlist_tracks(playlist.id, &[third_track.id, track.id, second_track.id])

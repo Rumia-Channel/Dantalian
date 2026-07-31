@@ -62,6 +62,9 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="add-album-playlist" aria-label="このCDをプレイリストに追加" title="このCDをプレイリストに追加">
                             <span class="material-icons">playlist_add_check</span><span>プレイリストに追加</span>
                         </button>
+                        <button class="player-secondary-btn player-playlist-edit-btn" data-act="edit-playlist" data-el="edit-playlist-button" hidden aria-label="このプレイリストを編集" title="このプレイリストを編集">
+                            <span class="material-icons">edit</span><span>プレイリストを編集</span>
+                        </button>
                         <button class="player-secondary-btn player-cache-btn" data-act="cache-album" data-el="cache-album-button" hidden aria-label="このCDをキャッシュに保存" title="このCDをキャッシュに保存">
                             <span class="material-icons" data-el="cache-album-icon">download_for_offline</span><span data-el="cache-album-label">キャッシュに保存</span>
                         </button>
@@ -575,6 +578,7 @@ function createPlayerUI(rootEl) {
         viewTrackId = track ? track.id : viewTrackId;
         renderResumeButton();
         el["remove-playlist-button"].hidden = !Number.isFinite(Number(viewCd.playlist_id));
+        el["edit-playlist-button"].hidden = !Number.isFinite(Number(viewCd.playlist_id));
         updateAudioCacheButton(viewCd);
         paintCover(viewCd);
         el["track-title"].textContent = track ? track.title : viewCd.title;
@@ -1055,6 +1059,12 @@ function createPlayerUI(rootEl) {
         else if (act === "add-album") appendAlbumToQueue(viewCd);
         else if (act === "add-track") appendTrackToQueue(viewCd, parseInt(btn.dataset.trackId, 10));
         else if (act === "cache-album") cacheCurrentAlbum();
+        else if (act === "edit-playlist") {
+            const playlistId = currentPlaylistId();
+            if (playlistId != null && typeof openPlaylistEditor === "function") {
+                openPlaylistEditor(playlistId);
+            }
+        }
         else if (act === "add-album-playlist") appendTracksToPlaylist(playableTracks(viewCd).map((track) => track.id));
         else if (act === "add-track-playlist") appendTracksToPlaylist([parseInt(btn.dataset.trackId, 10)]);
         else if (act === "remove-playlist-track") removeCurrentPlaylistTracks(

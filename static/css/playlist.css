@@ -55,7 +55,7 @@
     background: rgba(8, 9, 15, 0.78);
     color: var(--color-text-faint);
     cursor: pointer;
-    opacity: 0;
+    opacity: 1;
     transition: color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
 }
 
@@ -94,7 +94,7 @@
     background: rgba(8, 9, 15, 0.78);
     color: var(--color-text-faint);
     cursor: pointer;
-    opacity: 0;
+    opacity: 1;
     transition: color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
 }
 
