@@ -85,6 +85,13 @@ pub async fn cd_register(
             .as_ref()
             .map(|j| j.replace('-', "").replace(' ', ""))
             .filter(|j| !j.is_empty());
+        let publish_date = external::normalize_publish_date_input(req.publish_date.as_deref())
+            .map_err(|error| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+            })?;
 
         if let Some(ref j) = jan {
             if j.len() >= 8 {
@@ -112,7 +119,7 @@ pub async fn cd_register(
             publisher: req.publisher,
             label: req.label,
             catalog_number: req.catalog_number,
-            publish_date: req.publish_date,
+            publish_date,
             cover_url: None,
             description: req.description,
             disc_count: req.disc_count,
@@ -334,6 +341,13 @@ pub async fn cd_register(
 
     let cover_url = amazon_cover.or(fallback_cover);
 
+    let publish_date = external::normalize_publish_date_input(cd_info.publish_date.as_deref())
+        .map_err(|error| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+        })?;
     let new_cd = NewCd {
         jan: Some(jan),
         title: cd_info.title,
@@ -341,7 +355,7 @@ pub async fn cd_register(
         publisher: cd_info.publisher,
         label: cd_info.label,
         catalog_number: cd_info.catalog_number,
-        publish_date: cd_info.publish_date,
+        publish_date,
         cover_url,
         description: None,
         disc_count: cd_info.disc_count,
@@ -496,7 +510,24 @@ pub async fn update_cd(
     let publisher = present_str(&body, "publisher", existing.publisher.as_deref());
     let label = present_str(&body, "label", existing.label.as_deref());
     let catalog_number = present_str(&body, "catalog_number", existing.catalog_number.as_deref());
-    let publish_date = present_str(&body, "publish_date", existing.publish_date.as_deref());
+    let publish_date = match body.get("publish_date") {
+        Some(value) if value.is_null() => None,
+        Some(value) => {
+            let raw = value.as_str().ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "publish_date must be a string"})),
+                )
+            })?;
+            external::normalize_publish_date_input(Some(raw)).map_err(|error| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error})),
+                )
+            })?
+        }
+        None => existing.publish_date.clone(),
+    };
     let description = present_str(&body, "description", existing.description.as_deref());
     let disc_count = present_i64(&body, "disc_count", existing.disc_count);
     let volume = present_str(&body, "volume", existing.volume.as_deref());

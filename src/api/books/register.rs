@@ -6,6 +6,15 @@ use serde::{Deserialize, Serialize};
 
 use super::ApiError;
 
+fn normalized_publish_date(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    crate::external::normalize_publish_date_input(raw).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error})),
+        )
+    })
+}
+
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     pub isbn: Option<String>,
@@ -76,6 +85,8 @@ pub async fn register(
             Json(serde_json::json!({"error": "Book not found for this ISBN"})),
         ));
     };
+
+    new_book.publish_date = normalized_publish_date(new_book.publish_date.as_deref())?;
 
     let source = if new_book.cover_url.is_some() {
         "amazon"
@@ -201,12 +212,14 @@ pub async fn isdn_register(
         )
     })?;
 
-    let Some(new_book) = new_book else {
+    let Some(mut new_book) = new_book else {
         return Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Book not found for this ISDN"})),
         ));
     };
+
+    new_book.publish_date = normalized_publish_date(new_book.publish_date.as_deref())?;
 
     let book = state.db.insert_book(&new_book).map_err(|e| {
         (
@@ -295,6 +308,8 @@ pub async fn manual_register(
         ));
     }
 
+    let publish_date = normalized_publish_date(req.publish_date.as_deref())?;
+
     if let Some(ref isdn_val) = isdn {
         if let Ok(Some(existing)) = state.db.find_by_isdn(isdn_val) {
             let authors = state.db.get_book_authors(existing.id).unwrap_or_default();
@@ -338,10 +353,7 @@ pub async fn manual_register(
             .publisher
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty()),
-        publish_date: req
-            .publish_date
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty()),
+        publish_date,
         cover_url: None,
         description: req
             .description

@@ -1,8 +1,8 @@
 use super::Db;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex};
 
-const SCHEMA_VERSION: u32 = 11;
+const SCHEMA_VERSION: u32 = 12;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -492,6 +492,38 @@ fn ensure_track_metadata_columns(conn: &Connection) -> Result<(), rusqlite::Erro
     Ok(())
 }
 
+fn migrate_publish_dates(conn: &Connection) -> Result<(), rusqlite::Error> {
+    for table in ["books", "cds"] {
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT id, publish_date FROM {} WHERE publish_date IS NOT NULL AND publish_date <> ''",
+                table
+            ))?;
+            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect::<Result<_, _>>()?
+        };
+
+        for (id, raw) in rows {
+            match crate::external::normalize_publish_date(Some(&raw)) {
+                Some(normalized) if normalized != raw => {
+                    conn.execute(
+                        &format!(
+                            "UPDATE {} SET publish_date = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+                            table
+                        ),
+                        params![normalized, id],
+                    )?;
+                }
+                Some(_) => {}
+                None => {
+                    tracing::warn!(table, id, value = %raw, "Could not normalize publish_date during migration")
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Db {
     pub fn new(db_path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(db_path)?;
@@ -537,6 +569,9 @@ impl Db {
             if current_version < 11 {
                 conn.execute_batch(MIGRATE_V10_TO_V11_SQL)?;
             }
+            if current_version < 12 {
+                migrate_publish_dates(&conn)?;
+            }
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
@@ -553,5 +588,72 @@ impl Db {
         }
 
         Ok(Self(Arc::new(Mutex::new(conn))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Db;
+    use rusqlite::params;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn migrates_legacy_publish_date_formats() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "dantalian-date-migration-{}-{}.db",
+            std::process::id(),
+            suffix
+        ));
+        let path_str = path.to_string_lossy().to_string();
+
+        let db = Db::new(&path_str).expect("create database");
+        {
+            let conn = db.0.lock().unwrap();
+            conn.execute(
+                "INSERT INTO books (title, publish_date) VALUES (?1, ?2)",
+                params!["legacy book", "2007.1"],
+            )
+            .expect("insert legacy book");
+            conn.execute(
+                "INSERT INTO cds (title, publish_date) VALUES (?1, ?2)",
+                params!["legacy cd", "２０２６年２月１３日"],
+            )
+            .expect("insert legacy cd");
+            conn.execute_batch("PRAGMA user_version = 11;")
+                .expect("set legacy schema version");
+        }
+        drop(db);
+
+        let migrated = Db::new(&path_str).expect("migrate database");
+        let conn = migrated.0.lock().unwrap();
+        let book_date: String = conn
+            .query_row(
+                "SELECT publish_date FROM books WHERE title = 'legacy book'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated book date");
+        let cd_date: String = conn
+            .query_row(
+                "SELECT publish_date FROM cds WHERE title = 'legacy cd'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated cd date");
+        let version: u32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read schema version");
+
+        assert_eq!(book_date, "2007-01-NN");
+        assert_eq!(cd_date, "2026-02-13");
+        assert_eq!(version, 12);
+
+        drop(conn);
+        drop(migrated);
+        let _ = std::fs::remove_file(path);
     }
 }

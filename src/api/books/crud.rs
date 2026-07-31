@@ -1,6 +1,7 @@
 use crate::AppState;
 use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use crate::db::BookWithAuthors;
+use crate::external;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -189,6 +190,13 @@ pub async fn update_book(
             Json(serde_json::json!({"error": "Title is required"})),
         ));
     }
+    let publish_date = external::normalize_publish_date_input(req.publish_date.as_deref())
+        .map_err(|error| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error})),
+            )
+        })?;
     let existing_book = state.db.find_by_id(id).ok().flatten();
 
     // present/absent: Some(inner) = key present (inner None => clear), None = absent => preserve
@@ -256,7 +264,7 @@ pub async fn update_book(
             None,
             req.title.trim(),
             req.publisher.as_deref(),
-            req.publish_date.as_deref(),
+            publish_date.as_deref(),
             req.description.as_deref(),
             req.title_transcription.as_deref(),
             req.series_title.as_deref(),
