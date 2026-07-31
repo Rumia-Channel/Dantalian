@@ -91,9 +91,14 @@ pub async fn lookup_isbn(
         return Ok(None);
     };
     super::ndl::enrich_author_ndl_ids(client, &mut ndl.authors).await;
+    let expected_isbn13 = isbn_variants
+        .iter()
+        .find(|variant| variant.len() == 13)
+        .map(String::as_str);
 
     let (cover_url, amazon_description, amazon_publish_date) =
-        fetch_amazon_cover_with_retry(client, &isbn_variants, images_dir, isbn).await;
+        fetch_amazon_cover_with_retry(client, &isbn_variants, images_dir, isbn, expected_isbn13)
+            .await;
 
     let description = amazon_description.or(ndl.description);
 
@@ -220,6 +225,7 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
             cover_url: None,
             description: None,
             publish_date: None,
+            isbn13: None,
         });
     };
 
@@ -285,8 +291,20 @@ async fn lookup_amazon_cover(
     client: &Client,
     lookup_key: &str,
     images_dir: &str,
+    expected_isbn13: Option<&str>,
 ) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let amazon_info = lookup_amazon_info(client, lookup_key).await?;
+    if let Some(expected) = expected_isbn13 {
+        if !amazon_isbn13_matches(&amazon_info, expected) {
+            warn!(
+                key = %lookup_key,
+                expected_isbn13 = %expected,
+                actual_isbn13 = ?amazon_info.isbn13,
+                "Amazon ISBN-13 did not match; ignoring product metadata"
+            );
+            return Ok((None, None, None));
+        }
+    }
     match &amazon_info.cover_url {
         Some(url) => debug!(key = %lookup_key, "Amazon cover found: {}", url),
         None => warn!(key = %lookup_key, "No cover image found on Amazon detail page"),
@@ -318,11 +336,14 @@ async fn fetch_amazon_cover_with_retry(
     lookup_keys: &[String],
     images_dir: &str,
     log_label: &str,
+    expected_isbn13: Option<&str>,
 ) -> (Option<String>, Option<String>, Option<String>) {
     let delays: &[u64] = &[3, 5, 10];
     let mut result: Option<(Option<String>, Option<String>, Option<String>)> = None;
     for key in lookup_keys {
-        result = lookup_amazon_cover(client, key, images_dir).await.ok();
+        result = lookup_amazon_cover(client, key, images_dir, expected_isbn13)
+            .await
+            .ok();
         if result.as_ref().is_some_and(|(c, _, _)| c.is_some()) {
             return result.unwrap();
         }
@@ -334,7 +355,9 @@ async fn fetch_amazon_cover_with_retry(
         warn!(key = %log_label, "Amazon cover fetch failed, retrying in {}s", delay);
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
         for key in lookup_keys {
-            result = lookup_amazon_cover(client, key, images_dir).await.ok();
+            result = lookup_amazon_cover(client, key, images_dir, expected_isbn13)
+                .await
+                .ok();
             if result.as_ref().is_some_and(|(c, _, _)| c.is_some()) {
                 return result.unwrap();
             }
@@ -349,7 +372,7 @@ pub async fn lookup_amazon_cover_for_jan(
     images_dir: &str,
 ) -> Option<String> {
     let (cover, _, _) =
-        fetch_amazon_cover_with_retry(client, &[jan.to_string()], images_dir, jan).await;
+        fetch_amazon_cover_with_retry(client, &[jan.to_string()], images_dir, jan, None).await;
     cover
 }
 
@@ -438,6 +461,7 @@ struct AmazonInfo {
     cover_url: Option<String>,
     description: Option<String>,
     publish_date: Option<String>,
+    isbn13: Option<String>,
 }
 
 fn parse_amazon_detail(html: &str) -> AmazonInfo {
@@ -545,25 +569,58 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
             });
 
     let publish_date = parse_amazon_publish_date(&document);
+    let isbn13 = parse_amazon_isbn13(&document);
 
     AmazonInfo {
         title,
         cover_url,
         description,
         publish_date,
+        isbn13,
     }
 }
 
-fn parse_amazon_publish_date(document: &scraper::Html) -> Option<String> {
-    const SELECTORS: &[&str] = &[
-        "#detailBullets_feature_div li",
-        "#detailBulletsWrapper_feature_div li",
-        "#productDetails_techSpec_section_1 tr",
-        "#productDetails_detailBullets_sections1 tr",
-        "#productDetailsTable tr",
-    ];
+const AMAZON_DETAIL_ROW_SELECTORS: &[&str] = &[
+    "#detailBullets_feature_div li",
+    "#detailBulletsWrapper_feature_div li",
+    "#productDetails_techSpec_section_1 tr",
+    "#productDetails_detailBullets_sections1 tr",
+    "#productDetailsTable tr",
+];
 
-    for selector in SELECTORS {
+fn amazon_isbn13_matches(info: &AmazonInfo, expected: &str) -> bool {
+    info.isbn13.as_deref() == Some(expected)
+}
+
+fn parse_amazon_isbn13(document: &scraper::Html) -> Option<String> {
+    for selector in AMAZON_DETAIL_ROW_SELECTORS {
+        let Ok(selector) = scraper::Selector::parse(selector) else {
+            continue;
+        };
+        for element in document.select(&selector) {
+            let text = element.text().collect::<String>();
+            let Some((_, value)) = text.split_once("ISBN-13") else {
+                continue;
+            };
+            for part in value.split_whitespace() {
+                let digits: String = part
+                    .chars()
+                    .filter_map(|ch| {
+                        ch.to_digit(10)
+                            .and_then(|digit| char::from_digit(digit, 10))
+                    })
+                    .collect();
+                if digits.len() == 13 {
+                    return Some(digits);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_amazon_publish_date(document: &scraper::Html) -> Option<String> {
+    for selector in AMAZON_DETAIL_ROW_SELECTORS {
         let Ok(selector) = scraper::Selector::parse(selector) else {
             continue;
         };
@@ -610,12 +667,19 @@ mod tests {
                     <span class="a-text-bold">発売日 :</span>
                     <span>2015/1/26</span>
                 </span></li>
+                <li><span class="a-list-item">
+                    <span class="a-text-bold">ISBN-13 :</span>
+                    <span>978-4569823522</span>
+                </span></li>
             </ul>
         "#;
 
         let info = parse_amazon_detail(html);
 
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
+        assert_eq!(info.isbn13.as_deref(), Some("9784569823522"));
+        assert!(super::amazon_isbn13_matches(&info, "9784569823522"));
+        assert!(!super::amazon_isbn13_matches(&info, "9784569823521"));
     }
 
     #[test]
@@ -635,6 +699,12 @@ mod tests {
     #[ignore = "requires live NDL and Amazon access"]
     async fn lookup_isbn_uses_amazon_release_date() {
         let client = reqwest::Client::builder().build().expect("HTTP client");
+        let amazon_info = super::lookup_amazon_info(&client, "9784569823522")
+            .await
+            .expect("Amazon lookup should succeed");
+        assert_eq!(amazon_info.isbn13.as_deref(), Some("9784569823522"));
+        assert!(super::amazon_isbn13_matches(&amazon_info, "9784569823522"));
+
         let images_dir =
             std::env::temp_dir().join(format!("dantalian-amazon-isbn-test-{}", std::process::id()));
         std::fs::create_dir_all(&images_dir).expect("create image directory");
