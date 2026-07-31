@@ -382,7 +382,7 @@ function renderChildrenInDetail(bookId) {
                     ${cd.media_type === 'audiobook' ? 'AB' : 'CD'}
                 </span>
                 <span>${escapeHtml(cd.title)}</span>
-                ${cd.artist ? `<span style="color:var(--color-text-dim);margin-left:0.5rem">${escapeHtml(cd.artist)}</span>` : ""}
+                ${getCdArtistName(cd) ? `<span style="color:var(--color-text-dim);margin-left:0.5rem">${escapeHtml(getCdArtistName(cd))}</span>` : ""}
             </div>
         `).join("")}
     </div>`;
@@ -413,7 +413,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
 
     const authorLinks = cd.authors && cd.authors.length > 0
         ? cd.authors.map((a) => `<span class="detail-author-link" onclick="location.href='/authors/?edit=${a.id}'">${escapeHtml(a.name)}</span>`).join(", ")
-        : (cd.artist ? escapeHtml(cd.artist) : "");
+        : (getCdArtistName(cd) ? escapeHtml(getCdArtistName(cd)) : "");
 
     let tracksHtml = "";
     if (tracks.length > 0) {

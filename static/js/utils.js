@@ -7,6 +7,44 @@ let allLabels = [];
 let previewAudio = null;
 const dataLoadErrors = {};
 
+// CD/オーディオブックを一覧・音楽ページ・プレイヤーで同じアーティスト名に揃える。
+// track_artist はアップロード音声の artist タグ、artist は CD/AB 基本情報、
+// authors はアプリ内で紐付けたアーティスト、album_artist は最後のフォールバック。
+function getCdArtistIdentity(cd) {
+    if (!cd || typeof cd !== "object") return null;
+
+    const nonEmpty = (value) => {
+        const text = String(value == null ? "" : value).trim();
+        return text || null;
+    };
+
+    const trackArtist = nonEmpty(cd.track_artist);
+    if (trackArtist) return { source: "track_artist", name: trackArtist };
+
+    const artist = nonEmpty(cd.artist);
+    if (artist) return { source: "artist", name: artist };
+
+    const authors = Array.isArray(cd.authors) ? cd.authors : [];
+    const primaryAuthor = authors
+        .filter((author) => author && nonEmpty(author.name))
+        .slice()
+        .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0))[0];
+    if (primaryAuthor) {
+        return {
+            source: "author",
+            id: primaryAuthor.id,
+            name: nonEmpty(primaryAuthor.name),
+        };
+    }
+
+    const albumArtist = nonEmpty(cd.album_artist);
+    return albumArtist ? { source: "album_artist", name: albumArtist } : null;
+}
+
+function getCdArtistName(cd) {
+    return getCdArtistIdentity(cd)?.name || "";
+}
+
 function recordDataLoadError(key, error) {
     dataLoadErrors[key] = error instanceof Error ? error.message : String(error || "読み込みに失敗しました");
     console.error(`${key} load failed:`, error);

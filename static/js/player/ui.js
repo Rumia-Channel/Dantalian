@@ -400,7 +400,7 @@ function createPlayerUI(rootEl) {
                 <li class="player-tracklist-playlist-cd">
                     <span class="player-tracklist-playlist-cd-copy">
                         <strong>${escapeHtml(sourceCd.title)}</strong>
-                        <small>${escapeHtml(sourceCd.artist || "")}</small>
+                        <small>${escapeHtml(getCdArtistName(sourceCd))}</small>
                     </span>
                     <button class="player-tracklist-playlist-cd-remove" data-act="remove-playlist-cd" data-cd-id="${sourceCd.id}" aria-label="${escapeAttr(sourceCd.title)}をプレイリストから削除" title="このCDをプレイリストから削除">
                         <span class="material-icons">delete_sweep</span><span>CDを削除</span>
@@ -486,7 +486,7 @@ function createPlayerUI(rootEl) {
         paintCover(viewCd);
         el["track-title"].textContent = track ? track.title : viewCd.title;
         el["album-title"].textContent = viewCd.title;
-        el["artist-name"].textContent = viewCd.artist || "";
+        el["artist-name"].textContent = getCdArtistName(viewCd);
         renderTracklist();
         loadTrackTechnicalInfo(viewCd, track);
 
@@ -530,7 +530,7 @@ function createPlayerUI(rootEl) {
         const entry = engine.currentEntry();
         if (entry && entry.album) currentCd = entry.album;
         el["mini-title"].textContent = t ? t.title : "—";
-        el["mini-artist"].textContent = currentCd ? (currentCd.artist || currentCd.title) : "";
+        el["mini-artist"].textContent = currentCd ? (getCdArtistName(currentCd) || currentCd.title) : "";
         if (currentCd) paintCover(currentCd);
         const playing = engine.isPlaying;
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
@@ -548,7 +548,7 @@ function createPlayerUI(rootEl) {
         try {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: t ? t.title : currentCd.title,
-                artist: currentCd.artist || "",
+                artist: getCdArtistName(currentCd),
                 album: currentCd.title,
                 artwork: coverUrl(currentCd) ? [{ src: coverUrl(currentCd), sizes: "512x512", type: "image/jpeg" }] : [],
             });

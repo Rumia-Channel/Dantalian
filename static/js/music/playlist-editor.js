@@ -25,7 +25,7 @@ function renderPlaylistEditorCovers(modal, selectedId) {
     const select = modal.querySelector("[data-playlist-editor-cover]");
     const options = ['<option value="">カバーなし</option>'];
     for (const cd of window.musicAlbums || []) {
-        const artist = String(cd.artist || cd.album_artist || "").trim();
+        const artist = getCdArtistName(cd);
         const label = artist ? `${cd.title} · ${artist}` : cd.title;
         options.push(`<option value="${cd.id}"${cd.id === selectedId ? " selected" : ""}>${escapeHtml(label)}</option>`);
     }
@@ -53,7 +53,7 @@ function renderPlaylistEditorEntries(modal) {
                 <li class="playlist-editor-cd" data-playlist-editor-cd="${index}">
                     <div class="playlist-editor-cd-copy">
                         <strong>${escapeHtml(cd.title || "不明なCD")}</strong>
-                        <small>${escapeHtml(cd.artist || cd.album_artist || "")} · ${cdCount}曲</small>
+                        <small>${escapeHtml(getCdArtistName(cd))} · ${cdCount}曲</small>
                     </div>
                     <div class="playlist-editor-cd-actions">
                         <button type="button" class="playlist-editor-icon-button" data-playlist-editor-cd-move="-1" data-index="${index}" ${bounds.start === 0 ? "disabled" : ""} aria-label="${escapeAttr(cd.title || "CD")}を上へ" title="CDを上へ">

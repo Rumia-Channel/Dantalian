@@ -142,7 +142,8 @@ function renderPlaylistPickerCovers(modal, selectedId) {
     const select = modal.querySelector("[data-playlist-picker-cover]");
     const options = ['<option value="">カバーなし</option>'];
     for (const cd of window.musicAlbums || []) {
-        const label = cd.artist ? `${cd.title} · ${cd.artist}` : cd.title;
+        const artist = getCdArtistName(cd);
+        const label = artist ? `${cd.title} · ${artist}` : cd.title;
         options.push(`<option value="${cd.id}"${cd.id === selectedId ? " selected" : ""}>${escapeHtml(label)}</option>`);
     }
     select.innerHTML = options.join("");

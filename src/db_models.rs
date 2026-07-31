@@ -296,6 +296,11 @@ pub struct NewCd {
 pub struct CdWithTracks {
     #[serde(flatten)]
     pub cd: Cd,
+    /// The first non-empty artist from the CD's track metadata.
+    ///
+    /// This is kept separate from `cd.artist` so callers can distinguish a
+    /// persisted CD-level value from the value read from uploaded audio tags.
+    pub track_artist: Option<String>,
     pub album_artist: Option<String>,
     pub tracks: Vec<Track>,
     pub authors: Vec<BookAuthor>,
