@@ -56,7 +56,6 @@ function createPlayerUI(rootEl) {
                     <div class="player-tech" data-el="tech" aria-label="音声情報">
                         <span class="player-tech-chip"><span class="material-icons">graphic_eq</span><strong data-el="tech-format">AUDIO</strong></span>
                         <span class="player-tech-chip"><span class="material-icons">data_usage</span><strong data-el="tech-size">—</strong></span>
-                        <span class="player-tech-chip player-tech-chip--encoder" data-el="tech-encoder-wrap"><span class="material-icons">memory</span><strong data-el="tech-encoder">—</strong></span>
                     </div>
                     <div class="player-album-actions">
                         <button class="player-secondary-btn player-resume-btn" data-act="resume-audiobook" data-el="resume-button" hidden aria-label="オーディオブックを続きから再生" title="オーディオブックを続きから再生">
@@ -331,9 +330,6 @@ function createPlayerUI(rootEl) {
             : fallbackFileType(track);
         el["tech-format"].textContent = fileType;
         el["tech-size"].textContent = formatBytes(metadata && metadata.raw_size_bytes);
-        const encoder = metadata && metadata.encoder ? String(metadata.encoder) : "";
-        el["tech-encoder"].textContent = encoder || "—";
-        el["tech-encoder-wrap"].hidden = !encoder;
     }
     async function loadTrackTechnicalInfo(cd, track) {
         const requestId = ++metadataRequestId;
