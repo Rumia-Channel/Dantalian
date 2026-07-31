@@ -119,6 +119,7 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
 
 // 起動
 (async function init() {
+    await loadAudioDataSaverPolicy();
     try {
         const res = await fetch("/api/cds");
         allAlbums = await res.json();

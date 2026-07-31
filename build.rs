@@ -50,6 +50,7 @@ fn main() {
         "static/js/edit/main.js",
         "static/js/borrowers.js",
         "static/js/settings-manage.js",
+        "static/js/player/audio-source.js",
         "static/js/player/engine.js",
         "static/js/player/ui.js",
         "static/js/music/playlists.js",

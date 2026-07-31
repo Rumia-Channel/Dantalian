@@ -3,6 +3,8 @@ const SETTINGS_KEYS = [
     "upload.cover_max_mb",
     "upload.audio_max_mb",
     "upload.file_max_mb",
+    "audio.data_saver.enabled",
+    "audio.data_saver.extensions",
     "backup.enabled",
     "backup.schedule_time",
     "backup.schedule_tz",
@@ -124,6 +126,8 @@ async function renderSettingsForm() {
     const uploadCoverMb = getValue(settings, "upload.cover_max_mb", "10");
     const uploadAudioMb = getValue(settings, "upload.audio_max_mb", "100");
     const uploadFileMb = getValue(settings, "upload.file_max_mb", "500");
+    const dataSaverEnabled = getValue(settings, "audio.data_saver.enabled", "false");
+    const dataSaverExtensions = getValue(settings, "audio.data_saver.extensions", "wav,flac,aiff,alac");
 
     container.innerHTML = `
         <div class="settings-form-section">
@@ -152,6 +156,23 @@ async function renderSettingsForm() {
             </div>
             <div class="settings-form-row">
                 <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</span>
+            </div>
+        </div>
+
+        <div class="settings-form-section">
+            <h3>省データ再生</h3>
+            <div class="settings-form-row">
+                <label class="settings-form-label">
+                    <input type="checkbox" id="s-data-saver-enabled" ${dataSaverEnabled === "true" ? "checked" : ""}>
+                    対応形式を Opus/AAC に変換して再生する
+                </label>
+            </div>
+            <div class="settings-form-row">
+                <label class="settings-form-label-inline" for="s-data-saver-extensions">変換対象の拡張子</label>
+                <input type="text" id="s-data-saver-extensions" value="${escapeAttr(dataSaverExtensions)}" class="form-input" placeholder="wav,flac,aiff,alac">
+            </div>
+            <div class="settings-form-row">
+                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">カンマ区切り。初回再生時に audio/encoded/opus と audio/encoded/aac へ生成し、以後は生成済みファイルを再利用します。</span>
             </div>
         </div>
 
@@ -324,6 +345,8 @@ async function submitSettings() {
     settings["upload.cover_max_mb"] = document.getElementById("s-upload-cover-mb").value;
     settings["upload.audio_max_mb"] = document.getElementById("s-upload-audio-mb").value;
     settings["upload.file_max_mb"] = document.getElementById("s-upload-file-mb").value;
+    settings["audio.data_saver.enabled"] = document.getElementById("s-data-saver-enabled").checked ? "true" : "false";
+    settings["audio.data_saver.extensions"] = document.getElementById("s-data-saver-extensions").value;
     settings["backup.enabled"] = document.getElementById("s-backup-enabled").checked ? "true" : "false";
     settings["backup.schedule_time"] = document.getElementById("s-schedule-time").value;
     settings["backup.schedule_tz"] = document.getElementById("s-schedule-tz").value;

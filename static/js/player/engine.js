@@ -11,15 +11,16 @@ class PlayerEngine {
         this.repeatMode = "queue"; // queue | track | off
         this.playOrder = [];
         this.listeners = {};
+        this._sourceCandidates = [];
+        this._sourceIndex = 0;
+        this._playRequested = false;
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
         this.audio.addEventListener("loadedmetadata", () => this._emit("duration", this.getDuration()));
         this.audio.addEventListener("ended", () => this._emit("ended", this.current()));
         this.audio.addEventListener("play", () => this._emit("playstate", true));
         this.audio.addEventListener("pause", () => this._emit("playstate", false));
-        this.audio.addEventListener("error", () => {
-            if (this.index >= 0) this._emit("error", this.current());
-        });
+        this.audio.addEventListener("error", () => this._handleSourceError());
     }
 
     on(event, fn) {
@@ -112,7 +113,20 @@ class PlayerEngine {
     }
 
     _url(track) {
-        return `/audio/${track.file_hash}`;
+        if (typeof audioSourceCandidates === "function") return audioSourceCandidates(track);
+        return [`/audio/${encodeURIComponent(track.file_hash)}`];
+    }
+
+    _handleSourceError() {
+        if (this._sourceIndex + 1 < this._sourceCandidates.length) {
+            const shouldPlay = this._playRequested || this.isPlaying;
+            this._sourceIndex += 1;
+            this.audio.src = this._sourceCandidates[this._sourceIndex];
+            this.audio.load();
+            if (shouldPlay) this.audio.play().catch(() => {});
+            return;
+        }
+        if (this.index >= 0) this._emit("error", this.current());
     }
 
     _loadCurrent(autoplay) {
@@ -122,12 +136,17 @@ class PlayerEngine {
             this._emit("empty", true);
             return;
         }
-        this.audio.src = this._url(entry.track);
+        this._sourceCandidates = this._url(entry.track);
+        this._sourceIndex = 0;
+        this._playRequested = Boolean(autoplay);
+        this.audio.src = this._sourceCandidates[0] || "";
+        this.audio.load();
         this._emit("trackchange", entry.track);
         if (autoplay) this.audio.play().catch(() => this._emit("playstate", false));
     }
 
     play() {
+        this._playRequested = true;
         if (this.index < 0 && this.queue.length > 0) {
             this.index = 0;
             this._rebuildPlayOrder(this.index);
@@ -137,6 +156,7 @@ class PlayerEngine {
     }
 
     pause() {
+        this._playRequested = false;
         this.audio.pause();
     }
 
