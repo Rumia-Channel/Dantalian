@@ -283,6 +283,14 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             if (body.metadata) {
                 await showExtractedMetadataModal(editType, parentId, trackId, body.metadata, reloadFn);
             }
+            // CD とオーディオブックは同じ cds レコードを更新するため、
+            // 音声タグから反映されたアルバム情報もフォームへ再取得して表示する。
+            // トラック一覧だけの再描画では、初期値が空のオーディオブックで
+            // 自動反映されていないように見えてしまう。
+            if (editType === "cd" && typeof loadCds === "function" && typeof renderCdEdit === "function") {
+                await loadCds();
+                await renderCdEdit(parentId);
+            }
         } else {
             const errBody = await res.json().catch(() => ({}));
             console.error("uploadTrackAudio failed:", res.status, errBody);
