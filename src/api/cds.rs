@@ -1027,6 +1027,7 @@ pub async fn upload_cd_track_audio(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let metadata = extract_and_save_metadata(&state, track_id, cd_id, &hash).await;
+    state.audio_encoding_notify.notify_one();
 
     Ok(Json(serde_json::json!({
         "file_hash": hash,

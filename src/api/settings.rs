@@ -146,6 +146,12 @@ pub async fn update_settings(
     State(state): State<crate::AppState>,
     Json(settings): Json<HashMap<String, String>>,
 ) -> Result<Json<HashMap<String, String>>, (StatusCode, Json<serde_json::Value>)> {
+    let audio_encoding_settings_changed = settings.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            crate::audio_encoding::KEY_ENABLED | crate::audio_encoding::KEY_EXTENSIONS
+        )
+    });
     for (key, value) in &settings {
         if !is_allowed_key(key) {
             return Err((
@@ -167,6 +173,9 @@ pub async fn update_settings(
             Json(serde_json::json!({"error": "設定をデータベースへ保存できませんでした"})),
         )
     })?;
+    if audio_encoding_settings_changed {
+        state.audio_encoding_notify.notify_one();
+    }
     Ok(Json(public_settings(&state.db)))
 }
 

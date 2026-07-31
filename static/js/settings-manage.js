@@ -213,7 +213,7 @@ async function renderSettingsForm() {
                 <input type="text" id="s-data-saver-extensions" value="${escapeAttr(dataSaverExtensions)}" class="form-input" placeholder="wav,flac,aiff,alac">
             </div>
             <div class="settings-form-row">
-                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">カンマ区切り。初回再生時に audio/encoded/opus と audio/encoded/aac へ生成し、以後は生成済みファイルを再利用します。</span>
+                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">カンマ区切り。設定を有効にするとバックグラウンドで順番に Opus と AAC を生成し、生成中の曲は原音を再生します。</span>
             </div>
         </div>
 

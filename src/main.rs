@@ -53,6 +53,7 @@ pub struct AppState {
     pub client_ipv4: Client,
     pub images_dir: Arc<String>,
     pub audio_dir: Arc<String>,
+    pub audio_encoding_notify: Arc<tokio::sync::Notify>,
     pub epubs_dir: Arc<String>,
     pub uploads_dir: Arc<String>,
     pub discogs_token: String,
@@ -157,6 +158,7 @@ async fn main() {
 
     let images_dir_arc = Arc::new(images_dir);
     let audio_dir_arc = Arc::new(audio_dir);
+    let audio_encoding_notify = Arc::new(tokio::sync::Notify::new());
     let epubs_dir_arc = Arc::new(epubs_dir);
     let uploads_dir_arc = Arc::new(uploads_dir);
 
@@ -166,11 +168,18 @@ async fn main() {
         client_ipv4,
         images_dir: images_dir_arc.clone(),
         audio_dir: audio_dir_arc.clone(),
+        audio_encoding_notify: audio_encoding_notify.clone(),
         epubs_dir: epubs_dir_arc.clone(),
         uploads_dir: uploads_dir_arc.clone(),
         discogs_token,
         musicbrainz_contact,
     };
+
+    let _audio_encoding_worker = audio_encoding::start_background_worker(
+        state.db.clone(),
+        state.audio_dir.as_ref().clone(),
+        state.audio_encoding_notify.clone(),
+    );
 
     let shutdown_db = state.db.clone();
 

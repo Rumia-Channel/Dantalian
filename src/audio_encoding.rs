@@ -1,21 +1,26 @@
 use crate::db::Db;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
+use tokio::sync::Notify;
 
 pub const KEY_ENABLED: &str = "audio.data_saver.enabled";
 pub const KEY_EXTENSIONS: &str = "audio.data_saver.extensions";
 pub const DEFAULT_EXTENSIONS: &str = "wav,flac,aiff,alac";
 
 const TARGET_BITRATE: u32 = 192_000;
+const BACKGROUND_SCAN_INTERVAL: Duration = Duration::from_secs(60);
+const BACKGROUND_RETRY_INTERVAL: Duration = Duration::from_secs(300);
+const BACKGROUND_TRACK_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
 pub struct AudioDataSaverConfig {
@@ -76,6 +81,145 @@ static ENCODE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn encode_lock() -> &'static Mutex<()> {
     ENCODE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+pub fn start_background_worker(
+    db: Db,
+    audio_dir: String,
+    notify: Arc<Notify>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut retry_after = HashMap::<String, Instant>::new();
+
+        loop {
+            let config = AudioDataSaverConfig::load(&db);
+            if !config.enabled || config.extensions.is_empty() {
+                wait_for_wakeup(&notify, BACKGROUND_SCAN_INTERVAL).await;
+                continue;
+            }
+
+            let now = Instant::now();
+            retry_after.retain(|_, until| *until > now);
+            let sources = match db.list_audio_encoding_sources() {
+                Ok(sources) => sources,
+                Err(error) => {
+                    tracing::warn!("Background audio encoder could not list tracks: {}", error);
+                    wait_for_wakeup(&notify, BACKGROUND_SCAN_INTERVAL).await;
+                    continue;
+                }
+            };
+
+            let mut attempted = false;
+            let mut seen_hashes = HashSet::new();
+            for (file_hash, file_name) in sources {
+                if !seen_hashes.insert(file_hash.clone()) {
+                    continue;
+                }
+                let Some(source_extension) = source_extension(&file_name, &file_hash) else {
+                    continue;
+                };
+                if !config.applies_to(&source_extension)
+                    || retry_after
+                        .get(&file_hash)
+                        .is_some_and(|until| *until > Instant::now())
+                    || encoded_variants_exist(&audio_dir, &file_hash)
+                {
+                    continue;
+                }
+
+                attempted = true;
+                let worker_audio_dir = audio_dir.clone();
+                let worker_file_hash = file_hash.clone();
+                let worker_extension = source_extension.clone();
+                tracing::info!(
+                    file_hash = %file_hash,
+                    source_extension = %source_extension,
+                    "Background audio encoding started"
+                );
+                let result = tokio::task::spawn_blocking(move || {
+                    ensure_encoded_variants(&worker_audio_dir, &worker_file_hash, &worker_extension)
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(variants)) if variants.opus && variants.aac => {
+                        tracing::info!(file_hash = %file_hash, "Background audio encoding completed");
+                    }
+                    Ok(Ok(variants)) => {
+                        tracing::warn!(
+                            file_hash = %file_hash,
+                            opus = variants.opus,
+                            aac = variants.aac,
+                            "Background audio encoding completed partially; will retry the missing variant"
+                        );
+                        retry_after.insert(
+                            file_hash.clone(),
+                            Instant::now() + BACKGROUND_RETRY_INTERVAL,
+                        );
+                    }
+                    Ok(Err(error)) => {
+                        tracing::warn!(
+                            file_hash = %file_hash,
+                            "Background audio encoding failed: {}",
+                            error
+                        );
+                        retry_after.insert(
+                            file_hash.clone(),
+                            Instant::now() + BACKGROUND_RETRY_INTERVAL,
+                        );
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            file_hash = %file_hash,
+                            "Background audio encoding task failed: {}",
+                            error
+                        );
+                        retry_after.insert(
+                            file_hash.clone(),
+                            Instant::now() + BACKGROUND_RETRY_INTERVAL,
+                        );
+                    }
+                }
+
+                tokio::time::sleep(BACKGROUND_TRACK_INTERVAL).await;
+                if !AudioDataSaverConfig::load(&db).enabled {
+                    break;
+                }
+            }
+
+            let wait = if attempted {
+                BACKGROUND_TRACK_INTERVAL
+            } else {
+                BACKGROUND_SCAN_INTERVAL
+            };
+            wait_for_wakeup(&notify, wait).await;
+        }
+    })
+}
+
+async fn wait_for_wakeup(notify: &Notify, timeout: Duration) {
+    tokio::select! {
+        _ = notify.notified() => {}
+        _ = tokio::time::sleep(timeout) => {}
+    }
+}
+
+fn source_extension(file_name: &str, file_hash: &str) -> Option<String> {
+    Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .and_then(normalize_extension)
+        .or_else(|| {
+            Path::new(file_hash)
+                .extension()
+                .and_then(|value| value.to_str())
+                .and_then(normalize_extension)
+        })
+}
+
+fn encoded_variants_exist(audio_dir: &str, file_hash: &str) -> bool {
+    encoded_path(audio_dir, file_hash, "opus").is_file()
+        && encoded_path(audio_dir, file_hash, "aac").is_file()
 }
 
 pub fn normalize_extension(value: &str) -> Option<String> {
@@ -600,7 +744,7 @@ fn format_command_error(command: &str, output: &std::process::Output) -> String 
 mod tests {
     use super::{
         AudioDataSaverConfig, encoded_file_name, is_safe_hash, normalize_extension,
-        opus_sample_rate,
+        opus_sample_rate, source_extension,
     };
     use crate::db::Db;
 
@@ -632,5 +776,15 @@ mod tests {
             encoded_file_name("abc-123_X.flac", "opus"),
             "abc-123_X.opus"
         );
+    }
+
+    #[test]
+    fn resolves_source_extension_from_name_then_hash() {
+        assert_eq!(
+            source_extension("record.FLAC", "hash.wav"),
+            Some("flac".to_string())
+        );
+        assert_eq!(source_extension("", "hash.aiff"), Some("aiff".to_string()));
+        assert_eq!(source_extension("record", "hash"), None);
     }
 }

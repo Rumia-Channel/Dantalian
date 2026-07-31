@@ -168,6 +168,15 @@ impl Db {
         rows.collect()
     }
 
+    pub fn list_audio_encoding_sources(&self) -> Result<Vec<(String, String)>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT file_hash, file_name FROM tracks WHERE file_hash IS NOT NULL AND file_name IS NOT NULL ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect()
+    }
+
     pub fn update_track(
         &self,
         id: i64,

@@ -226,6 +226,7 @@ pub async fn upload_track_audio(
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let metadata = extract_and_save_metadata(&state, track_id, &hash).await;
+    state.audio_encoding_notify.notify_one();
 
     Ok(Json(serde_json::json!({
         "file_hash": hash,
