@@ -92,7 +92,7 @@ pub async fn lookup_isbn(
     };
     super::ndl::enrich_author_ndl_ids(client, &mut ndl.authors).await;
 
-    let (cover_url, amazon_description) =
+    let (cover_url, amazon_description, amazon_publish_date) =
         fetch_amazon_cover_with_retry(client, &isbn_variants, images_dir, isbn).await;
 
     let description = amazon_description.or(ndl.description);
@@ -103,7 +103,8 @@ pub async fn lookup_isbn(
         jan: None,
         title: ndl.title,
         publisher: ndl.publisher,
-        publish_date: ndl.publish_date,
+        publish_date: amazon_publish_date
+            .or_else(|| crate::external::normalize_publish_date(ndl.publish_date.as_deref())),
         cover_url,
         description,
         title_transcription: ndl.title_transcription,
@@ -218,6 +219,7 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
             title: None,
             cover_url: None,
             description: None,
+            publish_date: None,
         });
     };
 
@@ -283,7 +285,7 @@ async fn lookup_amazon_cover(
     client: &Client,
     lookup_key: &str,
     images_dir: &str,
-) -> Result<(Option<String>, Option<String>), String> {
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let amazon_info = lookup_amazon_info(client, lookup_key).await?;
     match &amazon_info.cover_url {
         Some(url) => debug!(key = %lookup_key, "Amazon cover found: {}", url),
@@ -294,7 +296,7 @@ async fn lookup_amazon_cover(
     }
 
     let Some(url) = amazon_info.cover_url else {
-        return Ok((None, amazon_info.description));
+        return Ok((None, amazon_info.description, amazon_info.publish_date));
     };
 
     let cover = download_cover(client, &url, images_dir)
@@ -304,7 +306,11 @@ async fn lookup_amazon_cover(
             e
         })?;
 
-    Ok((Some(cover), amazon_info.description))
+    Ok((
+        Some(cover),
+        amazon_info.description,
+        amazon_info.publish_date,
+    ))
 }
 
 async fn fetch_amazon_cover_with_retry(
@@ -312,29 +318,29 @@ async fn fetch_amazon_cover_with_retry(
     lookup_keys: &[String],
     images_dir: &str,
     log_label: &str,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Option<String>) {
     let delays: &[u64] = &[3, 5, 10];
-    let mut result: Option<(Option<String>, Option<String>)> = None;
+    let mut result: Option<(Option<String>, Option<String>, Option<String>)> = None;
     for key in lookup_keys {
         result = lookup_amazon_cover(client, key, images_dir).await.ok();
-        if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+        if result.as_ref().is_some_and(|(c, _, _)| c.is_some()) {
             return result.unwrap();
         }
     }
     for &delay in delays {
-        if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+        if result.as_ref().is_some_and(|(c, _, _)| c.is_some()) {
             break;
         }
         warn!(key = %log_label, "Amazon cover fetch failed, retrying in {}s", delay);
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
         for key in lookup_keys {
             result = lookup_amazon_cover(client, key, images_dir).await.ok();
-            if result.as_ref().is_some_and(|(c, _)| c.is_some()) {
+            if result.as_ref().is_some_and(|(c, _, _)| c.is_some()) {
                 return result.unwrap();
             }
         }
     }
-    result.unwrap_or((None, None))
+    result.unwrap_or((None, None, None))
 }
 
 pub async fn lookup_amazon_cover_for_jan(
@@ -342,7 +348,7 @@ pub async fn lookup_amazon_cover_for_jan(
     jan: &str,
     images_dir: &str,
 ) -> Option<String> {
-    let (cover, _) =
+    let (cover, _, _) =
         fetch_amazon_cover_with_retry(client, &[jan.to_string()], images_dir, jan).await;
     cover
 }
@@ -431,6 +437,7 @@ struct AmazonInfo {
     title: Option<String>,
     cover_url: Option<String>,
     description: Option<String>,
+    publish_date: Option<String>,
 }
 
 fn parse_amazon_detail(html: &str) -> AmazonInfo {
@@ -537,9 +544,112 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
                     .flatten()
             });
 
+    let publish_date = parse_amazon_publish_date(&document);
+
     AmazonInfo {
         title,
         cover_url,
         description,
+        publish_date,
+    }
+}
+
+fn parse_amazon_publish_date(document: &scraper::Html) -> Option<String> {
+    const SELECTORS: &[&str] = &[
+        "#detailBullets_feature_div li",
+        "#detailBulletsWrapper_feature_div li",
+        "#productDetails_techSpec_section_1 tr",
+        "#productDetails_detailBullets_sections1 tr",
+        "#productDetailsTable tr",
+    ];
+
+    for selector in SELECTORS {
+        let Ok(selector) = scraper::Selector::parse(selector) else {
+            continue;
+        };
+        for element in document.select(&selector) {
+            let text = element.text().collect::<String>();
+            if !text.contains("発売日") && !text.contains("出版日") {
+                continue;
+            }
+
+            for label in ["発売日", "出版日"] {
+                let Some((_, value)) = text.split_once(label) else {
+                    continue;
+                };
+                if let Some(date) = value
+                    .split_whitespace()
+                    .filter_map(|part| {
+                        let trimmed = part.trim_matches(|ch: char| {
+                            matches!(
+                                ch,
+                                ':' | '：' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}'
+                            )
+                        });
+                        crate::external::normalize_publish_date(Some(trimmed))
+                    })
+                    .next()
+                {
+                    return Some(date);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_amazon_detail;
+
+    #[test]
+    fn parses_release_date_from_amazon_detail_bullets() {
+        let html = r#"
+            <ul id="detailBullets_feature_div">
+                <li><span class="a-list-item">
+                    <span class="a-text-bold">発売日 :</span>
+                    <span>2015/1/26</span>
+                </span></li>
+            </ul>
+        "#;
+
+        let info = parse_amazon_detail(html);
+
+        assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
+    }
+
+    #[test]
+    fn parses_release_date_from_amazon_product_details_table() {
+        let html = r#"
+            <table id="productDetails_techSpec_section_1">
+                <tr><th>発売日</th><td>2015/1/26</td></tr>
+            </table>
+        "#;
+
+        let info = parse_amazon_detail(html);
+
+        assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires live NDL and Amazon access"]
+    async fn lookup_isbn_uses_amazon_release_date() {
+        let client = reqwest::Client::builder().build().expect("HTTP client");
+        let images_dir =
+            std::env::temp_dir().join(format!("dantalian-amazon-isbn-test-{}", std::process::id()));
+        std::fs::create_dir_all(&images_dir).expect("create image directory");
+
+        let book = super::lookup_isbn(
+            &client,
+            "9784569823522",
+            images_dir.to_str().expect("temporary path is UTF-8"),
+        )
+        .await
+        .expect("ISBN lookup should succeed")
+        .expect("ISBN should resolve to a book");
+
+        assert_eq!(book.publish_date.as_deref(), Some("2015-01-26"));
+
+        let _ = std::fs::remove_dir_all(images_dir);
     }
 }
