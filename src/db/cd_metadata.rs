@@ -1,43 +1,51 @@
 use super::Db;
 use crate::db_models::CdMetadata;
-use rusqlite::params;
+use rusqlite::{Connection, params};
+
+pub(crate) fn upsert_cd_metadata_conn(
+    conn: &Connection,
+    cd_id: i64,
+    m: &CdMetadata,
+) -> Result<(), rusqlite::Error> {
+    let cover_blob: Option<&[u8]> = m.cover_data.as_deref();
+    conn.execute(
+        r#"
+        INSERT INTO cd_metadata (
+            cd_id, year, genre, composer, isrc,
+            cover_mime, cover_data,
+            replay_gain_album_gain_db, replay_gain_album_peak,
+            updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9, CURRENT_TIMESTAMP)
+        ON CONFLICT(cd_id) DO UPDATE SET
+            year=excluded.year,
+            genre=excluded.genre,
+            composer=excluded.composer,
+            isrc=excluded.isrc,
+            cover_mime=excluded.cover_mime,
+            cover_data=excluded.cover_data,
+            replay_gain_album_gain_db=excluded.replay_gain_album_gain_db,
+            replay_gain_album_peak=excluded.replay_gain_album_peak,
+            updated_at=CURRENT_TIMESTAMP
+        "#,
+        params![
+            cd_id,
+            m.year,
+            m.genre,
+            m.composer,
+            m.isrc,
+            m.cover_mime,
+            cover_blob,
+            m.replay_gain_album_gain_db,
+            m.replay_gain_album_peak,
+        ],
+    )?;
+    Ok(())
+}
 
 impl Db {
     pub fn upsert_cd_metadata(&self, cd_id: i64, m: &CdMetadata) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let cover_blob: Option<&[u8]> = m.cover_data.as_deref();
-        conn.execute(
-            r#"
-            INSERT INTO cd_metadata (
-                cd_id, year, genre, composer, isrc,
-                cover_mime, cover_data,
-                replay_gain_album_gain_db, replay_gain_album_peak,
-                updated_at
-            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9, CURRENT_TIMESTAMP)
-            ON CONFLICT(cd_id) DO UPDATE SET
-                year=excluded.year,
-                genre=excluded.genre,
-                composer=excluded.composer,
-                isrc=excluded.isrc,
-                cover_mime=excluded.cover_mime,
-                cover_data=excluded.cover_data,
-                replay_gain_album_gain_db=excluded.replay_gain_album_gain_db,
-                replay_gain_album_peak=excluded.replay_gain_album_peak,
-                updated_at=CURRENT_TIMESTAMP
-            "#,
-            params![
-                cd_id,
-                m.year,
-                m.genre,
-                m.composer,
-                m.isrc,
-                m.cover_mime,
-                cover_blob,
-                m.replay_gain_album_gain_db,
-                m.replay_gain_album_peak,
-            ],
-        )?;
-        Ok(())
+        upsert_cd_metadata_conn(&conn, cd_id, m)
     }
 
     pub fn get_cd_metadata(&self, cd_id: i64) -> Result<Option<CdMetadata>, rusqlite::Error> {

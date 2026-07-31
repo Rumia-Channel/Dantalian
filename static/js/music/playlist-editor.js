@@ -257,13 +257,6 @@ function ensurePlaylistEditor() {
         save.disabled = true;
         setPlaylistEditorStatus(modal, "保存中...");
         try {
-            await playlistRequest(`/api/playlists/${playlistEditorState.id}/tracks`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    track_ids: playlistEditorState.entries.map((entry) => entry.track.id),
-                }),
-            });
             await playlistRequest(`/api/playlists/${playlistEditorState.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -271,6 +264,7 @@ function ensurePlaylistEditor() {
                     name,
                     description: description || null,
                     cover_cd_id: coverValue ? Number(coverValue) : null,
+                    track_ids: playlistEditorState.entries.map((entry) => entry.track.id),
                 }),
             });
             await loadPlaylists();

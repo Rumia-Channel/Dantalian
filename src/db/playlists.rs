@@ -162,6 +162,57 @@ impl Db {
         Ok(affected > 0)
     }
 
+    pub fn update_playlist_with_tracks(
+        &self,
+        id: i64,
+        name: &str,
+        description: Option<&str>,
+        cover_cd_id: Option<i64>,
+        track_ids: &[i64],
+    ) -> Result<bool, rusqlite::Error> {
+        let mut conn = self.0.lock().unwrap();
+        let tx = conn.transaction()?;
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let affected = tx.execute(
+            "UPDATE playlists
+             SET name = ?1, description = ?2, cover_cd_id = ?3, updated_at = ?4
+             WHERE id = ?5",
+            params![name, description, cover_cd_id, now, id],
+        )?;
+        if affected == 0 {
+            return Ok(false);
+        }
+
+        tx.execute(
+            "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
+            params![id],
+        )?;
+        let mut seen = HashSet::new();
+        for (position, track_id) in track_ids.iter().enumerate() {
+            if !seen.insert(*track_id) {
+                continue;
+            }
+            let valid: bool = tx.query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM tracks
+                     WHERE id = ?1 AND cd_id IS NOT NULL AND file_hash IS NOT NULL
+                 )",
+                params![track_id],
+                |row| row.get(0),
+            )?;
+            if !valid {
+                return Ok(false);
+            }
+            tx.execute(
+                "INSERT INTO playlist_tracks (playlist_id, track_id, position)
+                 VALUES (?1, ?2, ?3)",
+                params![id, track_id, position as i64],
+            )?;
+        }
+        tx.commit()?;
+        Ok(true)
+    }
+
     pub fn delete_playlist(&self, id: i64) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let affected = conn.execute("DELETE FROM playlists WHERE id = ?1", params![id])?;

@@ -64,9 +64,17 @@ async function deletePlaylistById(id) {
 
 async function removePlaylistTracksById(playlistId, trackIds) {
     const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
-    for (const trackId of ids) {
-        await playlistRequest(`/api/playlists/${playlistId}/tracks/${trackId}`, { method: "DELETE" });
-    }
+    const playlist = allPlaylists.find((item) => item.id === Number(playlistId));
+    if (!playlist) throw new Error("プレイリストが見つかりません");
+    const removeSet = new Set(ids);
+    const trackIdsAfter = (playlist.tracks || [])
+        .map((entry) => Number(entry.track?.id))
+        .filter((trackId) => Number.isFinite(trackId) && !removeSet.has(trackId));
+    await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ track_ids: trackIdsAfter }),
+    });
     await loadPlaylists();
     if (typeof renderGrid === "function") renderGrid();
 }
@@ -232,13 +240,16 @@ function ensurePlaylistPicker() {
 }
 
 async function addTrackIdsToPlaylist(playlistId, trackIds) {
-    for (const trackId of trackIds) {
-        await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ track_id: trackId }),
-        });
-    }
+    const playlist = allPlaylists.find((item) => item.id === Number(playlistId));
+    const existing = (playlist?.tracks || [])
+        .map((entry) => Number(entry.track?.id))
+        .filter(Number.isFinite);
+    const next = [...new Set([...existing, ...trackIds.map(Number).filter(Number.isFinite)])];
+    await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ track_ids: next }),
+    });
 }
 
 async function openPlaylistPicker({ trackIds, defaultCoverCdId = null } = {}) {

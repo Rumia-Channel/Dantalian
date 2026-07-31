@@ -2,7 +2,8 @@
 let manualAllAuthors = [];
 let manualAllSeries = [];
 let manualAllGrandSeries = [];
-let manualCoverFile = null;
+let manualBookCoverFile = null;
+let manualCdCoverFile = null;
 let manualCoverPreview = null;
 let manualAuthorIds = [];
 let manualCdTracks = [];
@@ -402,7 +403,7 @@ async function renderManualForm() {
     document.getElementById("manual-cover-input").addEventListener("change", (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        manualCoverFile = file;
+        manualBookCoverFile = file;
         document.getElementById("manual-cover-filename").textContent = file.name;
         const reader = new FileReader();
         reader.onload = (ev) => {
@@ -418,7 +419,7 @@ async function renderManualForm() {
         cdCoverInput.addEventListener("change", (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            manualCoverFile = file;
+            manualCdCoverFile = file;
             document.getElementById("manual-cd-cover-filename").textContent = file.name;
             const reader = new FileReader();
             reader.onload = (ev) => {
@@ -522,8 +523,8 @@ async function submitManualBook(e) {
         const bookId = data.book.id;
         let coverUploadFailed = false;
 
-        if (manualCoverFile && bookId) {
-            const coverRes = await uploadFileWithChunks(`/api/books/${bookId}/cover`, "cover", manualCoverFile);
+        if (manualBookCoverFile && bookId) {
+            const coverRes = await uploadFileWithChunks(`/api/books/${bookId}/cover`, "cover", manualBookCoverFile);
             if (!coverRes.ok) {
                 coverUploadFailed = true;
             }
@@ -533,7 +534,8 @@ async function submitManualBook(e) {
             ? `「${data.book.title}」を登録しましたが、カバー画像のアップロードに失敗しました`
             : `「${data.book.title}」を登録しました`;
         statusEl.className = coverUploadFailed ? "error" : "success";
-        manualCoverFile = null;
+        manualBookCoverFile = null;
+        manualCdCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];
         manualCdTracks = [];
@@ -561,6 +563,7 @@ async function submitManualCd(e) {
     const body = {
         jan: document.querySelector("input[name=cd_jan]")?.value || null,
         title: title,
+        artist: document.querySelector("input[name=cd_artist]")?.value || null,
         publisher: document.querySelector("input[name=cd_publisher]")?.value || null,
         label: document.querySelector("input[name=cd_label]")?.value || null,
         catalog_number: document.querySelector("input[name=cd_catalog_number]")?.value || null,
@@ -570,13 +573,23 @@ async function submitManualCd(e) {
         volume: document.querySelector("input[name=cd_volume]")?.value || null,
         media_type: document.querySelector("select[name=cd_media_type]")?.value || null,
         parent_book_id: parseInt(document.querySelector("input[name=cd_parent_book_id]")?.value) || null,
+        series_id: manualSeriesSelect ? manualSeriesSelect.getValue() : null,
+        grand_series_id: manualGrandSeriesSelect ? manualGrandSeriesSelect.getValue() : null,
+        author_ids: manualAuthorIds.slice(),
+        tracks: manualCdTracks.map((track) => ({ ...track })),
+        metadata: {
+            composer: document.querySelector("input[name=cd_meta_composer]")?.value?.trim() || null,
+            genre: document.querySelector("input[name=cd_meta_genre]")?.value?.trim() || null,
+            year: document.querySelector("input[name=cd_meta_year]")?.value?.trim()
+                ? parseInt(document.querySelector("input[name=cd_meta_year]").value, 10)
+                : null,
+            isrc: document.querySelector("input[name=cd_meta_isrc]")?.value?.trim() || null,
+        },
         manual: true,
     };
     for (const key in body) {
         if (body[key] === "") body[key] = null;
     }
-    if (manualSeriesSelect) body.series_id = manualSeriesSelect.getValue();
-
     const statusEl = document.getElementById("manual-cd-register-status");
 
     try {
@@ -595,62 +608,9 @@ async function submitManualCd(e) {
 
         const cdId = data.cd?.id || data.id;
 
-        if (cdId) {
-            for (const aid of manualAuthorIds) {
-                await fetch(`/api/cds/${cdId}/authors/${aid}`, { method: "POST" }).catch(() => {});
-            }
-
-            const cdMetaBody = {};
-            for (const f of ["cd_meta_composer", "cd_meta_genre", "cd_meta_isrc"]) {
-                const v = document.querySelector(`input[name=${f}]`)?.value?.trim();
-                if (v) cdMetaBody[f.replace(/^cd_meta_/, "")] = v;
-            }
-            const yearEl = document.querySelector("input[name=cd_meta_year]");
-            if (yearEl && yearEl.value.trim()) {
-                cdMetaBody.year = parseInt(yearEl.value.trim(), 10);
-            }
-            if (Object.keys(cdMetaBody).length > 0) {
-                await fetch(`/api/cds/${cdId}/metadata`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(cdMetaBody),
-                }).catch(() => {});
-            }
-
-            for (const t of manualCdTracks) {
-                const { title, disc_number, track_number, duration, ...metaFields } = t;
-                const trackBody = {
-                    title: title || "",
-                    disc_number: disc_number || 1,
-                    track_number: track_number || 1,
-                    duration: duration || null,
-                };
-                const trackRes = await fetch(`/api/cds/${cdId}/tracks`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(trackBody),
-                }).catch(() => null);
-                let trackId = null;
-                if (trackRes && trackRes.ok) {
-                    try {
-                        const tj = await trackRes.json();
-                        trackId = tj.id;
-                    } catch {}
-                }
-                const hasMeta = Object.values(metaFields).some((v) => v != null && v !== "");
-                if (trackId && hasMeta) {
-                    await fetch(`/api/cds/${cdId}/tracks/${trackId}/metadata`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(metaFields),
-                    }).catch(() => {});
-                }
-            }
-        }
-
         let coverUploadFailed = false;
-        if (manualCoverFile && cdId) {
-            const coverRes = await uploadFileWithChunks(`/api/cds/${cdId}/cover`, "cover", manualCoverFile);
+        if (manualCdCoverFile && cdId) {
+            const coverRes = await uploadFileWithChunks(`/api/cds/${cdId}/cover`, "cover", manualCdCoverFile);
             if (!coverRes.ok) {
                 coverUploadFailed = true;
             }
@@ -661,7 +621,8 @@ async function submitManualCd(e) {
             ? `「${registeredTitle}」を登録しましたが、カバー画像のアップロードに失敗しました`
             : `「${registeredTitle}」を登録しました`;
         statusEl.className = coverUploadFailed ? "error" : "success";
-        manualCoverFile = null;
+        manualBookCoverFile = null;
+        manualCdCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];
         manualCdTracks = [];

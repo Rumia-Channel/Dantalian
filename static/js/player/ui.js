@@ -2,14 +2,13 @@
 //
 // 状態モデル:
 //   viewMode = 'live'   … フル表示中のアルバム = 再生中のアルバム (進行/ハイライトはライブ)
-//            'queued'   … 別のアルバムを再生中に閲覧中 = 「Up Next」予約 (再生は継続)
-//            'idle'     … 何も再生していない状態で閲覧中 (プレビュー)
+//            'idle'     … 何も再生していない、または別のキューを再生中に閲覧中 (プレビュー)
 //   表示     = 'full' / 'mini' / 'closed'
 //
 // 挙動:
 //   ・ライブラリのカードクリックは自動再生しない (閲覧/予約のみ)。
 //   ・再生は「再生ボタン」または「トラッククリック」で初めて始まる。
-//   ・再生中に別CDを開くと Up Next として予約され、現在の曲が終わると再生される。
+//   ・再生中に別CDを開いても、既存キューは変更せずに閲覧だけ行う。
 //   ・一覧に戻ると下部ミニバーで再生継続。ミニバークリックでフル表示へ。
 
 function createPlayerUI(rootEl) {
@@ -44,10 +43,6 @@ function createPlayerUI(rootEl) {
                     </div>
                 </section>
                 <section class="player-info">
-                    <div class="player-nowplaying-banner" data-el="banner" hidden>
-                        <span class="material-icons">play_circle</span>
-                        <span>現在再生中: <strong data-el="banner-text"></strong></span>
-                    </div>
                     <div class="player-titles">
                         <h2 class="player-track-title" data-el="track-title">—</h2>
                         <div class="player-album" data-el="album-title">—</div>
@@ -155,7 +150,6 @@ function createPlayerUI(rootEl) {
             <div class="player-mini-text" data-act="expand">
                 <div class="player-mini-title" data-el="mini-title">—</div>
                 <div class="player-mini-artist" data-el="mini-artist">—</div>
-                <div class="player-mini-next" data-el="mini-next" hidden>次に: <span data-el="mini-next-text"></span></div>
             </div>
             <div class="player-mini-controls">
                 <button class="player-mini-btn" data-act="prev" aria-label="前の曲" title="前の曲"><span class="material-icons">skip_previous</span></button>
@@ -179,7 +173,7 @@ function createPlayerUI(rootEl) {
     let currentCd = null;     // 現在再生中の曲が属するアルバム
     let viewCd = null;        // フル表示中のアルバム
     let viewTrackId = null;   // フル表示で選択/再生中のトラック
-    let viewMode = "idle";    // 'live' | 'queued' | 'idle'
+    let viewMode = "idle";    // 'live' | 'idle'
     let fullVisible = false;
     let ambientFlip = false;
     let queueVisible = false;
@@ -352,7 +346,6 @@ function createPlayerUI(rootEl) {
     function computeViewMode() {
         if (!viewCd) return "idle";
         if (currentCd && currentCd.id === viewCd.id) return "live";
-        if (currentCd) return "queued";
         return "idle";
     }
 
@@ -457,7 +450,7 @@ function createPlayerUI(rootEl) {
             const album = entry.album;
             const albumId = album ? album.id : "unknown";
             if (albumId !== previousAlbumId) {
-                const label = displayIndex === currentPosition ? "NOW PLAYING" : (displayIndex > currentPosition ? "UP NEXT" : "PLAYED");
+                const label = displayIndex === currentPosition ? "再生中" : (displayIndex > currentPosition ? "再生待ち" : "再生済み");
                 html += `<li class="player-queue-section"><span>${label}</span><strong>${escapeHtml(album ? album.title : "音声ファイル")}</strong></li>`;
                 previousAlbumId = albumId;
             }
@@ -497,11 +490,10 @@ function createPlayerUI(rootEl) {
         renderTracklist();
         loadTrackTechnicalInfo(viewCd, track);
 
-        rootEl.classList.remove("view-live", "view-queued", "view-idle");
+        rootEl.classList.remove("view-live", "view-idle");
         rootEl.classList.add(`view-${viewMode}`);
 
         if (viewMode === "live") {
-            el.banner.hidden = true;
             const playing = engine.isPlaying;
             el["play-icon"].textContent = playing ? "pause" : "play_arrow";
             el.cover.classList.toggle("is-playing", playing);
@@ -512,21 +504,14 @@ function createPlayerUI(rootEl) {
             const dur = engine.getDuration();
             el["time-total"].textContent = formatTime(dur > 0 ? dur : parseDur(track && track.duration));
         } else {
-            // queued / idle: プレビュー状態 (再生はビューのアルバムからは流れていない)
+            // idle: プレビュー状態 (再生はビューのアルバムからは流れていない)
             el["play-icon"].textContent = "play_arrow";
             el.cover.classList.remove("is-playing");
             el.tracklist.classList.remove("is-playing");
             el["status-dot"].classList.remove("is-playing");
-            el["status-label"].textContent = viewMode === "queued" ? "UP NEXT" : "PREVIEW";
+            el["status-label"].textContent = "PREVIEW";
             setViewProgress(0);
             el["time-total"].textContent = formatTime(parseDur(track && track.duration));
-            if (viewMode === "queued" && currentCd) {
-                const ct = engine.current();
-                el["banner-text"].textContent = `${currentCd.title}${ct ? " / " + ct.title : ""}`;
-                el.banner.hidden = false;
-            } else {
-                el.banner.hidden = true;
-            }
         }
     }
 
@@ -549,7 +534,6 @@ function createPlayerUI(rootEl) {
         if (currentCd) paintCover(currentCd);
         const playing = engine.isPlaying;
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
-        el["mini-next"].hidden = true;
         renderQueue();
     }
     function setMiniProgress(pos) {
@@ -865,7 +849,7 @@ function createPlayerUI(rootEl) {
         renderQueue();
         updateMediaSession();
         if (fullVisible && viewMode === "live") { viewTrackId = t.id; renderView(); }
-        else if (fullVisible && viewMode === "queued") { renderView(); } // バナーの現在再生中を更新
+        else if (fullVisible && viewMode === "idle") { renderView(); }
     });
     engine.on("queuechange", () => renderQueue());
     engine.on("empty", () => {
@@ -1031,7 +1015,7 @@ function createPlayerUI(rootEl) {
             if (!browseExternalQueue(entries, startIndex)) return;
             api.show();
         },
-        // autoplay=false: 閲覧/予約のみ (自動再生しない)。true: 即再生。
+        // autoplay=false: 閲覧のみ (自動再生しない)。true: 即再生。
         openAlbum(cdId, autoplay) {
             const cd = albums.find((c) => c.id === cdId);
             if (!cd) return;

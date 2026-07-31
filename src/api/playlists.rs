@@ -21,6 +21,7 @@ pub struct UpdatePlaylistRequest {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub cover_cd_id: Option<Option<i64>>,
+    pub track_ids: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,10 +116,19 @@ pub async fn update(
     let description = body.description.unwrap_or(existing.playlist.description);
     let cover_cd_id = body.cover_cd_id.unwrap_or(existing.playlist.cover_cd_id);
     validate_cover(&state, cover_cd_id)?;
-    let updated = state
-        .db
-        .update_playlist(id, &name, description.as_deref(), cover_cd_id)
-        .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let updated = match body.track_ids.as_deref() {
+        Some(track_ids) => state.db.update_playlist_with_tracks(
+            id,
+            &name,
+            description.as_deref(),
+            cover_cd_id,
+            track_ids,
+        ),
+        None => state
+            .db
+            .update_playlist(id, &name, description.as_deref(), cover_cd_id),
+    }
+    .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !updated {
         return Err(error(StatusCode::NOT_FOUND, "Playlist not found"));
     }

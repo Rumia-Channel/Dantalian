@@ -843,17 +843,8 @@ async function loadAndRenderCdMetadata(cdId) {
 }
 
 async function saveCdMetadata(cdId) {
-    const container = document.getElementById("edit-cd-metadata-fields");
-    if (!container) return;
-    const body = {};
-    container.querySelectorAll("input[data-cd-meta-key]").forEach((i) => {
-        const k = i.dataset.cdMetaKey;
-        const v = i.value.trim();
-        if (v !== "") {
-            if (i.type === "number") body[k] = parseInt(v, 10);
-            else body[k] = v;
-        }
-    });
+    const body = collectCdMetadataBody();
+    if (!body) return;
     try {
         const r = await fetch(`/api/cds/${cdId}/metadata`, {
             method: "PUT",
@@ -873,6 +864,27 @@ async function saveCdMetadata(cdId) {
     }
 }
 
+function collectCdMetadataBody() {
+    const container = document.getElementById("edit-cd-metadata-fields");
+    if (!container) return null;
+    const fields = [...container.querySelectorAll("input[data-cd-meta-key]")];
+    if (fields.length === 0) return null;
+    const body = {};
+    fields.forEach((i) => {
+        const k = i.dataset.cdMetaKey;
+        const v = i.value.trim();
+        if (v === "") {
+            body[k] = null;
+        } else if (i.type === "number") {
+            const number = parseInt(v, 10);
+            body[k] = Number.isFinite(number) ? number : null;
+        } else {
+            body[k] = v;
+        }
+    });
+    return body;
+}
+
 async function saveCd(e, cdId) {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -887,6 +899,8 @@ async function saveCd(e, cdId) {
     if (editCdSeriesSelect) {
         body.series_id = editCdSeriesSelect.getValue();
     }
+    const metadata = collectCdMetadataBody();
+    if (metadata) body.metadata = metadata;
     try {
         const res = await fetch(`/api/cds/${cdId}`, {
             method: "PUT",
@@ -895,8 +909,14 @@ async function saveCd(e, cdId) {
         });
         if (res.ok) {
             window.location.href = "/";
+        } else {
+            const error = await res.json().catch(() => ({}));
+            alert(`CD情報の保存に失敗しました (HTTP ${res.status}): ${error.error || ""}`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("saveCd failed:", err);
+        alert("CD情報の保存中に通信エラーが発生しました");
+    }
 }
 
 function renderCdAuthorListHtml(cdId, authors) {

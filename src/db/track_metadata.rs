@@ -2,7 +2,83 @@ use super::Db;
 use crate::db_models::BookAuthor;
 use crate::db_models::TrackMetadataResponse;
 use crate::external::audio_meta::TrackMetadata;
-use rusqlite::params;
+use rusqlite::{Connection, params};
+
+pub(crate) fn upsert_track_metadata_conn(
+    conn: &Connection,
+    track_id: i64,
+    m: &TrackMetadata,
+) -> Result<(), rusqlite::Error> {
+    let cover_blob: Option<&[u8]> = m.cover_data.as_deref();
+    conn.execute(
+        r#"
+        INSERT INTO track_metadata (
+            track_id, title, artist, album, album_artist,
+            track_number, track_total, disc_number, disc_total,
+            year, genre, composer, publisher, label, encoder, comment, lyrics,
+            cover_mime, cover_data,
+            replay_gain_track_gain_db, replay_gain_track_peak,
+            replay_gain_album_gain_db, replay_gain_album_peak,
+            file_type, raw_size_bytes,
+            updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25, CURRENT_TIMESTAMP)
+        ON CONFLICT(track_id) DO UPDATE SET
+            title=excluded.title,
+            artist=excluded.artist,
+            album=excluded.album,
+            album_artist=excluded.album_artist,
+            track_number=excluded.track_number,
+            track_total=excluded.track_total,
+            disc_number=excluded.disc_number,
+            disc_total=excluded.disc_total,
+            year=excluded.year,
+            genre=excluded.genre,
+            composer=excluded.composer,
+            publisher=excluded.publisher,
+            label=excluded.label,
+            encoder=excluded.encoder,
+            comment=excluded.comment,
+            lyrics=excluded.lyrics,
+            cover_mime=excluded.cover_mime,
+            cover_data=excluded.cover_data,
+            replay_gain_track_gain_db=excluded.replay_gain_track_gain_db,
+            replay_gain_track_peak=excluded.replay_gain_track_peak,
+            replay_gain_album_gain_db=excluded.replay_gain_album_gain_db,
+            replay_gain_album_peak=excluded.replay_gain_album_peak,
+            file_type=excluded.file_type,
+            raw_size_bytes=excluded.raw_size_bytes,
+            updated_at=CURRENT_TIMESTAMP
+        "#,
+        params![
+            track_id,
+            m.title,
+            m.artist,
+            m.album,
+            m.album_artist,
+            m.track_number,
+            m.track_total,
+            m.disc_number,
+            m.disc_total,
+            m.year,
+            m.genre,
+            m.composer,
+            m.publisher,
+            m.label,
+            m.encoder,
+            m.comment,
+            m.lyrics,
+            m.cover_mime,
+            cover_blob,
+            m.replay_gain_track_gain_db,
+            m.replay_gain_track_peak,
+            m.replay_gain_album_gain_db,
+            m.replay_gain_album_peak,
+            m.file_type,
+            m.raw_size_bytes,
+        ],
+    )?;
+    Ok(())
+}
 
 impl Db {
     pub fn upsert_track_metadata(
@@ -11,75 +87,7 @@ impl Db {
         m: &TrackMetadata,
     ) -> Result<(), rusqlite::Error> {
         let conn = self.0.lock().unwrap();
-        let cover_blob: Option<&[u8]> = m.cover_data.as_deref();
-        conn.execute(
-            r#"
-            INSERT INTO track_metadata (
-                track_id, title, artist, album, album_artist,
-                track_number, track_total, disc_number, disc_total,
-                year, genre, composer, publisher, label, encoder, comment, lyrics,
-                cover_mime, cover_data,
-                replay_gain_track_gain_db, replay_gain_track_peak,
-                replay_gain_album_gain_db, replay_gain_album_peak,
-                file_type, raw_size_bytes,
-                updated_at
-            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25, CURRENT_TIMESTAMP)
-            ON CONFLICT(track_id) DO UPDATE SET
-                title=excluded.title,
-                artist=excluded.artist,
-                album=excluded.album,
-                album_artist=excluded.album_artist,
-                track_number=excluded.track_number,
-                track_total=excluded.track_total,
-                disc_number=excluded.disc_number,
-                disc_total=excluded.disc_total,
-                year=excluded.year,
-                genre=excluded.genre,
-                composer=excluded.composer,
-                publisher=excluded.publisher,
-                label=excluded.label,
-                encoder=excluded.encoder,
-                comment=excluded.comment,
-                lyrics=excluded.lyrics,
-                cover_mime=excluded.cover_mime,
-                cover_data=excluded.cover_data,
-                replay_gain_track_gain_db=excluded.replay_gain_track_gain_db,
-                replay_gain_track_peak=excluded.replay_gain_track_peak,
-                replay_gain_album_gain_db=excluded.replay_gain_album_gain_db,
-                replay_gain_album_peak=excluded.replay_gain_album_peak,
-                file_type=excluded.file_type,
-                raw_size_bytes=excluded.raw_size_bytes,
-                updated_at=CURRENT_TIMESTAMP
-            "#,
-            params![
-                track_id,
-                m.title,
-                m.artist,
-                m.album,
-                m.album_artist,
-                m.track_number,
-                m.track_total,
-                m.disc_number,
-                m.disc_total,
-                m.year,
-                m.genre,
-                m.composer,
-                m.publisher,
-                m.label,
-                m.encoder,
-                m.comment,
-                m.lyrics,
-                m.cover_mime,
-                cover_blob,
-                m.replay_gain_track_gain_db,
-                m.replay_gain_track_peak,
-                m.replay_gain_album_gain_db,
-                m.replay_gain_album_peak,
-                m.file_type,
-                m.raw_size_bytes,
-            ],
-        )?;
-        Ok(())
+        upsert_track_metadata_conn(&conn, track_id, m)
     }
 
     pub fn get_track_metadata(

@@ -197,38 +197,10 @@ body.player-mini-active #app {
     min-width: 0;
 }
 
-/* 閲覧中(Up Next)バナー */
-.player-nowplaying-banner {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    align-self: flex-start;
-    margin-bottom: 0.4rem;
-    padding: 0.3rem 0.7rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    color: var(--color-text-tertiary);
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--color-border-light);
-}
-
-.player-nowplaying-banner .material-icons {
-    font-size: 1rem;
-    color: var(--color-primary);
-}
-
-.player-nowplaying-banner strong {
-    color: var(--color-text-faint);
-    font-weight: 600;
-}
-
-/* 閲覧/予約中のステータス色 */
-.player-root.view-queued .player-eyebrow,
 .player-root.view-idle .player-eyebrow {
     color: var(--color-text-dim);
 }
 
-.player-root.view-queued .player-eyebrow-dot,
 .player-root.view-idle .player-eyebrow-dot {
     background: var(--color-warning);
 }
@@ -773,15 +745,6 @@ body.player-mini-active #app {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.player-mini-next {
-    font-size: 0.72rem;
-    color: var(--color-warning);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 0.1rem;
 }
 
 .player-mini-controls {

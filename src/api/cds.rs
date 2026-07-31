@@ -1,8 +1,9 @@
 use crate::AppState;
 use crate::api::upload_chunks::{ChunkQuery, StoreResult};
-use crate::db::{CdInfo, CdWithTracks, NewCd};
+use crate::db::{CdInfo, CdWithTracks, NewCd, NewTrack};
 use crate::db_models::CdMetadata;
 use crate::external;
+use crate::external::audio_meta::TrackMetadata;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -31,8 +32,30 @@ pub struct CdRegisterRequest {
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
+    pub grand_series_id: Option<i64>,
+    pub author_ids: Option<Vec<i64>>,
+    pub tracks: Option<Vec<ManualCdTrackRequest>>,
+    pub metadata: Option<ManualCdMetadataRequest>,
     pub manual: Option<bool>,
     pub musicbrainz_release_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ManualCdMetadataRequest {
+    pub year: Option<i64>,
+    pub genre: Option<String>,
+    pub composer: Option<String>,
+    pub isrc: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ManualCdTrackRequest {
+    pub disc_number: Option<i64>,
+    pub track_number: i64,
+    pub title: String,
+    pub duration: Option<String>,
+    #[serde(flatten)]
+    pub metadata: serde_json::Map<String, serde_json::Value>,
 }
 
 fn album_artist_from_metadata(db: &crate::db::Db, cd_id: i64) -> Option<String> {
@@ -130,12 +153,62 @@ pub async fn cd_register(
             series_id: req.series_id,
         };
 
-        let cd = state.db.insert_cd(&new_cd).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
+        let author_ids = req.author_ids.unwrap_or_default();
+        let track_data: Vec<(NewTrack, Option<TrackMetadata>)> = req
+            .tracks
+            .unwrap_or_default()
+            .into_iter()
+            .map(|track| {
+                let mut metadata = track.metadata;
+                metadata.insert(
+                    "title".to_string(),
+                    serde_json::Value::String(track.title.clone()),
+                );
+                metadata.insert(
+                    "track_number".to_string(),
+                    serde_json::Value::Number(track.track_number.into()),
+                );
+                metadata.insert(
+                    "disc_number".to_string(),
+                    serde_json::Value::Number(track.disc_number.unwrap_or(1).into()),
+                );
+                (
+                    NewTrack {
+                        disc_number: track.disc_number,
+                        track_number: track.track_number,
+                        title: track.title,
+                        duration: track.duration,
+                    },
+                    Some(TrackMetadata::from_json(&serde_json::Value::Object(
+                        metadata,
+                    ))),
+                )
+            })
+            .collect();
+        let album_metadata = req.metadata.map(|metadata| CdMetadata {
+            cd_id: 0,
+            year: metadata.year,
+            genre: metadata.genre,
+            composer: metadata.composer,
+            isrc: metadata.isrc,
+            ..CdMetadata::default()
+        });
+
+        let cd = state
+            .db
+            .insert_manual_cd(
+                &new_cd,
+                &author_ids,
+                &track_data,
+                album_metadata.as_ref(),
+                req.grand_series_id,
             )
-        })?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+            })?;
 
         let cd_id = cd.id;
         let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
@@ -534,10 +607,20 @@ pub async fn update_cd(
     let parent_book_id = present_i64(&body, "parent_book_id", existing.parent_book_id);
     let media_type = present_str(&body, "media_type", existing.media_type.as_deref());
     let series_id = present_i64(&body, "series_id", existing.series_id);
+    let metadata = match body.get("metadata") {
+        None => None,
+        Some(value) if value.is_object() => Some(CdMetadata::from_json(id, value)),
+        Some(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "metadata must be an object"})),
+            ));
+        }
+    };
 
     state
         .db
-        .update_cd(
+        .update_cd_with_metadata(
             id,
             jan.as_deref(),
             title.trim(),
@@ -552,6 +635,7 @@ pub async fn update_cd(
             parent_book_id,
             media_type.as_deref(),
             series_id,
+            metadata.as_ref(),
         )
         .map_err(|e| {
             (
@@ -755,9 +839,23 @@ pub async fn put_cd_metadata(
 
 pub async fn update_cd_track(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
+    if let Some(swap_track_id) = body.get("swap_track_id").and_then(|v| v.as_i64()) {
+        let swapped = tokio::task::spawn_blocking({
+            let db = state.db.clone();
+            move || db.swap_track_positions(cd_id, track_id, swap_track_id)
+        })
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if !swapped {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        return Ok(Json("ok".into()));
+    }
+
     let title = body
         .get("title")
         .and_then(|v| v.as_str())

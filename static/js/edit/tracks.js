@@ -129,12 +129,19 @@ async function saveTrackField(parentId, trackId, field, value, editType) {
         ? `/api/cds/${parentId}/tracks/${trackId}`
         : `/api/books/${parentId}/tracks/${trackId}`;
     try {
-        await fetch(url, {
+        const res = await fetch(url, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
-    } catch {}
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            alert(`トラック情報の保存に失敗しました (HTTP ${res.status}): ${error.error || ""}`);
+        }
+    } catch (err) {
+        console.error("saveTrackField failed:", err);
+        alert("トラック情報の保存中に通信エラーが発生しました");
+    }
 }
 
 async function addTrackToDisc(parentId, discNumber, editType) {
@@ -193,7 +200,8 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
     if (editType !== "cd") return;
 
     const rows = [...document.querySelectorAll("#edit-tracks-list .edit-track-row")];
-    const idx = rows.findIndex((r) => parseInt(r.dataset.trackId, 10) === trackId);
+    const sameDiscRows = rows.filter((row) => Number(row.dataset.discNumber) === Number(discNumber));
+    const idx = sameDiscRows.findIndex((r) => parseInt(r.dataset.trackId, 10) === trackId);
     if (idx < 0) return;
 
     let swapIdx;
@@ -202,40 +210,21 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
     } else {
         swapIdx = idx + 1;
     }
-    if (swapIdx < 0 || swapIdx >= rows.length) return;
+    if (swapIdx < 0 || swapIdx >= sameDiscRows.length) return;
 
-    const thisRow = rows[idx];
-    const swapRow = rows[swapIdx];
-
-    const thisTitle = thisRow.querySelector(".edit-track-title-input").value;
-    const thisDur = thisRow.querySelector(".edit-track-dur-input").value;
-    const swapTitle = swapRow.querySelector(".edit-track-title-input").value;
-    const swapDur = swapRow.querySelector(".edit-track-dur-input").value;
+    const swapRow = sameDiscRows[swapIdx];
     const swapId = parseInt(swapRow.dataset.trackId, 10);
 
-    const thisNewNum = swapIdx + 1;
-    const swapNewNum = idx + 1;
-
     try {
-        const results = await Promise.all([
-            fetch(`/api/cds/${parentId}/tracks/${trackId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: thisTitle, duration: thisDur || null, disc_number: discNumber, track_number: thisNewNum }),
-            }),
-            fetch(`/api/cds/${parentId}/tracks/${swapId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: swapTitle, duration: swapDur || null, disc_number: discNumber, track_number: swapNewNum }),
-            }),
-        ]);
-        for (const r of results) {
-            if (!r.ok) {
-                const errBody = await r.json().catch(() => ({}));
-                console.error("moveTrack failed:", r.status, errBody);
-                alert(`トラック順の変更に失敗しました (HTTP ${r.status})`);
-                break;
-            }
+        const res = await fetch(`/api/cds/${parentId}/tracks/${trackId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ swap_track_id: swapId }),
+        });
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            console.error("moveTrack failed:", res.status, errBody);
+            alert(`トラック順の変更に失敗しました (HTTP ${res.status}): ${errBody.error || ""}`);
         }
     } catch (err) {
         console.error("moveTrack error:", err);
