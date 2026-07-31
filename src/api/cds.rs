@@ -1113,10 +1113,7 @@ async fn synchronize_cd_core_metadata(
         let title = non_empty(extracted.album.as_ref())
             .unwrap_or(cd.title.as_str())
             .to_string();
-        let artist = non_empty(extracted.album_artist.as_ref())
-            .or_else(|| non_empty(extracted.artist.as_ref()))
-            .map(str::to_string)
-            .or(cd.artist.clone());
+        let artist = preferred_cd_artist(&extracted, cd.artist.as_deref());
         let publisher = non_empty(extracted.publisher.as_ref())
             .map(str::to_string)
             .or(cd.publisher.clone());
@@ -1177,6 +1174,53 @@ fn non_empty_audio_tag(value: Option<&String>) -> Option<&str> {
         let trimmed = value.trim();
         (!trimmed.is_empty()).then_some(trimmed)
     })
+}
+
+fn preferred_cd_artist(
+    extracted: &crate::external::audio_meta::TrackMetadata,
+    existing: Option<&str>,
+) -> Option<String> {
+    non_empty_audio_tag(extracted.artist.as_ref())
+        .or_else(|| non_empty_audio_tag(extracted.album_artist.as_ref()))
+        .map(str::to_string)
+        .or_else(|| existing.map(str::to_string))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preferred_cd_artist;
+    use crate::external::audio_meta::TrackMetadata;
+
+    #[test]
+    fn prefers_track_artist_before_album_artist() {
+        let metadata = TrackMetadata {
+            artist: Some("Track artist".to_string()),
+            album_artist: Some("Album artist".to_string()),
+            ..TrackMetadata::default()
+        };
+        assert_eq!(
+            preferred_cd_artist(&metadata, Some("Existing artist")),
+            Some("Track artist".to_string())
+        );
+    }
+
+    #[test]
+    fn falls_back_to_album_artist_then_existing_artist() {
+        let album_only = TrackMetadata {
+            album_artist: Some("Album artist".to_string()),
+            ..TrackMetadata::default()
+        };
+        assert_eq!(
+            preferred_cd_artist(&album_only, Some("Existing artist")),
+            Some("Album artist".to_string())
+        );
+
+        let empty = TrackMetadata::default();
+        assert_eq!(
+            preferred_cd_artist(&empty, Some("Existing artist")),
+            Some("Existing artist".to_string())
+        );
+    }
 }
 
 pub async fn delete_cd_track_audio(
