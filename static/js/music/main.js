@@ -81,6 +81,11 @@ musicGrid.addEventListener("click", (e) => {
     if (!card) return;
     const playlistId = card.dataset.playlistId;
     if (playlistId) {
+        if (e.target.closest("[data-playlist-action=\"edit\"]")) {
+            e.stopPropagation();
+            openPlaylistEditor(playlistId);
+            return;
+        }
         if (e.target.closest("[data-playlist-action=\"delete\"]")) {
             e.stopPropagation();
             confirmDeletePlaylist(playlistId).catch((err) => console.error("deletePlaylist failed:", err));
@@ -133,4 +138,7 @@ document.querySelector(".music-filters").addEventListener("click", (e) => {
 
     const playlistId = parseInt(new URLSearchParams(location.search).get("playlist"), 10);
     if (!isNaN(playlistId)) openPlaylist(playlistId);
+
+    const editPlaylistId = parseInt(new URLSearchParams(location.search).get("edit_playlist"), 10);
+    if (!isNaN(editPlaylistId)) openPlaylistEditor(editPlaylistId);
 })();

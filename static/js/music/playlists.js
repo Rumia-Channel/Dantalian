@@ -35,6 +35,9 @@ function renderPlaylistCard(playlist) {
                     <span class="material-icons">play_arrow</span>
                 </button>
             </div>
+            <button type="button" class="music-playlist-edit" data-playlist-action="edit" aria-label="${escapeAttr(playlist.name)}を編集" title="プレイリストを編集">
+                <span class="material-icons">edit</span>
+            </button>
             <button type="button" class="music-playlist-delete" data-playlist-action="delete" aria-label="${escapeAttr(playlist.name)}を削除" title="プレイリストを削除">
                 <span class="material-icons">delete</span>
             </button>

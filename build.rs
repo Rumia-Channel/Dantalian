@@ -52,6 +52,7 @@ fn main() {
         "static/js/player/engine.js",
         "static/js/player/ui.js",
         "static/js/music/playlists.js",
+        "static/js/music/playlist-editor.js",
         "static/js/music/main.js",
         "static/js/app.js",
     ];

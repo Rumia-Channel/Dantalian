@@ -425,6 +425,9 @@ function renderPlaylistCard(item) {
                 : '<div class="book-cover-placeholder"><span class="material-icons">queue_music</span></div>'
         }
         <span class="media-badge media-badge--playlist">PL</span>
+        <button type="button" class="playlist-card-edit" onclick="event.stopPropagation(); location.href='/music/?edit_playlist=${item.originalId}'" aria-label="${escapeAttr(item.title)}を編集" title="プレイリストを編集">
+            <span class="material-icons">edit</span>
+        </button>
         <button type="button" class="playlist-card-delete" onclick="event.stopPropagation(); deleteLibraryPlaylist(${item.originalId})" aria-label="${escapeAttr(item.title)}を削除" title="プレイリストを削除">
             <span class="material-icons">delete</span>
         </button>
