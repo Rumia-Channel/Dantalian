@@ -1,5 +1,8 @@
 const SETTINGS_KEYS = [
     "discogs_token",
+    "upload.cover_max_mb",
+    "upload.audio_max_mb",
+    "upload.file_max_mb",
     "backup.enabled",
     "backup.schedule_time",
     "backup.schedule_tz",
