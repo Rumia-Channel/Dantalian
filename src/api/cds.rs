@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::api::upload_chunks::{ChunkQuery, StoreResult};
-use crate::db::{CdWithTracks, NewCd};
+use crate::db::{CdInfo, CdWithTracks, NewCd};
 use crate::db_models::CdMetadata;
 use crate::external;
 use axum::{
@@ -32,12 +32,34 @@ pub struct CdRegisterRequest {
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
     pub manual: Option<bool>,
+    pub musicbrainz_release_id: Option<String>,
 }
 
 fn album_artist_from_metadata(db: &crate::db::Db, cd_id: i64) -> Option<String> {
     db.get_cd_album_tag_consensus(cd_id)
         .ok()
         .and_then(|tags| tags.album_artist)
+}
+
+async fn discogs_fallback(state: &AppState, jan: &str) -> Result<CdInfo, ApiError> {
+    if state.discogs_token.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "CD not found for this JAN"})),
+        ));
+    }
+    tracing::info!("Falling back to Discogs for JAN={}", jan);
+    match external::lookup_cd_discogs(&state.client, jan, &state.discogs_token).await {
+        Ok(Some(info)) => Ok(info),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "CD not found for this JAN"})),
+        )),
+        Err(e) => Err((
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": format!("Discogs error: {}", e)})),
+        )),
+    }
 }
 
 pub async fn cd_register(
@@ -149,63 +171,137 @@ pub async fn cd_register(
         ));
     }
 
-    let cd_info = match external::lookup_cd(
-        &state.client,
-        &jan,
-        &state.images_dir,
-        &state.musicbrainz_contact,
-    )
-    .await
-    {
-        ok @ Ok(_) => ok,
-        Err(e) => {
-            tracing::warn!("MusicBrainz lookup failed: {}. Retrying...", e);
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            external::lookup_cd(
-                &state.client_ipv4,
-                &jan,
-                &state.images_dir,
-                &state.musicbrainz_contact,
-            )
-            .await
+    let cd_info = if let Some(release_id) = req.musicbrainz_release_id.as_deref() {
+        match external::lookup_cd_by_release_id(
+            &state.client,
+            release_id,
+            &state.musicbrainz_contact,
+        )
+        .await
+        {
+            Ok(info) => Some(info),
+            Err(e) => {
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(
+                        serde_json::json!({"error": format!("MusicBrainz release lookup failed: {}", e)}),
+                    ),
+                ));
+            }
         }
-    };
+    } else {
+        let lookup = match external::lookup_cd(
+            &state.client,
+            &jan,
+            &state.images_dir,
+            &state.musicbrainz_contact,
+        )
+        .await
+        {
+            ok @ Ok(_) => ok,
+            Err(e) => {
+                tracing::warn!("MusicBrainz lookup failed: {}. Retrying...", e);
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                external::lookup_cd(
+                    &state.client_ipv4,
+                    &jan,
+                    &state.images_dir,
+                    &state.musicbrainz_contact,
+                )
+                .await
+            }
+        };
 
-    let cd_info = match cd_info {
-        Ok(Some(info)) => Some(info),
-        Ok(None) => {
-            tracing::info!("MusicBrainz returned no results for JAN={}", jan);
-            None
-        }
-        Err(e) => {
-            tracing::warn!("MusicBrainz lookup error: {}", e);
-            None
+        match lookup {
+            Ok(Some(info)) => Some(info),
+            Ok(None) => {
+                tracing::info!("MusicBrainz returned no results for JAN={}", jan);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("MusicBrainz lookup error: {}", e);
+                None
+            }
         }
     };
 
     let cd_info = match cd_info {
         Some(info) => info,
         None => {
-            if state.discogs_token.is_empty() {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(serde_json::json!({"error": "CD not found for this JAN"})),
-                ));
-            }
-            tracing::info!("Falling back to Discogs for JAN={}", jan);
-            match external::lookup_cd_discogs(&state.client, &jan, &state.discogs_token).await {
-                Ok(Some(info)) => info,
-                Ok(None) => {
-                    return Err((
-                        StatusCode::NOT_FOUND,
-                        Json(serde_json::json!({"error": "CD not found for this JAN"})),
-                    ));
+            let amazon_title =
+                match external::lookup_amazon_title_for_jan(&state.client, &jan).await {
+                    Some(title) => Some(title),
+                    None => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        external::lookup_amazon_title_for_jan(&state.client_ipv4, &jan).await
+                    }
+                };
+
+            if let Some(title) = amazon_title {
+                match external::search_cd_candidates_by_title(
+                    &state.client,
+                    &title,
+                    &state.musicbrainz_contact,
+                )
+                .await
+                {
+                    Ok(candidates) if candidates.len() > 1 => {
+                        return Err((
+                            StatusCode::MULTIPLE_CHOICES,
+                            Json(serde_json::json!({
+                                "code": "musicbrainz_candidates",
+                                "error": "MusicBrainzの候補を選択してください",
+                                "jan": jan,
+                                "amazon_title": title,
+                                "candidates": candidates,
+                            })),
+                        ));
+                    }
+                    Ok(mut candidates) if candidates.len() == 1 => {
+                        let candidate = candidates.remove(0);
+                        match external::lookup_cd_by_release_id(
+                            &state.client,
+                            &candidate.id,
+                            &state.musicbrainz_contact,
+                        )
+                        .await
+                        {
+                            Ok(info) => info,
+                            Err(e) => {
+                                tracing::warn!(
+                                    release_id = %candidate.id,
+                                    "MusicBrainz candidate lookup failed: {}",
+                                    e
+                                );
+                                return Err((
+                                    StatusCode::BAD_GATEWAY,
+                                    Json(
+                                        serde_json::json!({"error": format!("MusicBrainz候補の取得に失敗しました: {}", e)}),
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        tracing::info!(amazon_title = %title, "MusicBrainz title search returned no candidates");
+                        match discogs_fallback(&state, &jan).await {
+                            Ok(info) => info,
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(amazon_title = %title, "MusicBrainz title search failed: {}", e);
+                        match discogs_fallback(&state, &jan).await {
+                            Ok(info) => info,
+                            Err(error) => return Err(error),
+                        }
+                    }
                 }
-                Err(e) => {
-                    return Err((
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({"error": format!("Discogs error: {}", e)})),
-                    ));
+            } else {
+                tracing::info!("Amazon title lookup returned no result for JAN={}", jan);
+                match discogs_fallback(&state, &jan).await {
+                    Ok(info) => info,
+                    Err(error) => return Err(error),
                 }
             }
         }

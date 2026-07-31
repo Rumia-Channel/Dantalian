@@ -5,11 +5,11 @@ mod isdn;
 mod musicbrainz;
 pub(crate) mod ndl;
 
-pub use amazon::lookup_amazon_cover_for_jan;
 pub use amazon::lookup_isbn;
+pub use amazon::{lookup_amazon_cover_for_jan, lookup_amazon_title_for_jan};
 pub use discogs::lookup_cd_discogs;
 pub use isdn::lookup_isdn;
-pub use musicbrainz::lookup_cd;
+pub use musicbrainz::{lookup_cd, lookup_cd_by_release_id, search_cd_candidates_by_title};
 
 pub(crate) fn normalize_publish_date(raw: Option<&str>) -> Option<String> {
     let s = raw?.trim();

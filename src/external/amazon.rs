@@ -192,11 +192,7 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     Ok(filename)
 }
 
-async fn lookup_amazon_cover(
-    client: &Client,
-    lookup_key: &str,
-    images_dir: &str,
-) -> Result<(Option<String>, Option<String>), String> {
+async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonInfo, String> {
     let search_url = format!("https://www.amazon.co.jp/s?k={}", lookup_key);
     debug!(key = %lookup_key, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
@@ -218,7 +214,11 @@ async fn lookup_amazon_cover(
 
     let Some(href) = product_url else {
         warn!(key = %lookup_key, "No product link found in Amazon search results");
-        return Ok((None, None));
+        return Ok(AmazonInfo {
+            title: None,
+            cover_url: None,
+            description: None,
+        });
     };
 
     let detail_url = if href.starts_with("http") {
@@ -276,6 +276,15 @@ async fn lookup_amazon_cover(
         .await
         .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
 
+    Ok(amazon_info)
+}
+
+async fn lookup_amazon_cover(
+    client: &Client,
+    lookup_key: &str,
+    images_dir: &str,
+) -> Result<(Option<String>, Option<String>), String> {
+    let amazon_info = lookup_amazon_info(client, lookup_key).await?;
     match &amazon_info.cover_url {
         Some(url) => debug!(key = %lookup_key, "Amazon cover found: {}", url),
         None => warn!(key = %lookup_key, "No cover image found on Amazon detail page"),
@@ -336,6 +345,14 @@ pub async fn lookup_amazon_cover_for_jan(
     let (cover, _) =
         fetch_amazon_cover_with_retry(client, &[jan.to_string()], images_dir, jan).await;
     cover
+}
+
+pub async fn lookup_amazon_title_for_jan(client: &Client, jan: &str) -> Option<String> {
+    lookup_amazon_info(client, jan)
+        .await
+        .ok()
+        .and_then(|info| info.title)
+        .filter(|title| !title.trim().is_empty())
 }
 
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
@@ -411,12 +428,37 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
 }
 
 struct AmazonInfo {
+    title: Option<String>,
     cover_url: Option<String>,
     description: Option<String>,
 }
 
 fn parse_amazon_detail(html: &str) -> AmazonInfo {
     let document = scraper::Html::parse_document(html);
+
+    let title = ["#productTitle", "#title"]
+        .iter()
+        .filter_map(|selector| scraper::Selector::parse(selector).ok())
+        .find_map(|selector| {
+            document
+                .select(&selector)
+                .next()
+                .map(|el| el.text().collect::<String>().trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .or_else(|| {
+            scraper::Selector::parse(r#"meta[property="og:title"]"#)
+                .ok()
+                .and_then(|selector| {
+                    document
+                        .select(&selector)
+                        .next()
+                        .and_then(|el| el.value().attr("content"))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                })
+        });
 
     let cover_url = if let Ok(selector) = scraper::Selector::parse(r#"img#landingImage"#) {
         document.select(&selector).next().and_then(|el| {
@@ -496,6 +538,7 @@ fn parse_amazon_detail(html: &str) -> AmazonInfo {
             });
 
     AmazonInfo {
+        title,
         cover_url,
         description,
     }
