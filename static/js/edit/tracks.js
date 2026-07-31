@@ -633,15 +633,16 @@ async function showExtractedMetadataModal(editType, parentId, trackId, meta, rel
         .join("");
     if (!rows) return;
 
+    const isCd = editType === "cd";
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay";
     overlay.innerHTML = `
         <div class="confirm-box" style="max-width:520px;text-align:left">
-            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">抽出したメタデータ</div>
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">${isCd ? "抽出したメタデータをCD／曲情報へ反映しました" : "抽出したメタデータ"}</div>
             <table class="edit-meta-table">${rows}</table>
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-skip">閉じる</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">${meta.title ? "タイトルを反映" : "閉じる"}</button>
+                ${isCd || !meta.title ? "" : '<button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">タイトルを反映</button>'}
             </div>
         </div>
     `;
@@ -655,14 +656,12 @@ async function showExtractedMetadataModal(editType, parentId, trackId, meta, rel
         };
         overlay.querySelector("#meta-modal-skip").addEventListener("click", close);
         const applyBtn = overlay.querySelector("#meta-modal-apply-title");
-        if (meta.title) {
+        if (applyBtn && meta.title && !isCd) {
             applyBtn.addEventListener("click", async () => {
                 await saveTrackField(parentId, trackId, "title", meta.title, editType);
                 close();
                 await reloadFn(parentId);
             });
-        } else {
-            applyBtn.style.display = "none";
         }
         overlay.addEventListener("click", (e) => {
             if (e.target === overlay) close();
