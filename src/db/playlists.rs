@@ -314,11 +314,51 @@ mod tests {
             .expect("track");
         db.update_track_audio(track.id, Some("hash"), Some("test.mp3"))
             .expect("audio");
+        let second_track = db
+            .insert_track_for_cd(
+                cd.id,
+                &NewTrack {
+                    disc_number: Some(1),
+                    track_number: 2,
+                    title: "Second track".to_string(),
+                    duration: Some("2:00".to_string()),
+                },
+            )
+            .expect("second track");
+        db.update_track_audio(second_track.id, Some("hash-2"), Some("test-2.mp3"))
+            .expect("second audio");
+        let third_track = db
+            .insert_track_for_cd(
+                cd.id,
+                &NewTrack {
+                    disc_number: Some(1),
+                    track_number: 3,
+                    title: "Third track".to_string(),
+                    duration: Some("3:00".to_string()),
+                },
+            )
+            .expect("third track");
+        db.update_track_audio(third_track.id, Some("hash-3"), Some("test-3.mp3"))
+            .expect("third audio");
 
         let playlist = db
             .insert_playlist("Favorites", Some("Test playlist"), Some(cd.id))
             .expect("playlist");
         assert_eq!(playlist.cover_url.as_deref(), Some("test-cover.jpg"));
+        assert!(db.add_playlist_track(playlist.id, track.id).unwrap());
+        assert!(db.add_playlist_track(playlist.id, second_track.id).unwrap());
+        assert!(db.add_playlist_track(playlist.id, third_track.id).unwrap());
+        let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
+        assert_eq!(loaded.tracks.len(), 3);
+        assert_eq!(
+            loaded
+                .tracks
+                .iter()
+                .map(|entry| entry.track.id)
+                .collect::<Vec<_>>(),
+            vec![track.id, second_track.id, third_track.id]
+        );
+
         assert!(
             db.set_playlist_tracks(playlist.id, &[track.id, track.id])
                 .unwrap()

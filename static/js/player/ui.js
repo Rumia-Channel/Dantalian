@@ -283,9 +283,10 @@ function createPlayerUI(rootEl) {
         }
         el.tech.hidden = false;
         paintTrackTechnicalInfo(track, metadataCache.get(track.id));
-        if (metadataCache.has(track.id) || !cd || !cd.id) return;
+        const metadataCdId = track.cd_id || cd?.source_cd_id || cd?.id;
+        if (metadataCache.has(track.id) || !metadataCdId) return;
         try {
-            const res = await fetch(`/api/cds/${cd.id}/tracks/${track.id}/metadata`, { cache: "no-store" });
+            const res = await fetch(`/api/cds/${metadataCdId}/tracks/${track.id}/metadata`, { cache: "no-store" });
             if (!res.ok) return;
             const metadata = await res.json();
             metadataCache.set(track.id, metadata || {});

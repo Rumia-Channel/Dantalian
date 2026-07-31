@@ -221,15 +221,28 @@ async function openPlaylistPicker({ trackIds, defaultCoverCdId = null } = {}) {
 function openPlaylist(id) {
     const playlist = allPlaylists.find((item) => item.id === Number(id));
     if (!playlist || !window.musicPlayer) return;
-    const entries = (playlist.tracks || [])
+    const playlistEntries = (playlist.tracks || [])
         .filter((entry) => entry.track && entry.track.file_hash && entry.cd)
-        .map((entry) => ({
-            track: entry.track,
-            album: { ...entry.cd, tracks: [entry.track] },
-        }));
-    if (entries.length === 0) {
+    if (playlistEntries.length === 0) {
         window.alert(`プレイリスト「${playlist.name}」には再生できる曲がありません。`);
         return;
     }
+
+    const firstCd = playlistEntries[0].cd;
+    const playlistAlbum = {
+        ...firstCd,
+        id: -Math.abs(Number(playlist.id)),
+        title: playlist.name,
+        artist: "プレイリスト",
+        cover_url: playlist.cover_url || firstCd.cover_url,
+        media_type: "playlist",
+        playlist_id: playlist.id,
+        tracks: playlistEntries.map((entry) => entry.track),
+    };
+    const entries = playlistEntries.map((entry) => ({
+        track: entry.track,
+        album: playlistAlbum,
+        sourceAlbum: entry.cd,
+    }));
     window.musicPlayer.openQueue(entries, 0);
 }
