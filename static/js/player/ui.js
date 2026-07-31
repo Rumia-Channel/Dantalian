@@ -415,7 +415,7 @@ function createPlayerUI(rootEl) {
         updateAudioCacheButton.requestId = requestId;
         const playlist = Number.isFinite(Number(cd && cd.playlist_id));
         const tracks = cd ? playableTracks(cd) : [];
-        if (playlist || tracks.length === 0 || typeof getAudioCacheStatus !== "function" || typeof indexedDB === "undefined") {
+        if (tracks.length === 0 || typeof getAudioCacheStatus !== "function" || typeof indexedDB === "undefined") {
             button.hidden = true;
             button.classList.remove("is-cached");
             return;
@@ -429,7 +429,7 @@ function createPlayerUI(rootEl) {
         try {
             const status = await getAudioCacheStatus(tracks);
             if (requestId !== updateAudioCacheButton.requestId || viewCd !== cd) return;
-            const label = isAudiobook(cd) ? "オーディオブック" : "CD";
+            const label = playlist ? "プレイリスト" : (isAudiobook(cd) ? "オーディオブック" : "CD");
             const allCached = status.allCached;
             button.classList.toggle("is-cached", allCached);
             el["cache-album-icon"].textContent = allCached ? "delete_sweep" : "download_for_offline";
@@ -450,8 +450,9 @@ function createPlayerUI(rootEl) {
 
     async function cacheCurrentAlbum() {
         const cd = viewCd;
+        const playlist = Number.isFinite(Number(cd && cd.playlist_id));
         const tracks = cd ? playableTracks(cd) : [];
-        if (!cd || Number.isFinite(Number(cd.playlist_id)) || tracks.length === 0
+        if (!cd || tracks.length === 0
             || typeof getAudioCacheStatus !== "function" || typeof cacheAudioAlbum !== "function") return;
 
         const button = el["cache-album-button"];
@@ -461,11 +462,12 @@ function createPlayerUI(rootEl) {
         try {
             const status = await getAudioCacheStatus(tracks);
             if (viewCd !== cd) return;
-            const mediaLabel = isAudiobook(cd) ? "オーディオブック" : "CD";
+            const mediaLabel = playlist ? "プレイリスト" : (isAudiobook(cd) ? "オーディオブック" : "CD");
             const isRemoving = status.allCached;
+            const pending = Math.max(status.total - status.cached, 0);
             const message = isRemoving
                 ? `${mediaLabel}「${cd.title}」の端末キャッシュを削除しますか？`
-                : `${mediaLabel}「${cd.title}」の${status.total}曲をこの端末に保存しますか？\nブラウザの容量を使用します。`;
+                : `${mediaLabel}「${cd.title}」の未取得${pending}曲をこの端末に保存しますか？\nブラウザの容量を使用します。`;
             const confirmed = typeof showConfirm === "function"
                 ? await showConfirm({ message, okLabel: isRemoving ? "削除" : "保存" })
                 : window.confirm(message);
