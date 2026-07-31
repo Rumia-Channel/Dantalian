@@ -1078,7 +1078,8 @@ async fn extract_and_save_metadata(
 
     let db = state.db.clone();
     let cd_meta = extracted.clone().into_cd_metadata(cd_id);
-    let cd_save = tokio::task::spawn_blocking(move || db.upsert_cd_metadata(cd_id, &cd_meta)).await;
+    let cd_save =
+        tokio::task::spawn_blocking(move || db.merge_cd_metadata_from_audio(cd_id, &cd_meta)).await;
 
     if let Err(e) = cd_save.as_ref() {
         tracing::warn!(cd_id, "CD metadata save task failed: {}", e);
@@ -1092,16 +1093,25 @@ async fn extract_and_save_metadata(
         let names = crate::external::audio_meta::split_artist_names(&artist_str);
         if !names.is_empty() {
             let db = state.db.clone();
-            let _ = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
-                if let Ok(existing) = db.list_track_authors(track_id) {
-                    if existing.is_empty() {
-                        let ids = db.ensure_authors_for_names(&names)?;
-                        db.replace_track_authors(track_id, &ids)?;
+            match tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
+                // 既存の作者が一人でもいる場合に全件スキップすると、音声タグに
+                // 含まれる他の作者が登録されない。既存の作者を保持したまま、
+                // タグから得た未登録の作者だけを追加する。
+                let existing = db.list_track_authors(track_id)?;
+                let ids = db.ensure_authors_for_names(&names)?;
+                for id in ids {
+                    if !existing.iter().any(|author| author.id == id) {
+                        db.add_track_author(track_id, id)?;
                     }
                 }
                 Ok(())
             })
-            .await;
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => tracing::warn!(track_id, "Track author metadata sync failed: {}", e),
+                Err(e) => tracing::warn!(track_id, "Track author metadata task failed: {}", e),
+            }
         }
     }
 
