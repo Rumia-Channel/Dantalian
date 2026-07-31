@@ -499,6 +499,25 @@ async function saveBook(e, bookId) {
     } catch {}
 }
 
+// アップロード失敗時のメッセージを組み立てる。
+// 413 でアプリ由来のエラー本文が無い場合は、リバースプロキシの上限超過とみなして
+// 対処法を案内する (Dantalian 本体は cover 10MB / audio 100MB / file 500MB まで許可)。
+async function describeUploadError(res, label) {
+    let serverMsg = "";
+    try {
+        const err = await res.json();
+        serverMsg = (err && err.error) || "";
+    } catch {}
+    if (res.status === 413 && !serverMsg) {
+        return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
+            `ファイルサイズが上限を超えています。` +
+            `前面のリバースプロキシ (nginx: client_max_body_size / Caddy / Cloudflare 等) の上限をまず確認してください。` +
+            `(参考: Dantalian 本体の上限は file 500MB / audio 100MB / cover 10MB)`;
+    }
+    const detail = serverMsg ? `: ${serverMsg}` : "";
+    return `${label}のアップロードに失敗しました (${res.status})${detail}`;
+}
+
 document.getElementById("edit-content").addEventListener("change", async (e) => {
     if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
     const file = e.target.files[0];
@@ -525,9 +544,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("File upload failed:", res.status, err);
-                alert(`ファイルのアップロードに失敗しました (${res.status}): ${err.error || ""}`);
+                console.error("File upload failed:", res.status);
+                alert(await describeUploadError(res, "ファイル"));
             }
             await loadBooks();
             renderBookEdit(bid);
@@ -550,9 +568,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("CD cover upload failed:", res.status, err);
-                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
+                console.error("CD cover upload failed:", res.status);
+                alert(await describeUploadError(res, "カバー画像"));
             }
             await loadCds();
             renderCdEdit(cid);
@@ -568,9 +585,8 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 body: fd,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error("Book cover upload failed:", res.status, err);
-                alert(`カバー画像のアップロードに失敗しました (${res.status})`);
+                console.error("Book cover upload failed:", res.status);
+                alert(await describeUploadError(res, "カバー画像"));
             }
             await loadBooks();
             renderBookEdit(bid);
@@ -608,12 +624,35 @@ async function deleteEpub(bookId) {
     } catch {}
 }
 
-function renderCdEdit(cdId) {
+let currentCdTags = null; // 編集中CDの track_metadata 由来アルバムタグ合意(参考)
+
+async function renderCdEdit(cdId) {
     const cd = (allCds || []).find((c) => c.id === cdId);
     if (!cd) {
         editContent.innerHTML = '<p class="empty-state">CDが見つかりません</p>';
         return;
     }
+
+    // タグ由来のアルバム情報を取得(cd 側の編集値とは別に出し、仮入力/参考表示に使う)
+    let tags = {};
+    try {
+        const tr = await fetch(`/api/cds/${cdId}/album-tags`);
+        if (tr.ok) {
+            const tj = await tr.json();
+            if (tj && typeof tj === "object") tags = tj;
+        }
+    } catch (err) {
+        console.error("loadCdAlbumTags failed:", err);
+    }
+    currentCdTags = tags;
+
+    // 空欄への仮入力: cd 側の値がなければタグ値を初期値として表示(保存時に確定)
+    const publisherVal = cd.publisher || tags.publisher || "";
+    const labelVal = cd.label || tags.label || "";
+    const publisherPh = cd.publisher && tags.publisher && cd.publisher !== tags.publisher
+        ? `placeholder="タグ: ${escapeAttr(tags.publisher)}"` : "";
+    const labelPh = cd.label && tags.label && cd.label !== tags.label
+        ? `placeholder="タグ: ${escapeAttr(tags.label)}"` : "";
 
     editContent.innerHTML = `
         <h2>CD編集</h2>
@@ -649,13 +688,13 @@ function renderCdEdit(cdId) {
                 </div>
                 <div class="edit-field">
                     <label>出版社</label>
-                    <input type="text" name="publisher" value="${escapeAttr(cd.publisher || '')}">
+                    <input type="text" name="publisher" value="${escapeAttr(publisherVal)}" ${publisherPh}>
                 </div>
             </div>
             <div class="edit-row">
                 <div class="edit-field">
                     <label>レーベル</label>
-                    <input type="text" name="label" value="${escapeAttr(cd.label || '')}">
+                    <input type="text" name="label" value="${escapeAttr(labelVal)}" ${labelPh}>
                 </div>
                 <div class="edit-field">
                     <label>品番</label>
@@ -708,6 +747,11 @@ function renderCdEdit(cdId) {
                 <div class="edit-author-list" id="edit-cd-author-list">
                     ${renderCdAuthorListHtml(cdId, cd.authors || [])}
                 </div>
+                ${(!(cd.authors || []).length && tags.album_artist) ? `
+                <div class="edit-tag-hint">
+                    タグ由来のアルバムアーティスト: <strong>${escapeHtml(tags.album_artist)}</strong>
+                    <button type="button" class="btn btn-xs btn-outline-success" onclick="registerCdAlbumArtistFromTag(${cdId})">この名前で登録</button>
+                </div>` : ""}
                 <div class="edit-author-add">
                     <div id="edit-cd-author-select-container"></div>
                     <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToCd(${cdId})">追加</button>
@@ -763,6 +807,7 @@ async function loadAndRenderCdMetadata(cdId) {
     } catch (err) {
         console.error("loadAndRenderCdMetadata failed:", err);
     }
+    const tags = currentCdTags || {};
 
     const fields = [
         { key: "year", label: "年", type: "number", min: 1000, max: 9999 },
@@ -771,14 +816,17 @@ async function loadAndRenderCdMetadata(cdId) {
         { key: "isrc", label: "ISRC", type: "text" },
     ];
     const html = fields.map((f) => {
-        const v = meta[f.key];
-        const val = v == null ? "" : String(v);
+        const raw = meta[f.key];
+        const tagv = tags[f.key];
+        const hasRaw = raw != null && String(raw) !== "";
+        const val = hasRaw ? String(raw) : (tagv != null ? String(tagv) : "");
         const min = f.min != null ? `min="${f.min}"` : "";
         const max = f.max != null ? `max="${f.max}"` : "";
-        const ph = f.placeholder ? `placeholder="${escapeAttr(f.placeholder)}"` : "";
+        const hint = hasRaw && tagv != null && String(tagv) !== "" && String(raw) !== String(tagv)
+            ? `placeholder="タグ: ${escapeAttr(tagv)}"` : "";
         return `<div class="edit-field">
             <label>${escapeHtml(f.label)}</label>
-            <input type="${f.type}" id="cd-meta-${f.key}" data-cd-meta-key="${f.key}" value="${escapeAttr(val)}" ${min} ${max} ${ph}>
+            <input type="${f.type}" id="cd-meta-${f.key}" data-cd-meta-key="${f.key}" value="${escapeAttr(val)}" ${min} ${max} ${hint}>
         </div>`;
     });
     const rows = [];
@@ -786,7 +834,22 @@ async function loadAndRenderCdMetadata(cdId) {
         const pair = html.slice(i, i + 2).join("");
         rows.push(`<div class="edit-row">${pair}</div>`);
     }
-    container.innerHTML = rows.join("");
+
+    // タグ由来(参考): cd 側の編集欄とは別に、音声タグが何と言っていたかを表示する。
+    const refRows = [
+        ["アルバム名", tags.album],
+        ["アルバムアーティスト", tags.album_artist],
+        ["出版社", tags.publisher],
+        ["レーベル", tags.label],
+    ].filter(([, v]) => v != null && String(v) !== "");
+    const refHtml = refRows.length > 0
+        ? `<div class="edit-tag-ref">
+               <div class="edit-tag-ref-title">音声タグ由来 (参考・編集は上の欄/基本情報/アーティスト欄で)</div>
+               ${refRows.map(([l, v]) => `<div class="edit-tag-ref-row"><span class="edit-tag-ref-label">${escapeHtml(l)}</span><span class="edit-tag-ref-value">${escapeHtml(v)}</span></div>`).join("")}
+           </div>`
+        : "";
+
+    container.innerHTML = rows.join("") + refHtml;
 }
 
 async function saveCdMetadata(cdId) {
@@ -876,6 +939,44 @@ async function addAuthorToCd(cdId) {
             renderCdEdit(cdId);
         }
     } catch {}
+}
+
+// サーバ側の split_artist_names と概ね同じ区切りで名前を分割する。
+function splitArtistNames(raw) {
+    const out = [];
+    for (const token of String(raw || "").split(/[,;/&\n]/)) {
+        const cleaned = token
+            .trim()
+            .replace(/^(feat\.?|ft\.?|with|vs\.?)\s*/i, "")
+            .trim();
+        if (cleaned && !out.includes(cleaned)) out.push(cleaned);
+    }
+    return out;
+}
+
+// タグ由来のアルバムアーティストを作者として確保し、CD に紐付ける(空欄時のみ表示されるヒント用)。
+async function registerCdAlbumArtistFromTag(cdId) {
+    const names = splitArtistNames(currentCdTags && currentCdTags.album_artist);
+    if (names.length === 0) return;
+    try {
+        const res = await fetch(`/api/cds/${cdId}/authors/from-names`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ names }),
+        });
+        if (res.ok) {
+            const aRes = await fetch("/api/authors");
+            if (aRes.ok) allAuthors = await aRes.json();
+            await loadCds();
+            renderCdEdit(cdId);
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(`登録に失敗しました (HTTP ${res.status}): ${err.error || ""}`);
+        }
+    } catch (err) {
+        console.error("registerCdAlbumArtistFromTag error:", err);
+        alert("通信エラーが発生しました");
+    }
 }
 
 async function removeAuthorFromCd(cdId, authorId) {

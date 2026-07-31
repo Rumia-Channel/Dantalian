@@ -63,7 +63,10 @@ pub async fn put_book_track_metadata(
         merged.composer = ex.composer;
         merged.publisher = ex.publisher;
         merged.label = ex.label;
-        merged.lyrics = ex.lyrics;
+        // 歌詞はモーダルで編集可能なので、body に含まれるときはそちらを優先する。
+        if body.get("lyrics").is_none() {
+            merged.lyrics = ex.lyrics;
+        }
         merged.cover_mime = ex.cover_mime;
         merged.cover_data = ex.cover_data;
         merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;
@@ -158,11 +161,18 @@ pub async fn upload_track_audio(
             .await
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-        let (saved_name, _ext) = crate::external::save_uploaded_audio(&data, &name, &audio_dir)
-            .map_err(|e| {
-                tracing::warn!(track_id, "Audio save failed: {}", e);
-                axum::http::StatusCode::BAD_REQUEST
-            })?;
+        let audio_max = crate::api::upload_limit_bytes(
+            &state,
+            crate::api::KEY_UPLOAD_AUDIO_MB,
+            crate::api::AUDIO_MAX_BYTES,
+        );
+        let (saved_name, _ext) = crate::external::save_uploaded_audio(
+            &data, &name, &audio_dir, audio_max,
+        )
+        .map_err(|e| {
+            tracing::warn!(track_id, "Audio save failed: {}", e);
+            axum::http::StatusCode::BAD_REQUEST
+        })?;
 
         file_hash = Some(saved_name);
         file_name = Some(name);
