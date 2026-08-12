@@ -1,0 +1,21 @@
+mod series_api;
+mod series_repository;
+
+use worker::*;
+
+#[event(fetch)]
+pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    Router::new()
+        .get_async("/api/health", |_req, _ctx| async move {
+            Response::from_json(&serde_json::json!({
+                "ok": true,
+                "runtime": "cloudflare-worker",
+            }))
+        })
+        .get_async("/api/series", series_api::list)
+        .post_async("/api/series", series_api::create)
+        .put_async("/api/series/:id", series_api::rename)
+        .delete_async("/api/series/:id", series_api::delete)
+        .run(req, env)
+        .await
+}

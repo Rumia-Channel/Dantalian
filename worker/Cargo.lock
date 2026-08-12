@@ -101,6 +101,7 @@ name = "dantalian-worker"
 version = "0.1.0"
 dependencies = [
  "dantalian",
+ "serde",
  "serde_json",
  "worker",
 ]
