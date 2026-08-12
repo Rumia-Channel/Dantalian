@@ -1,0 +1,12 @@
+name = "dantalian-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-08-11"
+
+[build]
+command = "worker-build --release"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dantalian-local"
+database_id = "local-dantalian"
+migrations_dir = "migrations"
