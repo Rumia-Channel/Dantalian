@@ -587,58 +587,8 @@ fn encode_aac(
     source_extension: &str,
     profile: AudioProfile,
 ) -> Result<(), String> {
-    match encode_aac_with_rust(source_path, target_path, source_extension, profile) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            tracing::warn!(
-                "Pure Rust AAC generation failed; using ffmpeg AAC fallback: {}",
-                error
-            );
-            encode_with_ffmpeg(
-                source_path,
-                target_path,
-                profile,
-                ["-c:a", "aac", "-q:a", "2", "-f", "adts"],
-            )
-        }
-    }
+    encode_aac_with_rust(source_path, target_path, source_extension, profile)
 }
-
-fn ffmpeg_path() -> String {
-    std::env::var("DANTALIAN_FFMPEG_PATH").unwrap_or_else(|_| "ffmpeg".to_string())
-}
-
-fn encode_with_ffmpeg<const N: usize>(
-    source_path: &Path,
-    target_path: &Path,
-    profile: AudioProfile,
-    codec_args: [&str; N],
-) -> Result<(), String> {
-    use std::process::{Command, Stdio};
-
-    let temporary_path = temporary_path(target_path);
-    let mut command = Command::new(ffmpeg_path());
-    command
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
-        .arg(source_path)
-        .args(["-map", "0:a:0", "-vn", "-sn", "-dn", "-ar"])
-        .arg(profile.target_rate.to_string())
-        .args(["-ac"])
-        .arg(profile.channels.to_string())
-        .args(codec_args)
-        .arg(&temporary_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    let output = command
-        .output()
-        .map_err(|error| format!("ffmpeg could not be started: {}", error))?;
-    if !output.status.success() {
-        let _ = fs::remove_file(&temporary_path);
-        return Err(format_command_error("ffmpeg", &output));
-    }
-    publish_temporary_file(&temporary_path, target_path)
-}
-
 fn encode_aac_with_rust(
     source_path: &Path,
     target_path: &Path,
@@ -714,15 +664,6 @@ fn publish_temporary_file(temporary_path: &Path, target_path: &Path) -> Result<(
         return Err("Encoder did not create an output file".to_string());
     }
     fs::rename(temporary_path, target_path).map_err(|error| error.to_string())
-}
-
-fn format_command_error(command: &str, output: &std::process::Output) -> String {
-    let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if detail.is_empty() {
-        format!("{} exited with {}", command, output.status)
-    } else {
-        format!("{}: {}", command, detail)
-    }
 }
 
 #[cfg(test)]
