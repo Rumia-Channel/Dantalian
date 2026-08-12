@@ -1,3 +1,5 @@
+mod label_api;
+mod label_repository;
 mod series_api;
 mod series_repository;
 
@@ -16,6 +18,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/series", series_api::create)
         .put_async("/api/series/:id", series_api::rename)
         .delete_async("/api/series/:id", series_api::delete)
+        .get_async("/api/labels", label_api::list)
+        .post_async("/api/labels", label_api::create)
+        .put_async("/api/labels/:id", label_api::rename)
+        .delete_async("/api/labels/:id", label_api::delete)
         .run(req, env)
         .await
 }
