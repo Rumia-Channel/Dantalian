@@ -2,7 +2,14 @@ use dantalian::{
     application::error::AppError, domain::author::Author,
     ports::author_repository::AuthorRepository,
 };
+use serde::Deserialize;
 use worker::{D1Database, D1Type};
+
+#[derive(Debug, Deserialize)]
+struct IdRow {
+    #[serde(rename = "id")]
+    _id: i32,
+}
 
 pub struct D1AuthorRepository {
     db: D1Database,
@@ -14,7 +21,12 @@ impl D1AuthorRepository {
     }
 
     fn map_error(error: worker::Error) -> AppError {
-        AppError::Database(error.to_string())
+        let message = error.to_string();
+        if message.to_ascii_lowercase().contains("constraint") {
+            AppError::Conflict("Author ndl_id already exists".to_string())
+        } else {
+            AppError::Database(message)
+        }
     }
 
     fn bind_id(id: i64) -> Result<D1Type<'static>, AppError> {
@@ -53,6 +65,22 @@ impl AuthorRepository for D1AuthorRepository {
         transcription: Option<&str>,
         ndl_id: Option<&str>,
     ) -> Result<Author, AppError> {
+        if let Some(ndl_id) = ndl_id {
+            let ndl_id_value = D1Type::Text(ndl_id);
+            let existing = self
+                .db
+                .prepare("SELECT id FROM authors WHERE ndl_id = ?")
+                .bind_refs(&ndl_id_value)
+                .map_err(Self::map_error)?
+                .first::<IdRow>(None)
+                .await
+                .map_err(Self::map_error)?;
+            if existing.is_some() {
+                return Err(AppError::Conflict(
+                    "Author ndl_id already exists".to_string(),
+                ));
+            }
+        }
         let ndl_id = ndl_id.map(D1Type::Text).unwrap_or(D1Type::Null);
         let name = D1Type::Text(name);
         let transcription = transcription.map(D1Type::Text).unwrap_or(D1Type::Null);
@@ -76,6 +104,22 @@ impl AuthorRepository for D1AuthorRepository {
         ndl_id: Option<&str>,
     ) -> Result<(), AppError> {
         let id = Self::bind_id(id)?;
+        if let Some(ndl_id) = ndl_id {
+            let ndl_id_value = D1Type::Text(ndl_id);
+            let existing = self
+                .db
+                .prepare("SELECT id FROM authors WHERE ndl_id = ? AND id <> ?")
+                .bind_refs([&ndl_id_value, &id])
+                .map_err(Self::map_error)?
+                .first::<IdRow>(None)
+                .await
+                .map_err(Self::map_error)?;
+            if existing.is_some() {
+                return Err(AppError::Conflict(
+                    "Author ndl_id already exists".to_string(),
+                ));
+            }
+        }
         let name = D1Type::Text(name);
         let transcription = transcription.map(D1Type::Text).unwrap_or(D1Type::Null);
         let ndl_id = ndl_id.map(D1Type::Text).unwrap_or(D1Type::Null);

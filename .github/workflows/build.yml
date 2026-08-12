@@ -40,3 +40,32 @@ jobs:
         run: cargo install worker-build --version 0.8.4 --locked
       - name: Build Worker
         run: worker-build --release
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Wrangler
+        working-directory: .
+        run: npm install --no-audit --no-fund --no-package-lock --no-save wrangler@4.120.1
+      - name: Apply local D1 migrations
+        run: npx wrangler d1 migrations apply dantalian-local --local --config wrangler.toml
+      - name: Start local Worker
+        run: |
+          npx wrangler dev --local --port 8793 --config wrangler.toml > worker.log 2>&1 &
+          echo $! > worker.pid
+      - name: Wait for local Worker
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8793/api/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat worker.log
+          exit 1
+      - name: Test Worker HTTP contract
+        env:
+          WORKER_BASE_URL: http://127.0.0.1:8793
+        run: node --test tests/series_contract.mjs
+      - name: Test Worker helpers
+        run: cargo test --lib
