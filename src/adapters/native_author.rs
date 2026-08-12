@@ -2,6 +2,7 @@ use crate::{
     application::error::AppError, db::Db, domain::author::Author,
     ports::author_repository::AuthorRepository,
 };
+use rusqlite::{Error as RusqliteError, ErrorCode};
 
 #[derive(Clone)]
 pub struct NativeAuthorRepository {
@@ -14,13 +15,22 @@ impl NativeAuthorRepository {
     }
 }
 
+fn map_db_error(error: RusqliteError) -> AppError {
+    match error {
+        RusqliteError::SqliteFailure(code, _) if code.code == ErrorCode::ConstraintViolation => {
+            AppError::Conflict("Author ndl_id already exists".to_string())
+        }
+        other => AppError::Database(other.to_string()),
+    }
+}
+
 impl AuthorRepository for NativeAuthorRepository {
     async fn list(&self) -> Result<Vec<Author>, AppError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db.list_authors()
                 .map(|authors| authors.into_iter().map(Into::into).collect())
-                .map_err(|error| AppError::Database(error.to_string()))
+                .map_err(map_db_error)
         })
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?
@@ -30,7 +40,7 @@ impl AuthorRepository for NativeAuthorRepository {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db.get_author_by_id(id)
-                .map_err(|error| AppError::Database(error.to_string()))?
+                .map_err(map_db_error)?
                 .map(Into::into)
                 .ok_or(AppError::NotFound)
         })
@@ -51,7 +61,7 @@ impl AuthorRepository for NativeAuthorRepository {
         tokio::task::spawn_blocking(move || {
             db.create_author(&name, transcription.as_deref(), ndl_id.as_deref())
                 .map(Into::into)
-                .map_err(|error| AppError::Database(error.to_string()))
+                .map_err(map_db_error)
         })
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?
@@ -73,7 +83,7 @@ impl AuthorRepository for NativeAuthorRepository {
         })
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?
-        .map_err(|error| AppError::Database(error.to_string()))?;
+        .map_err(map_db_error)?;
         if updated {
             Ok(())
         } else {
@@ -86,7 +96,7 @@ impl AuthorRepository for NativeAuthorRepository {
         let deleted = tokio::task::spawn_blocking(move || db.delete_author(id))
             .await
             .map_err(|error| AppError::Internal(error.to_string()))?
-            .map_err(|error| AppError::Database(error.to_string()))?;
+            .map_err(map_db_error)?;
         if deleted {
             Ok(())
         } else {

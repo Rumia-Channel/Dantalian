@@ -9,7 +9,9 @@ pub(crate) fn error_response(error: AppError) -> ApiError {
         AppError::Validation(_) => StatusCode::BAD_REQUEST,
         AppError::NotFound => StatusCode::NOT_FOUND,
         AppError::Conflict(_) => StatusCode::CONFLICT,
-        AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        AppError::Database(_) | AppError::Storage(_) | AppError::Internal(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     };
     (
         status,

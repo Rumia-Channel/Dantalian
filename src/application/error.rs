@@ -6,6 +6,7 @@ pub enum AppError {
     Validation(String),
     Conflict(String),
     Database(String),
+    Storage(String),
     Internal(String),
 }
 
@@ -16,6 +17,7 @@ impl Display for AppError {
             Self::Validation(message)
             | Self::Conflict(message)
             | Self::Database(message)
+            | Self::Storage(message)
             | Self::Internal(message) => f.write_str(message),
         }
     }
