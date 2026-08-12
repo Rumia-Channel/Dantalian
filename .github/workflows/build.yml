@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test native target
+        run: cargo test --features native --no-fail-fast
+
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          rustup target add wasm32-unknown-unknown
+      - name: Install worker-build
+        run: cargo install worker-build --version 0.8.4 --locked
+      - name: Build Worker
+        run: worker-build --release
