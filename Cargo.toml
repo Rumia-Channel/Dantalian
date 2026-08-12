@@ -2,6 +2,7 @@
 name = "dantalian"
 version = "0.1.0"
 edition = "2024"
+license = "BSD-2-Clause"
 
 [[bin]]
 name = "dantalian"
@@ -17,8 +18,10 @@ chrono = { version = "0", features = ["serde"] }
 chrono-tz = "0"
 dirs = { version = "6", optional = true }
 dotenvy = { version = "0", optional = true }
+fdk-aac-rust = { version = "0", default-features = false }
 lofty = { version = "0", optional = true }
 ogg = { version = "0", optional = true }
+opus-rs = "0.1.26"
 quick-xml = { version = "0", features = ["serialize"], optional = true }
 reqwest = { version = "0", features = ["charset", "cookies", "default-tls", "hickory-dns", "http2", "json", "native-tls"], default-features = false, optional = true }
 rusqlite = { version = "0", features = ["backup", "bundled"], optional = true }
@@ -26,7 +29,6 @@ scraper = { version = "0", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha3 = { version = "0", optional = true }
-shiguredo_opus = { git = "https://github.com/shiguredo/opus-rs", version = "2026.1.0", features = ["source-build"], optional = true }
 symphonia = { version = "0", default-features = false, features = ["aac", "aiff", "alac", "flac", "isomp4", "mkv", "mp3", "ogg", "pcm", "vorbis", "wav"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0", features = ["fs"], optional = true }
@@ -51,7 +53,6 @@ native = [
     "dep:rusqlite",
     "dep:scraper",
     "dep:sha3",
-    "dep:shiguredo_opus",
     "dep:symphonia",
     "dep:tokio",
     "dep:tower-http",
@@ -60,10 +61,6 @@ native = [
     "dep:ua_generator",
     "dep:urlencoding",
 ]
-fdk-aac = ["native", "dep:shiguredo_fdk_aac"]
-
-[target.'cfg(target_os = "linux")'.dependencies]
-shiguredo_fdk_aac = { git = "https://github.com/shiguredo/fdk-aac-rs", version = "2026.1.0-canary.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

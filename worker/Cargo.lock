@@ -140,6 +140,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "fdk-aac-rust",
+ "opus-rs",
  "serde",
  "serde_json",
 ]
@@ -180,6 +182,12 @@ dependencies = [
  "quote",
  "syn 3.0.3",
 ]
+
+[[package]]
+name = "fdk-aac-rust"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
 
 [[package]]
 name = "find-msvc-tools"
@@ -499,6 +507,12 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "opus-rs"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f1ce2826529746cac003d7338e9c0f47cdd2979ba769c61cc26fdebc402f4c"
 
 [[package]]
 name = "percent-encoding"

@@ -475,39 +475,45 @@ fn encode_opus(
     profile: AudioProfile,
 ) -> Result<(), String> {
     use ogg::{PacketWriteEndInfo, PacketWriter};
-    use shiguredo_opus::{Application, Encoder, EncoderConfig};
+    use opus_rs::{Application, OpusEncoder};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
     let decoded = decode_audio(source_path, source_extension)?;
     let pcm = resample_audio(decoded, profile);
-    let mut encoder = Encoder::new(EncoderConfig {
-        bitrate: Some(TARGET_BITRATE),
-        application: Some(Application::Audio),
-        vbr: Some(true),
-        ..EncoderConfig::new(profile.target_rate, profile.channels)
-    })
+    let mut encoder = OpusEncoder::new(
+        profile.target_rate as i32,
+        usize::from(profile.channels),
+        Application::Audio,
+    )
     .map_err(|error| format!("Opus encoder creation failed: {}", error))?;
-    let frame_samples = encoder.frame_samples() as usize;
+    encoder.bitrate_bps = TARGET_BITRATE as i32;
+    encoder.use_cbr = false;
+
+    let frame_samples = (profile.target_rate / 50) as usize;
     let frame_len = frame_samples * usize::from(profile.channels);
     let mut packets = Vec::new();
     for chunk in pcm.chunks(frame_len) {
-        let mut frame = vec![0_i16; frame_len];
-        frame[..chunk.len()].copy_from_slice(chunk);
-        packets.push(
-            encoder
-                .encode(&frame)
-                .map_err(|error| format!("Opus encode failed: {}", error))?,
-        );
+        let mut frame = vec![0.0_f32; frame_len];
+        for (destination, sample) in frame.iter_mut().zip(chunk) {
+            *destination = f32::from(*sample) / 32_768.0;
+        }
+        let mut output = vec![0_u8; 4096];
+        let encoded_len = encoder
+            .encode(&frame, frame_samples, &mut output)
+            .map_err(|error| format!("Opus encode failed: {}", error))?;
+        output.truncate(encoded_len);
+        packets.push(output);
     }
     if packets.is_empty() {
         return Err("Opus encoder produced no packets".to_string());
     }
 
-    let lookahead = encoder
-        .get_lookahead()
-        .map_err(|error| format!("Opus lookahead failed: {}", error))?;
-    let lookahead_48k = u64::from(lookahead) * 48_000 / u64::from(profile.target_rate);
+    // opus-rs does not expose the encoder lookahead. 312 samples is the
+    // standard 48 kHz Opus pre-skip used by the reference encoder.
+    const OPUS_LOOKAHEAD_48K: u64 = 312;
+    let lookahead_48k = OPUS_LOOKAHEAD_48K;
+    let pre_skip = (lookahead_48k * u64::from(profile.target_rate) / 48_000) as u16;
     let mut hasher = DefaultHasher::new();
     target_path.to_string_lossy().hash(&mut hasher);
     let serial = hasher.finish() as u32;
@@ -517,7 +523,7 @@ fn encode_opus(
     let mut writer = PacketWriter::new(BufWriter::new(file));
     writer
         .write_packet(
-            opus_head(profile.source_rate, profile.channels, lookahead_48k as u16),
+            opus_head(profile.source_rate, profile.channels, pre_skip),
             serial,
             PacketWriteEndInfo::EndPage,
             0,
@@ -578,27 +584,24 @@ fn opus_tags() -> Vec<u8> {
 fn encode_aac(
     source_path: &Path,
     target_path: &Path,
-    _source_extension: &str,
+    source_extension: &str,
     profile: AudioProfile,
 ) -> Result<(), String> {
-    #[cfg(all(feature = "fdk-aac", target_os = "linux"))]
-    {
-        match encode_aac_with_fdk(source_path, target_path, _source_extension, profile) {
-            Ok(()) => return Ok(()),
-            Err(error) => tracing::warn!(
-                "FDK AAC generation failed; using ffmpeg AAC fallback: {}",
+    match encode_aac_with_rust(source_path, target_path, source_extension, profile) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            tracing::warn!(
+                "Pure Rust AAC generation failed; using ffmpeg AAC fallback: {}",
                 error
-            ),
+            );
+            encode_with_ffmpeg(
+                source_path,
+                target_path,
+                profile,
+                ["-c:a", "aac", "-q:a", "2", "-f", "adts"],
+            )
         }
     }
-
-    // The native ffmpeg AAC encoder's quality mode is VBR and does not require libfdk-aac.
-    encode_with_ffmpeg(
-        source_path,
-        target_path,
-        profile,
-        ["-c:a", "aac", "-q:a", "2", "-f", "adts"],
-    )
 }
 
 fn ffmpeg_path() -> String {
@@ -636,81 +639,63 @@ fn encode_with_ffmpeg<const N: usize>(
     publish_temporary_file(&temporary_path, target_path)
 }
 
-#[cfg(all(feature = "fdk-aac", target_os = "linux"))]
-fn encode_aac_with_fdk(
+fn encode_aac_with_rust(
     source_path: &Path,
     target_path: &Path,
     source_extension: &str,
     profile: AudioProfile,
 ) -> Result<(), String> {
-    use shiguredo_fdk_aac::{Encoder, EncoderConfig, FdkAacLibrary};
+    use fdk_aac_rust::encoder::{
+        ConfiguredPureRustEncoder, EncoderParameter, PureRustEncoderParameters,
+    };
 
-    let library_path = std::env::var("DANTALIAN_FDK_AAC_LIBRARY")
-        .unwrap_or_else(|_| "libfdk-aac.so.2".to_string());
-    let library = FdkAacLibrary::load(&library_path)
-        .map_err(|error| format!("could not load {}: {}", library_path, error))?;
-    let mut encoder = Encoder::new(
-        library,
-        EncoderConfig {
-            sample_rate: profile.target_rate,
-            channels: profile.channels,
-            bitrate: Some(TARGET_BITRATE),
-        },
-    )
-    .map_err(|error| format!("could not initialize FDK AAC: {}", error))?;
     let decoded = decode_audio(source_path, source_extension)?;
     let pcm = resample_audio(decoded, profile);
-    encoder
-        .encode(&pcm)
-        .map_err(|error| format!("FDK AAC encode failed: {}", error))?;
-    encoder
-        .finish()
-        .map_err(|error| format!("FDK AAC finish failed: {}", error))?;
+    let mut parameters = PureRustEncoderParameters::new(2);
+    parameters
+        .set_parameter(EncoderParameter::AudioObjectType, 2)
+        .map_err(|error| format!("invalid AAC audio object type: {:?}", error))?;
+    parameters
+        .set_parameter(EncoderParameter::ChannelMode, u32::from(profile.channels))
+        .map_err(|error| format!("invalid AAC channel mode: {:?}", error))?;
+    parameters
+        .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
+        .map_err(|error| format!("invalid AAC sample rate: {:?}", error))?;
+    parameters
+        .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
+        .map_err(|error| format!("invalid AAC bitrate: {:?}", error))?;
+    parameters
+        .set_parameter(EncoderParameter::TransportMux, 2)
+        .map_err(|error| format!("invalid AAC transport: {:?}", error))?;
+    let mut encoder = ConfiguredPureRustEncoder::from_parameters(&parameters)
+        .map_err(|error| format!("could not initialize AAC encoder: {:?}", error))?;
 
-    let mut frames = Vec::new();
-    while let Some(frame) = encoder.next_frame() {
-        frames.push(frame.data);
-    }
-    if frames.is_empty() {
-        return Err("FDK AAC encoder produced no frames".to_string());
-    }
-    let asc = encoder.audio_specific_config().to_vec();
+    let frame_len = encoder.input_samples_per_channel() * usize::from(profile.channels);
     let temporary_path = temporary_path(target_path);
     let output_file = File::create(&temporary_path).map_err(|error| error.to_string())?;
     let mut writer = BufWriter::new(output_file);
-    for payload in frames {
-        write_adts_frame(&mut writer, &asc, &payload)?;
+    let mut encoded_frames = 0;
+    for chunk in pcm.chunks(frame_len) {
+        let mut frame = vec![0.0_f32; frame_len];
+        for (destination, sample) in frame.iter_mut().zip(chunk) {
+            *destination = f32::from(*sample) / 32_768.0;
+        }
+        let encoded = encoder
+            .encode_transport_f32(&frame)
+            .map_err(|error| format!("AAC encode failed: {:?}", error))?;
+        if !encoded.is_empty() {
+            writer
+                .write_all(&encoded)
+                .map_err(|error| error.to_string())?;
+            encoded_frames += 1;
+        }
+    }
+    if encoded_frames == 0 {
+        return Err("AAC encoder produced no frames".to_string());
     }
     writer.flush().map_err(|error| error.to_string())?;
     drop(writer);
     publish_temporary_file(&temporary_path, target_path)
-}
-
-#[cfg(all(feature = "fdk-aac", target_os = "linux"))]
-fn write_adts_frame(writer: &mut impl Write, asc: &[u8], payload: &[u8]) -> Result<(), String> {
-    if asc.len() < 2 || payload.len() + 7 > 0x1fff {
-        return Err("Invalid FDK AAC frame parameters".to_string());
-    }
-    let object_type = ((asc[0] >> 3) & 0x1f).saturating_sub(1);
-    let sample_rate_index = ((asc[0] & 0x07) << 1) | (asc[1] >> 7);
-    let channel_config = (asc[1] >> 3) & 0x0f;
-    if object_type > 3 || sample_rate_index > 12 || channel_config == 0 {
-        return Err("Unsupported FDK AAC AudioSpecificConfig".to_string());
-    }
-    let frame_length = (payload.len() + 7) as u16;
-    let header = [
-        0xff,
-        0xf1,
-        (object_type << 6) | (sample_rate_index << 2) | (channel_config >> 2),
-        ((channel_config & 0x03) << 6) | ((frame_length >> 11) as u8),
-        (frame_length >> 3) as u8,
-        (((frame_length & 0x07) as u8) << 5) | 0x1f,
-        0xfc,
-    ];
-    writer
-        .write_all(&header)
-        .map_err(|error| error.to_string())?;
-    writer.write_all(payload).map_err(|error| error.to_string())
 }
 
 fn temporary_path(target_path: &Path) -> PathBuf {
@@ -743,8 +728,8 @@ fn format_command_error(command: &str, output: &std::process::Output) -> String 
 #[cfg(test)]
 mod tests {
     use super::{
-        AudioDataSaverConfig, encoded_file_name, is_safe_hash, normalize_extension,
-        opus_sample_rate, source_extension,
+        AudioDataSaverConfig, AudioProfile, encode_aac_with_rust, encode_opus, encoded_file_name,
+        is_safe_hash, normalize_extension, opus_sample_rate, source_extension,
     };
     use crate::db::Db;
 
@@ -786,5 +771,53 @@ mod tests {
         );
         assert_eq!(source_extension("", "hash.aiff"), Some("aiff".to_string()));
         assert_eq!(source_extension("record", "hash"), None);
+    }
+    #[test]
+    fn pure_rust_codecs_write_ogg_opus_and_adts_aac() {
+        let root =
+            std::env::temp_dir().join(format!("dantalian-audio-codec-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("test directory");
+
+        let source_path = root.join("source.wav");
+        let opus_path = root.join("encoded.opus");
+        let aac_path = root.join("encoded.aac");
+        std::fs::write(&source_path, pcm_wav(48_000, 1, 4_800)).expect("source wav");
+        let profile = AudioProfile {
+            source_rate: 48_000,
+            target_rate: 48_000,
+            channels: 1,
+        };
+
+        encode_opus(&source_path, &opus_path, "wav", profile).expect("Opus encoding");
+        encode_aac_with_rust(&source_path, &aac_path, "wav", profile).expect("AAC encoding");
+
+        let opus = std::fs::read(&opus_path).expect("Opus output");
+        let aac = std::fs::read(&aac_path).expect("AAC output");
+        assert!(opus.starts_with(b"OggS"));
+        assert!(aac.starts_with(&[0xff, 0xf1]));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn pcm_wav(sample_rate: u32, channels: u16, frames: usize) -> Vec<u8> {
+        let data_len = frames * usize::from(channels) * 2;
+        let byte_rate = sample_rate * u32::from(channels) * 2;
+        let block_align = channels * 2;
+        let mut wav = Vec::with_capacity(44 + data_len);
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + data_len as u32).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16_u32.to_le_bytes());
+        wav.extend_from_slice(&1_u16.to_le_bytes());
+        wav.extend_from_slice(&channels.to_le_bytes());
+        wav.extend_from_slice(&sample_rate.to_le_bytes());
+        wav.extend_from_slice(&byte_rate.to_le_bytes());
+        wav.extend_from_slice(&block_align.to_le_bytes());
+        wav.extend_from_slice(&16_u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(data_len as u32).to_le_bytes());
+        wav.resize(44 + data_len, 0);
+        wav
     }
 }
