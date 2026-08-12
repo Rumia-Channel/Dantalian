@@ -4,3 +4,6 @@ pub mod native_borrower;
 pub mod native_label;
 #[cfg(feature = "native")]
 pub mod native_series;
+
+#[cfg(feature = "native")]
+pub mod native_storage_location;
