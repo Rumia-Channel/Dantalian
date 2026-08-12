@@ -13,6 +13,9 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
+          rustup component add rustfmt
+      - name: Check shared core
+        run: cargo check --no-default-features
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Test native target
@@ -29,7 +32,10 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
+          rustup component add rustfmt
           rustup target add wasm32-unknown-unknown
+      - name: Check formatting
+        run: cargo fmt --all -- --check
       - name: Install worker-build
         run: cargo install worker-build --version 0.8.4 --locked
       - name: Build Worker

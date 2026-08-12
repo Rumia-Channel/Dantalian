@@ -60,7 +60,6 @@ native = [
     "dep:ua_generator",
     "dep:urlencoding",
 ]
-worker = []
 fdk-aac = ["native", "dep:shiguredo_fdk_aac"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
