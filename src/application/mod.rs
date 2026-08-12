@@ -1,4 +1,5 @@
 pub mod author;
+pub mod book;
 pub mod borrower;
 pub mod error;
 pub mod label;

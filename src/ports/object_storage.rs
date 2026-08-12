@@ -25,24 +25,24 @@ pub trait ObjectStorage {
 pub fn object_key(
     prefix: Option<&str>,
     kind: ObjectKind,
-    hash: &str,
+    object_id: &str,
     extension: &str,
 ) -> Result<String, AppError> {
-    validate_component(hash, "object hash")?;
+    validate_component(object_id, "object id")?;
     let extension = validate_component(extension, "object extension")?.to_ascii_lowercase();
     let path = match kind {
-        ObjectKind::CoverImage => format!("images/{hash}.{extension}"),
-        ObjectKind::Epub => format!("epubs/{hash}.{extension}"),
-        ObjectKind::OriginalAudio => format!("audio/original/{hash}.{extension}"),
+        ObjectKind::CoverImage => format!("images/{object_id}.{extension}"),
+        ObjectKind::Epub => format!("epubs/{object_id}.{extension}"),
+        ObjectKind::OriginalAudio => format!("audio/original/{object_id}.{extension}"),
         ObjectKind::EncodedAudio {
             codec: AudioCodec::Opus,
         } => {
-            format!("audio/encoded/opus/{hash}.opus")
+            format!("audio/encoded/opus/{object_id}.opus")
         }
         ObjectKind::EncodedAudio {
             codec: AudioCodec::Aac,
         } => {
-            format!("audio/encoded/aac/{hash}.aac")
+            format!("audio/encoded/aac/{object_id}.aac")
         }
     };
     let prefix = prefix
