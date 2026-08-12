@@ -39,9 +39,11 @@ impl LabelRepository for NativeLabelRepository {
     }
 
     async fn rename(&self, id: i64, name: &str) -> Result<(), AppError> {
-        let updated = self
-            .db
-            .rename_label(id, name)
+        let db = self.db.clone();
+        let name = name.to_string();
+        let updated = tokio::task::spawn_blocking(move || db.rename_label(id, &name))
+            .await
+            .map_err(|error| AppError::Internal(error.to_string()))?
             .map_err(|error| AppError::Database(error.to_string()))?;
         if updated {
             Ok(())
@@ -51,9 +53,10 @@ impl LabelRepository for NativeLabelRepository {
     }
 
     async fn delete(&self, id: i64) -> Result<(), AppError> {
-        let deleted = self
-            .db
-            .delete_label(id)
+        let db = self.db.clone();
+        let deleted = tokio::task::spawn_blocking(move || db.delete_label(id))
+            .await
+            .map_err(|error| AppError::Internal(error.to_string()))?
             .map_err(|error| AppError::Database(error.to_string()))?;
         if deleted {
             Ok(())

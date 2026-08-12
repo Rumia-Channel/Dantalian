@@ -45,10 +45,15 @@ impl BorrowerRepository for NativeBorrowerRepository {
         name: Option<&str>,
         notes: Option<&str>,
     ) -> Result<(), AppError> {
-        let updated = self
-            .db
-            .update_borrower(id, name, notes)
-            .map_err(|error| AppError::Database(error.to_string()))?;
+        let db = self.db.clone();
+        let name = name.map(str::to_string);
+        let notes = notes.map(str::to_string);
+        let updated = tokio::task::spawn_blocking(move || {
+            db.update_borrower(id, name.as_deref(), notes.as_deref())
+        })
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?
+        .map_err(|error| AppError::Database(error.to_string()))?;
         if updated {
             Ok(())
         } else {
@@ -57,9 +62,10 @@ impl BorrowerRepository for NativeBorrowerRepository {
     }
 
     async fn delete(&self, id: i64) -> Result<(), AppError> {
-        let deleted = self
-            .db
-            .delete_borrower(id)
+        let db = self.db.clone();
+        let deleted = tokio::task::spawn_blocking(move || db.delete_borrower(id))
+            .await
+            .map_err(|error| AppError::Internal(error.to_string()))?
             .map_err(|error| AppError::Database(error.to_string()))?;
         if deleted {
             Ok(())
