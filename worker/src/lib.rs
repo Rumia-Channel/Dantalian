@@ -4,6 +4,8 @@ mod label_api;
 mod label_repository;
 mod series_api;
 mod series_repository;
+mod storage_location_api;
+mod storage_location_repository;
 
 use worker::*;
 
@@ -28,6 +30,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .put_async("/api/borrowers/:id", borrower_api::update)
         .delete_async("/api/borrowers/:id", borrower_api::delete)
         .delete_async("/api/labels/:id", label_api::delete)
+        .get_async("/api/storage-locations", storage_location_api::list)
+        .post_async("/api/storage-locations", storage_location_api::create)
+        .put_async("/api/storage-locations/:id", storage_location_api::update)
+        .delete_async("/api/storage-locations/:id", storage_location_api::delete)
         .run(req, env)
         .await
 }
