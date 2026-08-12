@@ -1,3 +1,5 @@
+mod borrower_api;
+mod borrower_repository;
 mod label_api;
 mod label_repository;
 mod series_api;
@@ -21,6 +23,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/api/labels", label_api::list)
         .post_async("/api/labels", label_api::create)
         .put_async("/api/labels/:id", label_api::rename)
+        .get_async("/api/borrowers", borrower_api::list)
+        .post_async("/api/borrowers", borrower_api::create)
+        .put_async("/api/borrowers/:id", borrower_api::update)
+        .delete_async("/api/borrowers/:id", borrower_api::delete)
         .delete_async("/api/labels/:id", label_api::delete)
         .run(req, env)
         .await
