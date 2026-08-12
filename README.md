@@ -1,5 +1,20 @@
 # Dantalian
 
+## FDK AAC ライセンス・特許告知
+
+**2026-08-12:** 本プロジェクトは、`fdk-aac-rust` を通じて
+**Third-Party Modified Version of the Fraunhofer FDK AAC Codec Library for Android**
+を含みます。これは Fraunhofer の公式プロジェクトではなく、Fraunhofer の承認・推奨を受けていません。
+Rust ポートへの変更とこの告知の日付を明示しています。
+
+完全なライセンス本文は [`NOTICE`](NOTICE) に保持しています。
+`MODULE_LICENSE_FRAUNHOFER` も配布物に含めてください。NOTICE は特許ライセンスを
+付与しないため、AAC のエンコード・デコードを配布または利用する場合は、対象となる
+特許権者またはライセンス管理者から必要な許諾を取得する責任があります。
+Fraunhofer の名称を承認・推奨の表示に使用してはなりません。
+
+配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
+
 ISBN から書籍メタデータを自動取得し、ローカルで管理する Web アプリケーション。
 
 ## 外部 API / スクレイピング
