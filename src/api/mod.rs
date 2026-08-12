@@ -1,16 +1,16 @@
-pub mod audio;
-pub mod books;
-pub mod borrowers;
-pub mod cds;
-pub mod copies;
-pub mod grand_series;
-pub mod labels;
-pub mod media_sync;
-pub mod playlists;
-pub mod series;
-pub mod settings;
-pub mod storage_locations;
-pub mod tracks;
+pub(crate) mod audio;
+pub(crate) mod books;
+pub(crate) mod borrowers;
+pub(crate) mod cds;
+pub(crate) mod copies;
+pub(crate) mod grand_series;
+pub(crate) mod labels;
+pub(crate) mod media_sync;
+pub(crate) mod playlists;
+pub(crate) mod series;
+pub(crate) mod settings;
+pub(crate) mod storage_locations;
+pub(crate) mod tracks;
 pub(crate) mod upload_chunks;
 
 use axum::extract::DefaultBodyLimit;
@@ -43,6 +43,10 @@ pub(crate) fn upload_limit_bytes(
         .filter(|&b| b > 0)
         .map(|b| b.min(UPLOAD_ROUTE_LIMIT_BYTES))
         .unwrap_or(default_bytes)
+}
+
+pub fn cleanup_stale_uploads(uploads_dir: &str) {
+    upload_chunks::cleanup_stale_uploads(uploads_dir);
 }
 
 pub fn routes() -> axum::Router<crate::AppState> {

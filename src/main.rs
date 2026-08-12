@@ -1,13 +1,8 @@
-mod api;
-mod audio_encoding;
-mod backup;
-mod db;
-mod db_models;
-mod external;
-mod media_sync;
+#![cfg(feature = "native")]
 
 use axum::{Router, response::Html};
-use db::Db;
+use dantalian::db::Db;
+use dantalian::{AppState, api, audio_encoding, backup, media_sync};
 use reqwest::Client;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -46,20 +41,6 @@ async fn serve_music() -> Html<String> {
     serve_html("static/music/index.html")
 }
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Db,
-    pub client: Client,
-    pub client_ipv4: Client,
-    pub images_dir: Arc<String>,
-    pub audio_dir: Arc<String>,
-    pub audio_encoding_notify: Arc<tokio::sync::Notify>,
-    pub epubs_dir: Arc<String>,
-    pub uploads_dir: Arc<String>,
-    pub discogs_token: String,
-    pub musicbrainz_contact: String,
-}
-
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -88,7 +69,7 @@ async fn main() {
     std::fs::create_dir_all(&audio_dir).expect("Failed to create audio directory");
     std::fs::create_dir_all(&epubs_dir).expect("Failed to create epubs directory");
     std::fs::create_dir_all(&uploads_dir).expect("Failed to create upload directory");
-    api::upload_chunks::cleanup_stale_uploads(&uploads_dir);
+    api::cleanup_stale_uploads(&uploads_dir);
 
     let db_path = format!("{}{}dantalian.db", db_dir, std::path::MAIN_SEPARATOR);
     tracing::info!(%data_dir, %db_path, %images_dir, %audio_dir, %epubs_dir, "Data directories");

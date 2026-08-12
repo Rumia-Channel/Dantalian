@@ -3,3 +3,6 @@
 /.tmp
 *.db
 .env
+/worker/target
+/worker/build
+/worker/.wrangler
