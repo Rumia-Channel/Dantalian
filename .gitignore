@@ -2,6 +2,7 @@
 /.cocoindex_code
 /.tmp
 *.db
+worker/.dev.vars
 .env
 /worker/target
 /worker/build
