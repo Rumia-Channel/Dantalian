@@ -1,89 +1,72 @@
-use crate::AppState;
-use crate::db::Label;
+use crate::{
+    AppState,
+    adapters::native_label::NativeLabelRepository,
+    application::{error::AppError, label::LabelService},
+    domain::label::{CreateLabel, Label, RenameLabel},
+};
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-pub struct CreateLabelRequest {
-    pub name: String,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateLabelRequest {
-    pub name: String,
-}
 
 type ApiError = (StatusCode, Json<serde_json::Value>);
 
 pub async fn create(
     State(state): State<AppState>,
-    Json(req): Json<CreateLabelRequest>,
+    Json(request): Json<CreateLabel>,
 ) -> Result<(StatusCode, Json<Label>), ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Label name is required"})),
-        ));
-    }
-    let label = state.db.get_or_create_label(req.name.trim()).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
-    Ok((StatusCode::CREATED, Json(label)))
+    let service = LabelService::new(NativeLabelRepository::new(state.db));
+    service
+        .create(&request.name)
+        .await
+        .map(|label| (StatusCode::CREATED, Json(label)))
+        .map_err(error_response)
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Label>>, StatusCode> {
-    let db = state.db.clone();
-    let labels = tokio::task::spawn_blocking(move || db.list_labels())
+    let service = LabelService::new(NativeLabelRepository::new(state.db));
+    service
+        .list()
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(labels))
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub async fn update(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(req): Json<UpdateLabelRequest>,
+    Json(request): Json<RenameLabel>,
 ) -> Result<StatusCode, ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Label name is required"})),
-        ));
-    }
-    if state.db.rename_label(id, req.name.trim()).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })? {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "Label not found"})),
-        ))
-    }
+    let service = LabelService::new(NativeLabelRepository::new(state.db));
+    service
+        .rename(id, &request.name)
+        .await
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(error_response)
 }
 
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, StatusCode> {
-    if state
-        .db
-        .delete_label(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+    let service = LabelService::new(NativeLabelRepository::new(state.db));
+    match service.delete(id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(AppError::NotFound) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+}
+
+fn error_response(error: AppError) -> ApiError {
+    let status = match error {
+        AppError::Validation(_) => StatusCode::BAD_REQUEST,
+        AppError::NotFound => StatusCode::NOT_FOUND,
+        AppError::Conflict(_) => StatusCode::CONFLICT,
+        AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(serde_json::json!({ "error": error.to_string() })),
+    )
 }
