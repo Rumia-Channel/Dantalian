@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - ライセンス</title>
+    <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/licenses.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/responsive.css?v=ASSET_VERSION">
+</head>
+<body data-active-nav="licenses">
+    <div id="app">
+        <main class="licenses-page">
+            <header class="licenses-intro">
+                <p class="licenses-eyebrow">Dantalian 0.1.0</p>
+                <h2>ライセンス</h2>
+                <p>
+                    Dantalian と、Cargo のロックファイルに記録された依存ライブラリの
+                    ライセンス情報です。このページは <code>cargo-about</code> により
+                    ビルド時に生成されます。
+                </p>
+                <p>
+                    Dantalian 本体のライセンス全文は
+                    <a href="/LICENSE" target="_blank" rel="noreferrer">LICENSE</a>、
+                    FDK AAC の告知とライセンス全文は
+                    <a href="/NOTICE" target="_blank" rel="noreferrer">NOTICE</a> を参照してください。
+                </p>
+            </header>
+
+            <section class="license-summary project-license" aria-labelledby="project-license-heading">
+                <h3 id="project-license-heading">Dantalian 本体</h3>
+                <p>
+                    Dantalian は BSD 2-Clause License で公開されています。
+                    改変・再配布時は、以下のライセンス全文を保持してください。
+                </p>
+                <pre class="license-text">__DANTALIAN_LICENSE__</pre>
+            </section>
+
+            <section class="license-summary" aria-labelledby="license-summary-heading">
+                <h3 id="license-summary-heading">収録内容</h3>
+                <div class="license-summary-grid">
+                    <div>
+                        <strong>依存クレート</strong>
+                        <span>Cargo.lock の依存グラフ全体</span>
+                    </div>
+                    <div>
+                        <strong>ライセンス本文</strong>
+                        <span>検出されたライセンスごとに全文を掲載</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="license-controls" aria-label="ライセンス検索">
+                <label for="license-filter">クレート名、バージョン、ライセンスで絞り込む</label>
+                <input id="license-filter" type="search" placeholder="例: tokio, MPL-2.0, 1.53">
+                <p id="license-filter-status" class="license-filter-status" aria-live="polite"></p>
+            </section>
+
+            <section class="license-overview" aria-labelledby="license-overview-heading">
+                <h3 id="license-overview-heading">ライセンス一覧</h3>
+                <div class="license-list" id="license-list">
+{{#each licenses}}
+                    <details class="license-entry" data-license-search="{{id}} {{name}} {{#each used_by}}{{crate.name}} {{crate.version}} {{crate.license}} {{/each}}">
+                        <summary>
+                            <span class="license-entry-name">{{name}}</span>
+                            <code>{{id}}</code>
+                        </summary>
+                        <div class="license-entry-body">
+                            <h4>使用クレート</h4>
+                            <ul class="license-crate-list">
+{{#each used_by}}
+                                <li>
+                                    <strong>{{crate.name}}</strong> <span>{{crate.version}}</span>
+                                    <code>{{crate.license}}</code>
+{{#if crate.repository}}
+                                    <a href="{{crate.repository}}" target="_blank" rel="noreferrer">リポジトリ</a>
+{{/if}}
+                                </li>
+{{/each}}
+                            </ul>
+                            <h4>ライセンス本文</h4>
+                            <pre class="license-text">{{text}}</pre>
+                        </div>
+                    </details>
+{{/each}}
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings.js?v=ASSET_VERSION"></script>
+    <script src="/js/licenses.js?v=ASSET_VERSION"></script>
+</body>
+</html>

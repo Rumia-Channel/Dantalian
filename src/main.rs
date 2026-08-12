@@ -7,10 +7,11 @@ use reqwest::Client;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Duration;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber::EnvFilter;
 
 const ASSET_VERSION: &str = env!("ASSET_VERSION");
+const GENERATED_LICENSE_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/licenses.html"));
 
 fn serve_html(path: &str) -> Html<String> {
     let html = std::fs::read_to_string(path).unwrap_or_else(|_| "Page not found".to_string());
@@ -39,6 +40,10 @@ async fn serve_authors() -> Html<String> {
 
 async fn serve_music() -> Html<String> {
     serve_html("static/music/index.html")
+}
+
+async fn serve_licenses() -> Html<String> {
+    Html(GENERATED_LICENSE_HTML.to_owned())
 }
 
 #[tokio::main]
@@ -170,6 +175,10 @@ async fn main() {
         .route("/register/", axum::routing::get(serve_register))
         .route("/manage", axum::routing::get(serve_manage))
         .route("/manage/", axum::routing::get(serve_manage))
+        .route("/licenses", axum::routing::get(serve_licenses))
+        .route("/licenses/", axum::routing::get(serve_licenses))
+        .route_service("/LICENSE", ServeFile::new("LICENSE"))
+        .route_service("/NOTICE", ServeFile::new("NOTICE"))
         .route("/edit", axum::routing::get(serve_edit))
         .route("/edit/", axum::routing::get(serve_edit))
         .route("/authors", axum::routing::get(serve_authors))

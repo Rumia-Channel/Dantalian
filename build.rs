@@ -1,6 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     let html_files = [
@@ -10,6 +11,7 @@ fn main() {
         "static/edit/index.html",
         "static/authors/index.html",
         "static/music/index.html",
+        "static/licenses/index.html",
     ];
 
     let css_files = [
@@ -24,6 +26,7 @@ fn main() {
         "static/css/player-queue.css",
         "static/css/music.css",
         "static/css/playlist.css",
+        "static/css/licenses.css",
     ];
 
     let js_files = [
@@ -57,6 +60,7 @@ fn main() {
         "static/js/music/playlists.js",
         "static/js/music/playlist-editor.js",
         "static/js/music/main.js",
+        "static/js/licenses.js",
         "static/js/app.js",
     ];
 
@@ -64,6 +68,15 @@ fn main() {
         "static/fonts/MaterialIcons-Regular.ttf",
         "static/fonts/MaterialIconsOutlined-Regular.otf",
     ];
+
+    println!("cargo:rerun-if-changed=about.toml");
+    println!("cargo:rerun-if-changed=about.hbs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=Cargo.lock");
+    println!("cargo:rerun-if-changed=LICENSE");
+    println!("cargo:rerun-if-changed=NOTICE");
+    println!("cargo:rerun-if-changed=MODULE_LICENSE_FRAUNHOFER");
+    println!("cargo:rerun-if-env-changed=CARGO_ABOUT");
 
     for file in html_files
         .iter()
@@ -91,5 +104,48 @@ fn main() {
 
     let hash = hasher.finish();
     let version = format!("{:x}", hash);
-    println!("cargo:rustc-env=ASSET_VERSION={}", version);
+    generate_license_page(&version);
+    println!("cargo:rustc-env=ASSET_VERSION={version}");
+}
+
+fn generate_license_page(version: &str) {
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
+    let output = out_dir.join("licenses.html");
+    let cargo = std::env::var_os("CARGO_ABOUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("cargo"));
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    let status = Command::new(&cargo)
+        .current_dir(manifest_dir)
+        .args([
+            "about",
+            "generate",
+            "--locked",
+            "--offline",
+            "--all-features",
+            "--output-file",
+        ])
+        .arg(&output)
+        .arg("about.hbs")
+        .status()
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to run cargo-about; install cargo-about 0.8.4 or set CARGO_ABOUT: {error}"
+            )
+        });
+
+    if !status.success() {
+        panic!("cargo-about failed with status {status}");
+    }
+
+    let html = std::fs::read_to_string(&output)
+        .unwrap_or_else(|error| panic!("failed to read generated license page: {error}"));
+    let license = std::fs::read_to_string("LICENSE")
+        .unwrap_or_else(|error| panic!("failed to read project license: {error}"));
+    let html = html
+        .replace("ASSET_VERSION", version)
+        .replace("__DANTALIAN_LICENSE__", &license);
+    std::fs::write(&output, html)
+        .unwrap_or_else(|error| panic!("failed to write generated license page: {error}"));
 }

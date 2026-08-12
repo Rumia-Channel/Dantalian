@@ -13,7 +13,7 @@
             '<a href="/register/" id="nav-register">登録</a>' +
             '<a href="/manage/" id="nav-manage">管理</a>' +
             '<a href="/authors/" id="nav-authors">アーティスト</a>' +
-            '<a href="/edit/" id="nav-edit">編集</a>' +
+            '<a href="/licenses/" id="nav-licenses">ライセンス</a>' +
         '</nav>' +
         '<div class="settings-bar">' +
             '<span class="settings-label">表示幅</span>' +

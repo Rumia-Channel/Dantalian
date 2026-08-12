@@ -14,6 +14,8 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup component add rustfmt llvm-tools
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.8.4 --locked
       - name: Check shared core
         run: cargo check --no-default-features
       - name: Check formatting
