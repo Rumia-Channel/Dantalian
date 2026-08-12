@@ -1,8 +1,5 @@
 use super::error::AppError;
-use crate::{
-    domain::series::Series,
-    ports::series_repository::SeriesRepository,
-};
+use crate::{domain::series::Series, ports::series_repository::SeriesRepository};
 
 pub struct SeriesService<R> {
     repo: R,
@@ -37,9 +34,7 @@ impl<R: SeriesRepository> SeriesService<R> {
 fn normalize_name(name: &str) -> Result<String, AppError> {
     let normalized = name.trim();
     if normalized.is_empty() {
-        return Err(AppError::Validation(
-            "Series name is required".to_string(),
-        ));
+        return Err(AppError::Validation("Series name is required".to_string()));
     }
     Ok(normalized.to_string())
 }
