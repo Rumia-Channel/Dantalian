@@ -1,83 +1,68 @@
-use crate::AppState;
-use crate::db::Series;
+use crate::{
+    AppState,
+    adapters::native_series::NativeSeriesRepository,
+    application::{error::AppError, series::SeriesService},
+    domain::series::{CreateSeries, RenameSeries, Series},
+};
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-pub struct CreateSeriesRequest {
-    pub name: String,
-}
-
-#[derive(Deserialize)]
-pub struct RenameSeriesRequest {
-    pub name: String,
-}
-
-type ApiError = (StatusCode, Json<serde_json::Value>);
 
 pub async fn create(
     State(state): State<AppState>,
-    Json(req): Json<CreateSeriesRequest>,
-) -> Result<(StatusCode, Json<Series>), ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Series name is required"})),
-        ));
-    }
-    let series = state.db.create_series(req.name.trim()).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
-    Ok((StatusCode::CREATED, Json(series)))
+    Json(request): Json<CreateSeries>,
+) -> Result<(StatusCode, Json<Series>), (StatusCode, Json<serde_json::Value>)> {
+    let service = SeriesService::new(NativeSeriesRepository::new(state.db));
+    service
+        .create(&request.name)
+        .await
+        .map(|series| (StatusCode::CREATED, Json(series)))
+        .map_err(error_response)
 }
 
-pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Series>>, StatusCode> {
-    let db = state.db.clone();
-    let series = tokio::task::spawn_blocking(move || db.list_series())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(series))
+pub async fn list(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Series>>, (StatusCode, Json<serde_json::Value>)> {
+    let service = SeriesService::new(NativeSeriesRepository::new(state.db));
+    service.list().await.map(Json).map_err(error_response)
 }
 
 pub async fn rename(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(req): Json<RenameSeriesRequest>,
-) -> Result<StatusCode, ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Series name is required"})),
-        ));
-    }
-    state.db.rename_series(id, req.name.trim()).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
-    Ok(StatusCode::NO_CONTENT)
+    Json(request): Json<RenameSeries>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let service = SeriesService::new(NativeSeriesRepository::new(state.db));
+    service
+        .rename(id, &request.name)
+        .await
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(error_response)
 }
 
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, StatusCode> {
-    if state
-        .db
-        .delete_series(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+    let service = SeriesService::new(NativeSeriesRepository::new(state.db));
+    match service.delete(id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(AppError::NotFound) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+}
+
+fn error_response(error: AppError) -> (StatusCode, Json<serde_json::Value>) {
+    let status = match error {
+        AppError::Validation(_) => StatusCode::BAD_REQUEST,
+        AppError::NotFound => StatusCode::NOT_FOUND,
+        AppError::Conflict(_) => StatusCode::CONFLICT,
+        AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(serde_json::json!({ "error": error.to_string() })),
+    )
 }

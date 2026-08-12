@@ -1,5 +1,7 @@
-#[cfg(feature = "native")]
-pub mod api;
+pub mod application;
+pub mod domain;
+pub mod ports;
+
 #[cfg(feature = "native")]
 pub mod adapters;
 #[cfg(feature = "native")]
