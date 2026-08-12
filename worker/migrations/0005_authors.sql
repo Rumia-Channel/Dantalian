@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS authors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndl_id TEXT UNIQUE,
+    name TEXT NOT NULL,
+    transcription TEXT
+);

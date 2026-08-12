@@ -64,3 +64,7 @@ fdk-aac = ["native", "dep:shiguredo_fdk_aac"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 shiguredo_fdk_aac = { git = "https://github.com/shiguredo/fdk-aac-rs", version = "2026.1.0-canary.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5.3", features = ["util"] }

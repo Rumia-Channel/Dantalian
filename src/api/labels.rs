@@ -1,7 +1,8 @@
 use crate::{
     AppState,
     adapters::native_label::NativeLabelRepository,
-    application::{error::AppError, label::LabelService},
+    api::error::{ApiError, error_response},
+    application::label::LabelService,
     domain::label::{CreateLabel, Label, RenameLabel},
 };
 use axum::{
@@ -9,8 +10,6 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-
-type ApiError = (StatusCode, Json<serde_json::Value>);
 
 pub async fn create(
     State(state): State<AppState>,
@@ -24,13 +23,9 @@ pub async fn create(
         .map_err(error_response)
 }
 
-pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Label>>, StatusCode> {
+pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<Label>>, ApiError> {
     let service = LabelService::new(NativeLabelRepository::new(state.db));
-    service
-        .list()
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    service.list().await.map(Json).map_err(error_response)
 }
 
 pub async fn update(
@@ -49,24 +44,11 @@ pub async fn update(
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<StatusCode, ApiError> {
     let service = LabelService::new(NativeLabelRepository::new(state.db));
-    match service.delete(id).await {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(AppError::NotFound) => Err(StatusCode::NOT_FOUND),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
-
-fn error_response(error: AppError) -> ApiError {
-    let status = match error {
-        AppError::Validation(_) => StatusCode::BAD_REQUEST,
-        AppError::NotFound => StatusCode::NOT_FOUND,
-        AppError::Conflict(_) => StatusCode::CONFLICT,
-        AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (
-        status,
-        Json(serde_json::json!({ "error": error.to_string() })),
-    )
+    service
+        .delete(id)
+        .await
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(error_response)
 }

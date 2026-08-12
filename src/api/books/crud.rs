@@ -105,18 +105,6 @@ pub async fn set_series(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn get_author(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<crate::db::Author>, StatusCode> {
-    state
-        .db
-        .get_author_by_id(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
-}
-
 #[derive(Deserialize)]
 pub struct UpdateBookRequest {
     pub isbn: Option<String>,
@@ -311,100 +299,6 @@ pub async fn update_book(
             )
         })?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(Deserialize)]
-pub struct UpdateAuthorRequest {
-    pub name: String,
-    pub transcription: Option<String>,
-    pub ndl_id: Option<String>,
-}
-
-pub async fn update_author(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-    Json(req): Json<UpdateAuthorRequest>,
-) -> Result<StatusCode, ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Name is required"})),
-        ));
-    }
-    state
-        .db
-        .update_author(
-            id,
-            req.name.trim(),
-            req.transcription.as_deref(),
-            req.ndl_id.as_deref(),
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-pub async fn delete_author(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<StatusCode, StatusCode> {
-    if state
-        .db
-        .delete_author(id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
-}
-
-pub async fn list_authors(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<crate::db::Author>>, StatusCode> {
-    let db = state.db.clone();
-    let authors = tokio::task::spawn_blocking(move || db.list_authors())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(authors))
-}
-
-#[derive(Deserialize)]
-pub struct CreateAuthorRequest {
-    pub name: String,
-    pub transcription: Option<String>,
-    pub ndl_id: Option<String>,
-}
-
-pub async fn create_author(
-    State(state): State<AppState>,
-    Json(req): Json<CreateAuthorRequest>,
-) -> Result<(StatusCode, Json<crate::db::Author>), ApiError> {
-    if req.name.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Name is required"})),
-        ));
-    }
-    let author = state
-        .db
-        .create_author(
-            req.name.trim(),
-            req.transcription.as_deref(),
-            req.ndl_id.as_deref(),
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        })?;
-    Ok((StatusCode::CREATED, Json(author)))
 }
 
 #[derive(Deserialize)]

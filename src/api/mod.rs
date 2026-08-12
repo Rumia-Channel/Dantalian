@@ -1,8 +1,10 @@
 pub(crate) mod audio;
+pub(crate) mod authors;
 pub(crate) mod books;
 pub(crate) mod borrowers;
 pub(crate) mod cds;
 pub(crate) mod copies;
+pub(crate) mod error;
 pub(crate) mod grand_series;
 pub(crate) mod labels;
 pub(crate) mod media_sync;
@@ -77,13 +79,13 @@ pub fn routes() -> axum::Router<crate::AppState> {
                 .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
                 .delete(books::delete_epub),
         )
-        .route("/authors", get(books::list_authors))
-        .route("/authors", post(books::create_author))
+        .route("/authors", get(authors::list))
+        .route("/authors", post(authors::create))
         .route(
             "/authors/{id}",
-            get(books::get_author)
-                .put(books::update_author)
-                .delete(books::delete_author),
+            get(authors::get)
+                .put(authors::update)
+                .delete(authors::delete),
         )
         .route("/series", post(series::create))
         .route("/series", get(series::list))

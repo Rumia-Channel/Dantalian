@@ -1,21 +1,13 @@
 use dantalian::{
-    application::{error::AppError, storage_location::StorageLocationService},
+    application::storage_location::StorageLocationService,
     domain::storage_location::{CreateStorageLocation, UpdateStorageLocation},
 };
 use worker::{Request, Response, Result, RouteContext};
 
-use crate::storage_location_repository::D1StorageLocationRepository;
-
-fn error_response(error: AppError) -> Result<Response> {
-    let status = match error {
-        AppError::Validation(_) => 400,
-        AppError::NotFound => 404,
-        AppError::Conflict(_) => 409,
-        AppError::Database(_) | AppError::Internal(_) => 500,
-    };
-    Response::from_json(&serde_json::json!({ "error": error.to_string() }))
-        .map(|response| response.with_status(status))
-}
+use crate::{
+    error::{error_response, parse_id, parse_json},
+    storage_location_repository::D1StorageLocationRepository,
+};
 
 pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let service = StorageLocationService::new(D1StorageLocationRepository::new(ctx.d1("DB")?));
@@ -26,7 +18,10 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let request: CreateStorageLocation = req.json().await?;
+    let request = match parse_json::<CreateStorageLocation>(&mut req).await {
+        Ok(request) => request,
+        Err(response) => return Ok(response),
+    };
     let service = StorageLocationService::new(D1StorageLocationRepository::new(ctx.d1("DB")?));
     service
         .create(&request.name, request.parent_id)
@@ -37,12 +32,14 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
 }
 
 pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let request: UpdateStorageLocation = req.json().await?;
-    let id = ctx
-        .param("id")
-        .ok_or_else(|| worker::Error::RustError("missing storage location id".to_string()))?
-        .parse::<i64>()
-        .map_err(|_| worker::Error::RustError("invalid storage location id".to_string()))?;
+    let request = match parse_json::<UpdateStorageLocation>(&mut req).await {
+        Ok(request) => request,
+        Err(response) => return Ok(response),
+    };
+    let id = match parse_id(&ctx, "id") {
+        Ok(id) => id,
+        Err(response) => return Ok(response),
+    };
     let service = StorageLocationService::new(D1StorageLocationRepository::new(ctx.d1("DB")?));
     service
         .update(id, request.name.as_deref(), request.parent_id)
@@ -53,11 +50,10 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
 }
 
 pub async fn delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let id = ctx
-        .param("id")
-        .ok_or_else(|| worker::Error::RustError("missing storage location id".to_string()))?
-        .parse::<i64>()
-        .map_err(|_| worker::Error::RustError("invalid storage location id".to_string()))?;
+    let id = match parse_id(&ctx, "id") {
+        Ok(id) => id,
+        Err(response) => return Ok(response),
+    };
     let service = StorageLocationService::new(D1StorageLocationRepository::new(ctx.d1("DB")?));
     service.delete(id).await.map_or_else(error_response, |_| {
         Response::empty().map(|response| response.with_status(204))
