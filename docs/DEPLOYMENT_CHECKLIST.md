@@ -24,19 +24,20 @@
 - [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
 - [ ] Deployed Cloudflare Worker to Wasabi completion and multipart E2E pass.
++- [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
 - [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
 
 ## Verification record
 
-The checked items above record repository, local Wrangler, and local live Wasabi verification completed on 2026-08-13. A remote Cloudflare Worker rehearsal was created and isolated, but cover completion failed because the Worker-side Wasabi `HEAD` request returned HTTP 403; the remote verification item remains unchecked. Credentials and signed URLs were not printed in the verification logs. The rehearsal uploaded objects successfully before completion, so orphaned objects remain under the Wasabi test prefix `test.dantalian.dev/e2e/20260813/a1/`; the remote D1 and Worker were deleted, but the Wasabi objects were not deleted. Delete only that exact prefix from the Wasabi console, or with a newly rotated least-privilege test key. Do not use the exposed root key.
+The checked items above record repository, local Wrangler, local live Wasabi, and Cloudflare remote-preview verification completed on 2026-08-13. The remote preview initially failed because the Worker-side authenticated Wasabi `HEAD` request returned HTTP 403 from the endpoint's Cloudflare edge. Wasabi metadata validation now uses a bounded `GET` with `Range: bytes=0-0`, reads the original size from `Content-Range`, and never proxies the object body to the client. Local and remote-preview basic, multipart, and audio object-existence checks pass. A temporary deployed Worker rehearsal was deleted after the public `workers.dev` URL returned HTTP 404 (`error code: 1042`), so the deployed Worker item remains unchecked. Credentials and signed URLs were not printed in verification logs.
 
 ## Credential incident and cleanup
 
 - [ ] Immediately disable and rotate the exposed Wasabi root key before any further Wasabi access.
-- [ ] Using the replacement key or the Wasabi console, list and delete all objects under `e2e/20260813/a1/` in `test.dantalian.dev`.
-- [ ] Confirm the prefix is empty after cleanup; do not delete unrelated objects in the test bucket.
-- [ ] Store the replacement credential only in the secret store or ignored local configuration; never commit or print it.
+- [x] Using the replacement credential, delete only `e2e/20260813/a1/` and `e2e/20260813/a2/` from `test.dantalian.dev`.
+- [x] Confirm both test prefixes are empty; unrelated objects were not targeted.
+- [ ] Store the replacement credential only in the secret store or ignored local configuration; the Wasabi IAM check still identifies the replacement access key as a root key, so least-privilege status is unconfirmed.
 
 ## Traffic shift
 

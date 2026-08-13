@@ -38,19 +38,38 @@ impl WasabiClient {
     }
 
     pub async fn head_object(&self, key: &str) -> Result<ObjectMetadata, AppError> {
-        let mut response = self.send(Method::Head, key, None).await?;
-        let content_length = response
+        // The Wasabi endpoint returns a Cloudflare 403 for authenticated HEAD requests
+        // from Workers. A one-byte range GET keeps metadata validation bounded.
+        let mut request_headers = BTreeMap::new();
+        request_headers.insert("range".to_string(), "bytes=0-0".to_string());
+        let mut response = self
+            .send_with_headers(Method::Get, key, BTreeMap::new(), request_headers)
+            .await?;
+        if response.status_code() != 206 {
+            let status = response.status_code();
+            let _ = response.text().await;
+            return Err(AppError::Storage(format!(
+                "Wasabi metadata range request returned status {status}"
+            )));
+        }
+        let content_range = response
             .headers()
-            .get("content-length")
-            .map_err(storage_error)?
-            .and_then(|value| value.parse::<u64>().ok());
+            .get("content-range")
+            .map_err(storage_error)?;
+        let content_length = content_range
+            .as_deref()
+            .and_then(|value| value.rsplit_once('/'))
+            .and_then(|(_, total)| total.parse::<u64>().ok())
+            .ok_or_else(|| {
+                AppError::Storage("Wasabi metadata response missing content-range".to_string())
+            })?;
         let content_type = response
             .headers()
             .get("content-type")
             .map_err(storage_error)?;
         let _ = response.text().await;
         Ok(ObjectMetadata {
-            content_length,
+            content_length: Some(content_length),
             content_type,
         })
     }
@@ -116,16 +135,27 @@ impl WasabiClient {
         key: &str,
         content_type: Option<&str>,
     ) -> Result<Response, AppError> {
+        let mut headers = BTreeMap::new();
+        if let Some(content_type) = content_type {
+            headers.insert("content-type".to_string(), content_type.to_string());
+        }
+        self.send_with_headers(method, key, headers, BTreeMap::new())
+            .await
+    }
+
+    async fn send_with_headers(
+        &self,
+        method: Method,
+        key: &str,
+        mut canonical_headers: BTreeMap<String, String>,
+        request_only_headers: BTreeMap<String, String>,
+    ) -> Result<Response, AppError> {
         let url = self.object_url(key)?;
         let now = now_seconds();
         let payload_hash = sigv4::sha256_hex(b"");
-        let mut canonical_headers = BTreeMap::new();
         canonical_headers.insert("host".to_string(), host_header(&url)?);
         canonical_headers.insert("x-amz-content-sha256".to_string(), payload_hash.clone());
         canonical_headers.insert("x-amz-date".to_string(), sigv4::amz_date(now));
-        if let Some(content_type) = content_type {
-            canonical_headers.insert("content-type".to_string(), content_type.to_string());
-        }
         let signed = sigv4::sign_authorization(
             method.as_ref(),
             url.path(),
@@ -139,6 +169,9 @@ impl WasabiClient {
         );
         let request_headers = Headers::new();
         for (name, value) in &canonical_headers {
+            request_headers.set(name, value).map_err(storage_error)?;
+        }
+        for (name, value) in &request_only_headers {
             request_headers.set(name, value).map_err(storage_error)?;
         }
         request_headers
