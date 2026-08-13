@@ -104,9 +104,16 @@ function showSeriesModal(seriesId) {
     detailOverlay.classList.remove("hidden");
 }
 
-function showDetail(id) {
-    const book = allBooks.find((b) => b.id === id);
-    if (!book) return;
+async function showDetail(id) {
+    const summary = allBooks.find((b) => b.id === id);
+    if (!summary) return;
+    let book = summary;
+    try {
+        const response = await fetch(`/api/books/${id}`);
+        if (response.ok) {
+            book = await response.json();
+        }
+    } catch {}
 
     const currentSeries = book.series_id != null
         ? allSeries.find((s) => s.id === book.series_id)

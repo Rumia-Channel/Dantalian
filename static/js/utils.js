@@ -194,9 +194,21 @@ async function loadGrandSeries() {
 
 async function loadBooks() {
     try {
-        const res = await fetch("/api/books");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        allBooks = await res.json();
+        const books = [];
+        let cursor = null;
+        do {
+            const query = new URLSearchParams({ limit: "100" });
+            if (cursor) query.set("cursor", cursor);
+            const res = await fetch(`/api/books?${query.toString()}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const page = await res.json();
+            if (!page || !Array.isArray(page.items)) {
+                throw new Error("Invalid books page response");
+            }
+            books.push(...page.items);
+            cursor = page.next_cursor || null;
+        } while (cursor);
+        allBooks = books;
         clearDataLoadError("books");
         return true;
     } catch (err) {

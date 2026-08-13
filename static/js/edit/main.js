@@ -41,10 +41,19 @@ function renderBookSelect() {
     `;
 }
 
-function renderBookEdit(id) {
-    const book = allBooks.find((b) => b.id === id);
-    if (!book) {
+async function renderBookEdit(id) {
+    const summary = allBooks.find((b) => b.id === id);
+    if (!summary) {
         editContent.innerHTML = '<p class="empty-state">書籍が見つかりません</p>';
+        return;
+    }
+    let book;
+    try {
+        const response = await fetch(`/api/books/${id}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        book = await response.json();
+    } catch {
+        editContent.innerHTML = '<p class="empty-state">書籍詳細の読み込みに失敗しました</p>';
         return;
     }
 

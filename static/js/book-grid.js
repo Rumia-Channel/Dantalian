@@ -132,10 +132,12 @@ authorBookGrid.addEventListener("click", (e) => {
 });
 
 function getPrimaryAuthor(book) {
-    if (!book.authors || book.authors.length === 0) return null;
-    return book.authors.reduce((best, a) =>
-        (a.sort_order < best.sort_order) ? a : best
-    );
+    if (book.authors && book.authors.length > 0) {
+        return book.authors.reduce((best, author) =>
+            (author.sort_order < best.sort_order) ? author : best
+        );
+    }
+    return book.primary_author_name ? { name: book.primary_author_name } : null;
 }
 
 function getPrimaryCreator(item) {
@@ -148,7 +150,21 @@ function getPrimaryCreator(item) {
         return { key, name: artist.name };
     }
     const author = getPrimaryAuthor(item);
-    return author ? { key: `author:${author.id}`, name: author.name } : null;
+    return author
+        ? {
+            key: author.id != null
+                ? `author:${author.id}`
+                : `author-name:${normalizeSearchText(author.name)}`,
+            name: author.name,
+        }
+        : null;
+}
+
+function getBookAuthorLabel(book) {
+    if (book.authors && book.authors.length > 0) {
+        return book.authors.map((author) => author.name).join(", ");
+    }
+    return book.primary_author_name || "";
 }
 
 function normalizeSearchText(value) {
@@ -171,6 +187,9 @@ function getItemSearchText(item) {
             grandSeriesNames.push(gs.name);
         }
     }
+    const authorNames = item.sourceType === "book"
+        ? [getBookAuthorLabel(item)]
+        : (item.authors || []).flatMap((author) => [author.name, author.transcription, author.ndl_id]);
     return [
         item.title,
         item.isbn,
@@ -183,7 +202,7 @@ function getItemSearchText(item) {
         item.ndl_url,
         series?.name,
         ...grandSeriesNames,
-        ...(item.authors || []).flatMap((a) => [a.name, a.transcription, a.ndl_id]),
+        ...authorNames,
     ].map(normalizeSearchText).join(" ");
 }
 
@@ -318,6 +337,9 @@ function renderBookCard(item) {
     const mediaBadges = { cd: "CD", audiobook: "AB" };
     const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
     const clickHandler = item.sourceType === "cd" ? `showCdDetail(${item.originalId})` : `showDetail(${item.id})`;
+    const authorLabel = item.sourceType === "book"
+        ? getBookAuthorLabel(item)
+        : (item.authors || []).map((author) => author.name).join(", ");
     return `
     <div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
         ${
@@ -328,7 +350,7 @@ function renderBookCard(item) {
         ${mediaBadge}
         <div class="book-info">
             <div class="book-title">${escapeHtml(item.title)}${copiesBadge}</div>
-            ${item.authors && item.authors.length > 0 ? `<div class="book-author">${item.authors.map((a) => escapeHtml(a.name)).join(", ")}</div>` : ""}
+            ${authorLabel ? `<div class="book-author">${escapeHtml(authorLabel)}</div>` : ""}
             ${item.publisher ? `<div class="book-meta">${escapeHtml(item.publisher)}</div>` : ""}
         </div>
     </div>`;

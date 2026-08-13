@@ -67,6 +67,32 @@ struct BookRow {
 struct AuthorOrder {
     sort_order: Option<i64>,
 }
+#[derive(Debug, Serialize, Deserialize)]
+struct BookSummaryRow {
+    id: i64,
+    isbn: Option<String>,
+    isdn: Option<String>,
+    jan: Option<String>,
+    title: String,
+    publisher: Option<String>,
+    publish_date: Option<String>,
+    cover_url: Option<String>,
+    description: Option<String>,
+    series_id: Option<i64>,
+    series_number: Option<i64>,
+    media_type: Option<String>,
+    copies_count: i64,
+    lent_count: i64,
+    primary_author_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct BooksPage {
+    items: Vec<serde_json::Value>,
+    next_cursor: Option<String>,
+}
+
+const BOOK_CURSOR_MASK: i64 = 0x5A17_C0DE;
 
 fn db_error(error: worker::Error) -> worker::Error {
     error
@@ -144,22 +170,114 @@ async fn output(db: &worker::D1Database, book: BookRow) -> Result<serde_json::Va
     Ok(value)
 }
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (limit, cursor) = match list_query(&req) {
+        Ok(query) => query,
+        Err(response) => return Ok(response),
+    };
     let db = ctx.d1("DB")?;
-    let books = db
-        .prepare(&format!(
-            "SELECT {BOOK_COLUMNS} FROM books ORDER BY id DESC"
+    const SUMMARY_SELECT: &str = "SELECT b.id,b.isbn,b.isdn,b.jan,b.title,b.publisher,b.publish_date,b.cover_url,b.description,b.series_id,b.series_number,b.media_type,
+        COUNT(DISTINCT c.id) AS copies_count,
+        COUNT(DISTINCT CASE WHEN lh.id IS NOT NULL THEN c.id END) AS lent_count,
+        (SELECT a.name FROM authors a
+         JOIN book_authors ba ON ba.author_id = a.id
+         WHERE ba.book_id = b.id
+         ORDER BY ba.sort_order,ba.author_id
+         LIMIT 1) AS primary_author_name
+        FROM books b
+        LEFT JOIN copies c ON c.book_id = b.id
+        LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL";
+    let rows = if let Some(cursor) = cursor {
+        db.prepare(&format!(
+            "{SUMMARY_SELECT} WHERE b.id < ? GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
         ))
+        .bind_refs([
+            &D1Type::Integer(cursor),
+            &D1Type::Integer(i32::try_from(limit + 1).unwrap_or(101)),
+        ])
+        .map_err(db_error)?
         .all()
         .await
         .map_err(db_error)?
-        .results::<BookRow>()
-        .map_err(db_error)?;
-    let mut values = Vec::with_capacity(books.len());
-    for book in books {
-        values.push(output(&db, book).await?);
+        .results::<BookSummaryRow>()
+        .map_err(db_error)?
+    } else {
+        db.prepare(&format!(
+            "{SUMMARY_SELECT} GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
+        ))
+        .bind_refs(&D1Type::Integer(i32::try_from(limit + 1).unwrap_or(101)))
+        .map_err(db_error)?
+        .all()
+        .await
+        .map_err(db_error)?
+        .results::<BookSummaryRow>()
+        .map_err(db_error)?
+    };
+    let has_more = rows.len() > limit;
+    let mut rows = rows;
+    if has_more {
+        rows.truncate(limit);
     }
-    Response::from_json(&values)
+    let next_cursor = rows
+        .last()
+        .map(|row| encode_cursor(row.id))
+        .filter(|_| has_more);
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let mut value = serde_json::to_value(row)
+                .map_err(|error| worker::Error::from(error.to_string()))?;
+            if let Some(object) = value.as_object_mut() {
+                if object
+                    .get("media_type")
+                    .is_some_and(serde_json::Value::is_null)
+                {
+                    object.insert(
+                        "media_type".into(),
+                        serde_json::Value::String("book".into()),
+                    );
+                }
+            }
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Response::from_json(&BooksPage { items, next_cursor })
+}
+
+fn list_query(req: &Request) -> std::result::Result<(usize, Option<i32>), Response> {
+    let query = req.url().map_err(|_| bad_request("invalid request URL"))?;
+    let params = query.query_pairs().into_owned().collect::<Vec<_>>();
+    let limit = match params.iter().find(|(key, _)| key == "limit") {
+        Some((_, value)) => value
+            .parse::<usize>()
+            .ok()
+            .filter(|value| (1..=100).contains(value))
+            .ok_or_else(|| bad_request("limit must be between 1 and 100"))?,
+        None => 50,
+    };
+    let cursor = match params.iter().find(|(key, _)| key == "cursor") {
+        Some((_, value)) => Some(decode_cursor(value)?),
+        None => None,
+    };
+    Ok((limit, cursor))
+}
+
+fn encode_cursor(id: i64) -> String {
+    format!("c{:x}", id ^ BOOK_CURSOR_MASK)
+}
+
+fn decode_cursor(value: &str) -> std::result::Result<i32, Response> {
+    let encoded = value
+        .strip_prefix('c')
+        .filter(|value| !value.is_empty() && value.len() <= 16)
+        .ok_or_else(|| bad_request("invalid cursor"))?;
+    let encoded = i64::from_str_radix(encoded, 16).map_err(|_| bad_request("invalid cursor"))?;
+    let id = encoded ^ BOOK_CURSOR_MASK;
+    let id = i32::try_from(id).map_err(|_| bad_request("invalid cursor"))?;
+    if id <= 0 {
+        return Err(bad_request("invalid cursor"));
+    }
+    Ok(id)
 }
 
 pub async fn get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
