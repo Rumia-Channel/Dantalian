@@ -8,23 +8,27 @@
 - [ ] Current Worker migrations are applied to the target D1 database.
 - [ ] Wasabi bucket, region, endpoint, and a unique migration prefix are confirmed.
 - [ ] D1 and Wasabi credentials are stored only in the deployment secret store.
-- [ ] No credential, Authorization header, cookie token, signing key, or full presigned URL appears in logs or artifacts.
-- [ ] Worker authentication remains fail-closed when the API token is not configured.
-- [ ] Presigned URL routes perform authentication and authorization before signing.
-- [ ] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
+- [x] No credential, Authorization header, cookie token, signing key, or full presigned URL appears in logs or artifacts.
+- [x] Worker authentication remains fail-closed when the API token is not configured.
+- [x] Presigned URL routes perform authentication and authorization before signing.
+- [x] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
 
 ## Verification before traffic shift
 
-- [ ] Native checks pass: `cargo check --no-default-features`.
-- [ ] Native codec WASM check passes when applicable.
-- [ ] Native tests pass with `cargo test --features native --no-fail-fast`.
-- [ ] Worker checks pass: `cargo check --target wasm32-unknown-unknown` and `cargo test --lib`.
-- [ ] `worker-build --release` succeeds.
-- [ ] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
-- [ ] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
-- [ ] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
+- [x] Native checks pass: `cargo check --no-default-features`.
+- [x] Native codec WASM check passes when applicable.
+- [x] Native tests pass with `cargo test --features native --no-fail-fast`.
+- [x] Worker checks pass: `cargo check --target wasm32-unknown-unknown` and `cargo test --lib`.
+- [x] `worker-build --release` succeeds.
+- [x] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
+- [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
+- [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
 - [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
+
+## Verification record
+
+The checked items above record repository, local Wrangler, and live Wasabi verification completed on 2026-08-13. Live Wasabi tests were run with `WASABI_E2E=1` against the configured test bucket; credentials and signed URLs were not printed. Items that depend on the production D1/database, migration snapshot, traffic shift, or rollback procedure remain unchecked.
 
 ## Traffic shift
 
