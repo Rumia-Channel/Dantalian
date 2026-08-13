@@ -7,5 +7,6 @@ worker/.dev.vars
 /worker/target
 /worker/build
 /worker/public
+worker/.asset-version
 /worker/.wrangler
 /node_modules

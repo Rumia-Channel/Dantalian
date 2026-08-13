@@ -7,6 +7,7 @@ const workerDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = resolve(workerDir, "..");
 const sourceDir = join(projectDir, "static");
 const outputDir = join(workerDir, "public");
+const assetVersionPath = join(workerDir, ".asset-version");
 
 async function filesUnder(directory) {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -29,6 +30,14 @@ for (const sourceFile of sourceFiles) {
     hash.update(await readFile(sourceFile));
 }
 const assetVersion = hash.digest("hex").slice(0, 16);
+let previousAssetVersion = "";
+try {
+    previousAssetVersion = await readFile(assetVersionPath, "utf8");
+} catch {}
+if (previousAssetVersion.trim() === assetVersion && await readFile(join(outputDir, "index.html"), "utf8").then(() => true).catch(() => false)) {
+    console.log(`Worker assets unchanged: ${assetVersion}`);
+    process.exit(0);
+}
 
 await mkdir(outputDir, { recursive: true });
 await cp(sourceDir, outputDir, { recursive: true });
@@ -40,5 +49,6 @@ for (const sourceFile of sourceFiles.filter((file) => file.endsWith(".html"))) {
     const html = await readFile(outputFile, "utf8");
     await writeFile(outputFile, html.replaceAll("ASSET_VERSION", assetVersion));
 }
+await writeFile(assetVersionPath, `${assetVersion}\n`);
 
 console.log(`Prepared Worker assets: ${assetVersion}`);
