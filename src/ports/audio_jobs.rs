@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::application::error::AppError;
 use crate::ports::object_storage::AudioCodec;
 
+pub const MAX_AUDIO_JOB_ATTEMPTS: u32 = 3;
+pub const DEFAULT_AUDIO_JOB_LEASE_SECONDS: u64 = 900;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioJobStatus {
@@ -41,6 +44,7 @@ pub struct AudioJobRequest {
     pub output_object_key: String,
     pub codec: AudioCodec,
     pub bitrate_kbps: u32,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,21 +55,58 @@ pub struct AudioJob {
     pub output_object_key: String,
     pub codec: AudioCodec,
     pub bitrate_kbps: u32,
+    pub idempotency_key: Option<String>,
+    pub attempt_count: u32,
+    pub lease_until: Option<String>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub next_attempt_at: Option<String>,
+    pub processor_id: Option<String>,
+    pub provider_job_id: Option<String>,
+    pub output_size_bytes: Option<u64>,
     pub error_summary: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
-pub trait AudioJobQueue {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioJobClaim {
+    pub job: AudioJob,
+    pub lease_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioJobFailure {
+    pub error_summary: String,
+    pub retryable: bool,
+    pub backoff_seconds: u64,
+}
+
+pub trait AudioJobRepository {
     fn submit(&self, request: AudioJobRequest) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn get(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
-    fn mark_running(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
-    fn mark_completed(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
-    fn mark_failed(
+    fn claim_next(
         &self,
-        job_id: &str,
-        error_summary: &str,
+        processor_id: &str,
+        lease_seconds: u64,
+    ) -> impl Future<Output = Result<Option<AudioJobClaim>, AppError>>;
+    fn renew_lease(
+        &self,
+        claim: &AudioJobClaim,
+        lease_seconds: u64,
+    ) -> impl Future<Output = Result<AudioJobClaim, AppError>>;
+    fn complete(
+        &self,
+        claim: &AudioJobClaim,
+        output_size_bytes: u64,
     ) -> impl Future<Output = Result<AudioJob, AppError>>;
+    fn fail(
+        &self,
+        claim: &AudioJobClaim,
+        failure: AudioJobFailure,
+    ) -> impl Future<Output = Result<AudioJob, AppError>>;
+    fn retry(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
+    fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>>;
 }
 
 #[cfg(test)]
