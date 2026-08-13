@@ -41,6 +41,12 @@ pub struct MultipartObjectMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectMetadata {
+    pub content_length: Option<u64>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultipartPart {
     pub part_number: u32,
     pub etag: String,
@@ -72,6 +78,7 @@ pub trait MultipartUploadStorage {
 }
 
 pub trait ObjectStorage {
+    fn head(&self, key: &str) -> impl Future<Output = Result<ObjectMetadata, AppError>>;
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, AppError>>;
     fn put_object(
         &self,

@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::{application::error::AppError, ports::object_storage::ObjectStorage};
+use crate::{
+    application::error::AppError,
+    ports::object_storage::{ObjectMetadata, ObjectStorage},
+};
 
 #[derive(Debug, Clone)]
 pub struct NativeObjectStorage {
@@ -25,8 +28,28 @@ impl NativeObjectStorage {
 }
 
 impl ObjectStorage for NativeObjectStorage {
+    async fn head(&self, key: &str) -> Result<ObjectMetadata, AppError> {
+        let metadata = tokio::fs::metadata(self.path_for(key)?)
+            .await
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    AppError::NotFound
+                } else {
+                    storage_error(error)
+                }
+            })?;
+        Ok(ObjectMetadata {
+            content_length: Some(metadata.len()),
+            content_type: None,
+        })
+    }
+
     async fn exists(&self, key: &str) -> Result<bool, AppError> {
-        Ok(self.path_for(key)?.is_file())
+        match self.head(key).await {
+            Ok(_) => Ok(true),
+            Err(AppError::NotFound) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     async fn put_object(

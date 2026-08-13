@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use dantalian::{
     application::error::AppError,
     ports::object_storage::{
-        MultipartObjectMetadata, MultipartPart, MultipartUploadStorage, validate_object_key,
+        MultipartObjectMetadata, MultipartPart, MultipartUploadStorage, ObjectMetadata,
+        validate_object_key,
     },
 };
 use quick_xml::de::from_str;
@@ -14,12 +15,6 @@ use super::{WasabiConfig, sigv4};
 
 pub const UPLOAD_URL_TTL_SECONDS: u64 = 600;
 pub const DOWNLOAD_URL_TTL_SECONDS: u64 = 300;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ObjectMetadata {
-    pub content_length: Option<u64>,
-    pub content_type: Option<String>,
-}
 
 #[derive(Clone)]
 pub struct WasabiClient {
@@ -375,6 +370,10 @@ impl WasabiClient {
 }
 
 impl dantalian::ports::object_storage::ObjectStorage for WasabiClient {
+    async fn head(&self, key: &str) -> Result<ObjectMetadata, AppError> {
+        self.head_object(key).await
+    }
+
     async fn exists(&self, key: &str) -> Result<bool, AppError> {
         match self.head_object(key).await {
             Ok(_) => Ok(true),
