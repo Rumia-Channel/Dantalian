@@ -1,5 +1,7 @@
 use std::future::Future;
 
+use serde::{Deserialize, Serialize};
+
 use crate::application::error::AppError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,10 +12,20 @@ pub enum ObjectKind {
     EncodedAudio { codec: AudioCodec },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AudioCodec {
     Opus,
     Aac,
+}
+
+impl AudioCodec {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Opus => "opus",
+            Self::Aac => "aac",
+        }
+    }
 }
 /// Maximum request body that the Worker handles directly before the client
 /// must switch to a Wasabi multipart upload.
@@ -113,6 +125,23 @@ pub fn object_key(
     })
 }
 
+pub fn validate_object_key(key: &str) -> Result<(), AppError> {
+    if key.is_empty() || key.starts_with('/') || key.ends_with('/') || key.contains('\\') {
+        return Err(AppError::Validation("Invalid object key".to_string()));
+    }
+    if !key.split('/').all(|component| {
+        !component.is_empty()
+            && component != "."
+            && component != ".."
+            && component
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return Err(AppError::Validation("Invalid object key".to_string()));
+    }
+    Ok(())
+}
+
 fn is_safe_component(value: &str) -> bool {
     value
         .bytes()
@@ -154,5 +183,12 @@ mod tests {
     fn rejects_path_traversal_components() {
         assert!(object_key(None, ObjectKind::Epub, "../secret", "epub").is_err());
         assert!(object_key(None, ObjectKind::Epub, "book", "../epub").is_err());
+    }
+
+    #[test]
+    fn validates_object_keys_without_allowing_traversal() {
+        assert!(validate_object_key("audio/original.mp3").is_ok());
+        assert!(validate_object_key("audio/../secret.mp3").is_err());
+        assert!(validate_object_key("/audio/file.mp3").is_err());
     }
 }

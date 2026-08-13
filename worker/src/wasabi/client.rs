@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use dantalian::{
     application::error::AppError,
-    ports::object_storage::{MultipartObjectMetadata, MultipartPart, MultipartUploadStorage},
+    ports::object_storage::{
+        MultipartObjectMetadata, MultipartPart, MultipartUploadStorage, validate_object_key,
+    },
 };
 use quick_xml::de::from_str;
 use url::Url;
@@ -461,23 +463,6 @@ fn xml_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('\"', "&quot;")
         .replace('\'', "&apos;")
-}
-
-fn validate_object_key(key: &str) -> Result<(), AppError> {
-    if key.is_empty() || key.starts_with('/') || key.ends_with('/') || key.contains('\\') {
-        return Err(AppError::Validation("Invalid object key".to_string()));
-    }
-    if !key.split('/').all(|component| {
-        !component.is_empty()
-            && component != "."
-            && component != ".."
-            && component
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    }) {
-        return Err(AppError::Validation("Invalid object key".to_string()));
-    }
-    Ok(())
 }
 
 fn host_header(url: &Url) -> Result<String, AppError> {

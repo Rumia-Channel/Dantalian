@@ -1,3 +1,4 @@
+pub mod audio_jobs;
 pub mod author_repository;
 pub mod book_repository;
 pub mod borrower_repository;

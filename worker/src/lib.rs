@@ -1,4 +1,6 @@
 mod audio_api;
+mod audio_job_api;
+mod audio_job_repository;
 mod auth;
 mod author_api;
 mod author_repository;
@@ -81,6 +83,8 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/images/:file_hash", object_api::image)
         .get_async("/epubs/:file_hash", object_api::epub)
         .post_async("/api/audio/encode/:format", audio_api::encode)
+        .post_async("/api/audio/jobs", audio_job_api::create)
+        .get_async("/api/audio/jobs/:id", audio_job_api::get)
         .post_async("/api/uploads/covers/init", cover_api::init)
         .post_async("/api/uploads/covers/complete", cover_api::complete)
         .post_async("/api/uploads/multipart/init", multipart_api::init)

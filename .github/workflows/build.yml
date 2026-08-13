@@ -82,6 +82,11 @@ jobs:
           WORKER_BASE_URL: http://127.0.0.1:8793
           WORKER_API_TOKEN: dantalian-ci-test-token
         run: node --test tests/audio_contract.mjs
+      - name: Test Worker audio job contract
+        env:
+          WORKER_BASE_URL: http://127.0.0.1:8793
+          WORKER_API_TOKEN: dantalian-ci-test-token
+        run: node --test tests/audio_jobs_contract.mjs
       - name: Test Worker HTTP contract
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
