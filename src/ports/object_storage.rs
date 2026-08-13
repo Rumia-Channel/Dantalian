@@ -22,6 +22,43 @@ pub const WORKER_DIRECT_UPLOAD_MAX_BYTES: u64 = 95 * 1024 * 1024;
 /// Fixed part size for browser-to-Wasabi multipart uploads.
 pub const MULTIPART_PART_SIZE: u64 = 8 * 1024 * 1024;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultipartObjectMetadata {
+    pub content_length: u64,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultipartPart {
+    pub part_number: u32,
+    pub etag: String,
+}
+
+pub trait MultipartUploadStorage {
+    fn create_multipart_upload(
+        &self,
+        key: &str,
+        content_type: &str,
+    ) -> impl Future<Output = Result<String, AppError>>;
+    fn presigned_upload_part_url(
+        &self,
+        key: &str,
+        upload_id: &str,
+        part_number: u32,
+    ) -> Result<String, AppError>;
+    fn complete_multipart_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+        parts: &[MultipartPart],
+    ) -> impl Future<Output = Result<MultipartObjectMetadata, AppError>>;
+    fn abort_multipart_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+    ) -> impl Future<Output = Result<(), AppError>>;
+}
+
 pub trait ObjectStorage {
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, AppError>>;
     fn put_object(
