@@ -14,6 +14,7 @@ mod grand_series_api;
 mod label_api;
 mod label_repository;
 mod media_sync_api;
+mod multipart_api;
 mod object_api;
 mod playlist_api;
 mod series_api;
@@ -82,6 +83,16 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/audio/encode/:format", audio_api::encode)
         .post_async("/api/uploads/covers/init", cover_api::init)
         .post_async("/api/uploads/covers/complete", cover_api::complete)
+        .post_async("/api/uploads/multipart/init", multipart_api::init)
+        .post_async(
+            "/api/uploads/multipart/:id/parts/:part_number/sign",
+            multipart_api::sign_part,
+        )
+        .post_async(
+            "/api/uploads/multipart/:id/complete",
+            multipart_api::complete,
+        )
+        .delete_async("/api/uploads/multipart/:id", multipart_api::abort)
         .get_async("/api/authors", author_api::list)
         .post_async("/api/authors", author_api::create)
         .get_async("/api/authors/:id", author_api::get)
