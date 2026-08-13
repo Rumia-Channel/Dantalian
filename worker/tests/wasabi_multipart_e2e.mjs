@@ -6,16 +6,15 @@ const baseUrl = process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8793";
 const apiToken = process.env.WORKER_API_TOKEN ?? "";
 const enabled = process.env.WASABI_E2E === "1";
 const testPrefix = process.env.WASABI_TEST_PREFIX ?? "";
-const authHeaders = {
-  authorization: `Bearer ${apiToken}`,
-  "content-type": "application/json",
-};
 const partSize = 8 * 1024 * 1024;
 
-async function jsonRequest(method, path, body) {
+async function jsonRequest(method, path, body, token = apiToken) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: authHeaders,
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
@@ -138,4 +137,137 @@ test("multipart completion rejects invalid part ordering", { skip: !enabled }, a
     `/api/uploads/multipart/${initialized.body.id}`,
   );
   assert.equal(aborted.response.status, 204);
+});
+
+test("multipart rejects invalid sessions, parts, ownership, and completion metadata", { skip: !enabled }, async () => {
+  const invalidSession = await jsonRequest(
+    "POST",
+    "/api/uploads/multipart/not-a-session/parts/1/sign",
+  );
+  assert.equal(invalidSession.response.status, 400);
+
+  const invalidPart = await jsonRequest(
+    "POST",
+    `/api/uploads/multipart/${"0".repeat(32)}/parts/0/sign`,
+  );
+  assert.equal(invalidPart.response.status, 400);
+
+  const unauthorizedInit = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: partSize,
+    content_type: "application/epub+zip",
+  });
+  assert.equal(unauthorizedInit.response.status, 200);
+  const unauthorizedSessionId = unauthorizedInit.body.id;
+
+  try {
+    const unauthorized = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${unauthorizedSessionId}/parts/1/sign`,
+      undefined,
+      "wrong-token",
+    );
+    assert.equal(unauthorized.response.status, 401);
+
+    const duplicate = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${unauthorizedSessionId}/complete`,
+      {
+        parts: [
+          { part_number: 1, etag: "etag-1" },
+          { part_number: 1, etag: "etag-1-duplicate" },
+        ],
+      },
+    );
+    assert.equal(duplicate.response.status, 400);
+  } finally {
+    const aborted = await jsonRequest(
+      "DELETE",
+      `/api/uploads/multipart/${unauthorizedSessionId}`,
+    );
+    assert.equal(aborted.response.status, 204);
+  }
+
+  const wrongEtagInit = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: partSize,
+    content_type: "application/epub+zip",
+  });
+  assert.equal(wrongEtagInit.response.status, 200);
+  const wrongEtagSessionId = wrongEtagInit.body.id;
+  try {
+    const signed = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${wrongEtagSessionId}/parts/1/sign`,
+    );
+    assert.equal(signed.response.status, 200);
+    const uploaded = await fetch(signed.body.upload_url, {
+      method: "PUT",
+      body: makePart(partSize, 31),
+    });
+    assert.equal(uploaded.status, 200);
+
+    const wrongEtag = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${wrongEtagSessionId}/complete`,
+      { parts: [{ part_number: 1, etag: "wrong-etag" }] },
+    );
+    assert.notEqual(wrongEtag.response.status, 200);
+  } finally {
+    const aborted = await jsonRequest(
+      "DELETE",
+      `/api/uploads/multipart/${wrongEtagSessionId}`,
+    );
+    assert.ok([204, 409].includes(aborted.response.status));
+  }
+
+  const missingPartInit = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: partSize * 2,
+    content_type: "application/epub+zip",
+  });
+  assert.equal(missingPartInit.response.status, 200);
+  const missingPartSessionId = missingPartInit.body.id;
+  try {
+    const signed = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${missingPartSessionId}/parts/1/sign`,
+    );
+    assert.equal(signed.response.status, 200);
+    const uploaded = await fetch(signed.body.upload_url, {
+      method: "PUT",
+      body: makePart(partSize, 47),
+    });
+    assert.equal(uploaded.status, 200);
+    const etag = uploaded.headers.get("etag");
+    assert.ok(etag);
+
+    const missingPart = await jsonRequest(
+      "POST",
+      `/api/uploads/multipart/${missingPartSessionId}/complete`,
+      { parts: [{ part_number: 1, etag }] },
+    );
+    assert.equal(missingPart.response.status, 409);
+  } finally {
+    const aborted = await jsonRequest(
+      "DELETE",
+      `/api/uploads/multipart/${missingPartSessionId}`,
+    );
+    assert.ok([204, 409].includes(aborted.response.status));
+  }
+
+  const abortInit = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: partSize,
+    content_type: "application/epub+zip",
+  });
+  assert.equal(abortInit.response.status, 200);
+  const abortSessionId = abortInit.body.id;
+  const aborted = await jsonRequest(
+    "DELETE",
+    `/api/uploads/multipart/${abortSessionId}`,
+  );
+  assert.equal(aborted.response.status, 204);
+  const completeAfterAbort = await jsonRequest(
+    "POST",
+    `/api/uploads/multipart/${abortSessionId}/complete`,
+    { parts: [] },
+  );
+  assert.equal(completeAfterAbort.response.status, 409);
 });
