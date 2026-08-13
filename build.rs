@@ -76,7 +76,7 @@ fn main() {
     println!("cargo:rerun-if-changed=LICENSE");
     println!("cargo:rerun-if-changed=NOTICE");
     println!("cargo:rerun-if-changed=MODULE_LICENSE_FRAUNHOFER");
-    println!("cargo:rerun-if-env-changed=CARGO_ABOUT");
+    println!("cargo:rerun-if-env-changed=DANTALIAN_GENERATE_LICENSES");
 
     for file in html_files
         .iter()
@@ -105,7 +105,11 @@ fn main() {
 
     let version = format!("{hash:x}");
     if std::env::var_os("CARGO_FEATURE_NATIVE").is_some() {
-        generate_license_page(&version);
+        if std::env::var_os("DANTALIAN_GENERATE_LICENSES").is_some() {
+            generate_license_page(&version);
+        } else {
+            generate_basic_license_page(&version);
+        }
     }
     println!("cargo:rustc-env=ASSET_VERSION={version}");
 }
@@ -150,4 +154,25 @@ fn generate_license_page(version: &str) {
         .replace("__DANTALIAN_LICENSE__", &license);
     std::fs::write(&output, html)
         .unwrap_or_else(|error| panic!("failed to write generated license page: {error}"));
+}
+fn generate_basic_license_page(version: &str) {
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
+    let output = out_dir.join("licenses.html");
+    let license = std::fs::read_to_string("LICENSE")
+        .unwrap_or_else(|error| panic!("failed to read project license: {error}"));
+    let notice = std::fs::read_to_string("NOTICE").unwrap_or_default();
+    let escape = |value: &str| {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    let html = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Dantalian licenses</title></head><body><h1>Dantalian licenses</h1><h2>Project license</h2><pre>{}</pre><h2>Third-party notices</h2><pre>{}</pre><p>Asset version: {version}</p></body></html>",
+        escape(&license),
+        escape(&notice),
+    );
+    std::fs::write(output, html).unwrap_or_else(|error| {
+        panic!("failed to write basic license page: {error}");
+    });
 }
