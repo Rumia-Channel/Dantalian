@@ -23,12 +23,20 @@
 - [x] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
 - [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
+- [ ] Deployed Cloudflare Worker to Wasabi completion and multipart E2E pass.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
 - [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
 
 ## Verification record
 
-The checked items above record repository, local Wrangler, and live Wasabi verification completed on 2026-08-13. Live Wasabi tests were run with `WASABI_E2E=1` against the configured test bucket; credentials and signed URLs were not printed. Items that depend on the production D1/database, migration snapshot, traffic shift, or rollback procedure remain unchecked.
+The checked items above record repository, local Wrangler, and local live Wasabi verification completed on 2026-08-13. A remote Cloudflare Worker rehearsal was created and isolated, but cover completion failed because the Worker-side Wasabi `HEAD` request returned HTTP 403; the remote verification item remains unchecked. Credentials and signed URLs were not printed in the verification logs. The rehearsal uploaded objects successfully before completion, so orphaned objects remain under the Wasabi test prefix `test.dantalian.dev/e2e/20260813/a1/`; the remote D1 and Worker were deleted, but the Wasabi objects were not deleted. Delete only that exact prefix from the Wasabi console, or with a newly rotated least-privilege test key. Do not use the exposed root key.
+
+## Credential incident and cleanup
+
+- [ ] Immediately disable and rotate the exposed Wasabi root key before any further Wasabi access.
+- [ ] Using the replacement key or the Wasabi console, list and delete all objects under `e2e/20260813/a1/` in `test.dantalian.dev`.
+- [ ] Confirm the prefix is empty after cleanup; do not delete unrelated objects in the test bucket.
+- [ ] Store the replacement credential only in the secret store or ignored local configuration; never commit or print it.
 
 ## Traffic shift
 
