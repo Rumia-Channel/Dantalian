@@ -12,6 +12,14 @@ required-features = ["native"]
 name = "memory_check"
 path = "src/bin/memory_check.rs"
 required-features = ["native"]
+[[bin]]
+name = "audio_processor"
+path = "src/bin/audio_processor.rs"
+required-features = ["native"]
+[[bin]]
+name = "dantalian_migrate"
+path = "src/bin/dantalian_migrate.rs"
+required-features = ["native"]
 
 [dependencies]
 aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "default-https-client", "http-1x", "rt-tokio", "rustls"], optional = true }
