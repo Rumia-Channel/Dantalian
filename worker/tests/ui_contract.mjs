@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const baseUrl = process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8793";
+const apiToken = process.env.WORKER_API_TOKEN ?? "dantalian-ci-test-token";
 
 async function request(method, path, body) {
+  const headers = { authorization: `Bearer ${apiToken}` };
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
@@ -35,6 +40,10 @@ test("Worker responses preserve the UI book and CD contracts", async () => {
     assert.equal(book.status, 201);
     ids.book = book.body.book.id;
 
+    const bookPage = await request("GET", "/api/books?limit=100");
+    assert.equal(bookPage.status, 200);
+    assert.ok(bookPage.body.items.some((item) => item.id === ids.book));
+    assert.equal(bookPage.body.items.find((item) => item.id === ids.book).authors, undefined);
     const initialBook = await request("GET", `/api/books/${ids.book}`);
     assert.equal(initialBook.status, 200);
     assert.deepEqual(initialBook.body.authors, []);

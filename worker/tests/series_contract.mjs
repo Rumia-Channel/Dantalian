@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const baseUrl = process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8793";
+const apiToken = process.env.WORKER_API_TOKEN ?? "dantalian-ci-test-token";
 
 async function request(method, path, body) {
+  const headers = { authorization: `Bearer ${apiToken}` };
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
@@ -34,7 +39,10 @@ test("series HTTP contract", async () => {
 
   const malformed = await fetch(`${baseUrl}/api/series`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiToken}`,
+    },
     body: "{",
   });
   assert.equal(malformed.status, 400);
