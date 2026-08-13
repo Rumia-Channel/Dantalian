@@ -17,6 +17,20 @@ async function createJob(body) {
   return { response, body: await response.json() };
 }
 
+test("audio job routes require authentication", async () => {
+  const response = await fetch(`${baseUrl}/api/audio/jobs`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      input_object_key: "audio/original.mp3",
+      output_object_key: "audio/encoded.opus",
+      codec: "opus",
+    }),
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual((await response.json()).code, "authentication_required");
+});
+
 test("audio jobs reject unsafe object keys before touching external storage", async () => {
   const { response, body } = await createJob({
     input_object_key: "audio/original.mp3",
