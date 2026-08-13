@@ -69,6 +69,9 @@ async fn main() {
     let audio_dir = format!("{}{}audio", data_dir, std::path::MAIN_SEPARATOR);
     let epubs_dir = format!("{}{}epubs", data_dir, std::path::MAIN_SEPARATOR);
     let uploads_dir = format!("{}{}uploads", data_dir, std::path::MAIN_SEPARATOR);
+    let object_storage = Arc::new(
+        dantalian::adapters::native_object_storage::NativeObjectStorage::new(&data_dir, ""),
+    );
     std::fs::create_dir_all(&db_dir).expect("Failed to create db directory");
     std::fs::create_dir_all(&images_dir).expect("Failed to create images directory");
     std::fs::create_dir_all(&audio_dir).expect("Failed to create audio directory");
@@ -152,6 +155,7 @@ async fn main() {
         db,
         client,
         client_ipv4,
+        object_storage,
         images_dir: images_dir_arc.clone(),
         audio_dir: audio_dir_arc.clone(),
         audio_encoding_notify: audio_encoding_notify.clone(),

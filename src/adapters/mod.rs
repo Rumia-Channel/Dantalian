@@ -8,4 +8,6 @@ pub mod native_label;
 pub mod native_series;
 
 #[cfg(feature = "native")]
+pub mod native_object_storage;
+#[cfg(feature = "native")]
 pub mod native_storage_location;

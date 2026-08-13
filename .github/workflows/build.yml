@@ -18,6 +18,10 @@ jobs:
         run: cargo install cargo-about --version 0.8.4 --locked
       - name: Check shared core
         run: cargo check --no-default-features
+      - name: Check portable audio codec
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check --no-default-features --features audio-codec --target wasm32-unknown-unknown
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Test native target
@@ -65,6 +69,10 @@ jobs:
           done
           cat worker.log
           exit 1
+      - name: Test Worker audio contract
+        env:
+          WORKER_BASE_URL: http://127.0.0.1:8793
+        run: node --test tests/audio_contract.mjs
       - name: Test Worker HTTP contract
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793

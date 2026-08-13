@@ -133,6 +133,30 @@ pub fn presigned_url(
     expires_in: u64,
     unix_seconds: u64,
 ) -> Result<String, String> {
+    presigned_url_with_query(
+        base_url,
+        method,
+        headers,
+        &[],
+        access_key_id,
+        secret_access_key,
+        region,
+        expires_in,
+        unix_seconds,
+    )
+}
+
+pub fn presigned_url_with_query(
+    base_url: &str,
+    method: &str,
+    headers: &BTreeMap<String, String>,
+    extra_query: &[(String, String)],
+    access_key_id: &str,
+    secret_access_key: &str,
+    region: &str,
+    expires_in: u64,
+    unix_seconds: u64,
+) -> Result<String, String> {
     if expires_in == 0 || expires_in > 604_800 {
         return Err("presigned URL expiry must be between 1 and 604800 seconds".to_string());
     }
@@ -156,6 +180,7 @@ pub fn presigned_url(
         ("X-Amz-Expires".to_string(), expires_in.to_string()),
         ("X-Amz-SignedHeaders".to_string(), signed_header_names),
     ];
+    query.extend(extra_query.iter().cloned());
     let canonical_query_string = canonical_query(&query);
     let request = canonical_request(
         method,

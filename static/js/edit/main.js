@@ -501,15 +501,20 @@ async function saveBook(e, bookId) {
     } catch {}
 }
 
-// アップロード失敗時のメッセージを組み立てる。
-// 413 でアプリ由来のエラー本文が無い場合は、リバースプロキシの上限超過とみなして
-// 対処法を案内する (Dantalian 本体の初期値は cover 10MB / audio 100MB / file 500MB)。
+// Upload errors expose both the application detail and the Worker direct-size contract.
 async function describeUploadError(res, label) {
-    let serverMsg = "";
+    let errorBody = null;
     try {
-        const err = await res.json();
-        serverMsg = (err && err.error) || "";
+        errorBody = await res.json();
     } catch {}
+    const serverMsg = (errorBody && errorBody.error) || "";
+    if (res.status === 413 && errorBody?.code === "presigned_multipart_required") {
+        const maxBytes = Number(errorBody.max_bytes);
+        const maxMb = Number.isFinite(maxBytes) ? Math.round(maxBytes / 1024 / 1024) : null;
+        return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
+            `Cloudflare Workerの直接アップロード上限${maxMb ? ` (${maxMb}MB)` : ""}を超えています。` +
+            `大容量ファイルはオブジェクトストレージのマルチパート契約が必要です。`;
+    }
     if (res.status === 413 && !serverMsg) {
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
             `ファイルサイズが上限を超えています。` +

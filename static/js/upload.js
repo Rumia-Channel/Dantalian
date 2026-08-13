@@ -1,4 +1,7 @@
+const WORKER_DIRECT_UPLOAD_MAX_BYTES = 95 * 1024 * 1024;
 const UPLOAD_CHUNK_SIZE = 90 * 1024 * 1024;
+
+let workerRuntimePromise;
 
 function createUploadId() {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -7,7 +10,39 @@ function createUploadId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+async function isWorkerRuntime() {
+    if (!workerRuntimePromise) {
+        workerRuntimePromise = fetch("/api/health", { cache: "no-store" })
+            .then((response) => response.ok ? response.json() : null)
+            .then((body) => body?.runtime === "cloudflare-worker")
+            .catch(() => false);
+    }
+    return workerRuntimePromise;
+}
+
 async function uploadFileWithChunks(url, fieldName, file) {
+    // Worker routes accept a single multipart request up to their direct-upload
+    // limit. The native chunk protocol is a different contract and must not be
+    // sent to the Worker endpoint as a fake file upload.
+    if (await isWorkerRuntime()) {
+    if (file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
+        return new Response(
+            JSON.stringify({
+                error: "file exceeds the Worker direct upload limit",
+                code: "presigned_multipart_required",
+                max_bytes: WORKER_DIRECT_UPLOAD_MAX_BYTES,
+            }),
+            {
+                status: 413,
+                headers: { "Content-Type": "application/json" },
+            },
+        );
+    }
+    const form = new FormData();
+    form.append(fieldName, file);
+    return fetch(url, { method: "POST", body: form });
+    }
+
     if (file.size <= UPLOAD_CHUNK_SIZE) {
         const form = new FormData();
         form.append(fieldName, file);

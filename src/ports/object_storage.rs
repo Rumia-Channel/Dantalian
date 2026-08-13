@@ -15,9 +15,21 @@ pub enum AudioCodec {
     Opus,
     Aac,
 }
+/// Maximum request body that the Worker handles directly before the client
+/// must switch to a Wasabi multipart upload.
+pub const WORKER_DIRECT_UPLOAD_MAX_BYTES: u64 = 95 * 1024 * 1024;
+
+/// Fixed part size for browser-to-Wasabi multipart uploads.
+pub const MULTIPART_PART_SIZE: u64 = 8 * 1024 * 1024;
 
 pub trait ObjectStorage {
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, AppError>>;
+    fn put_object(
+        &self,
+        key: &str,
+        content_type: &str,
+        bytes: &[u8],
+    ) -> impl Future<Output = Result<(), AppError>>;
     fn delete(&self, key: &str) -> impl Future<Output = Result<(), AppError>>;
     fn temporary_get_url(&self, key: &str) -> impl Future<Output = Result<String, AppError>>;
 }
@@ -33,7 +45,7 @@ pub fn object_key(
     let path = match kind {
         ObjectKind::CoverImage => format!("images/{object_id}.{extension}"),
         ObjectKind::Epub => format!("epubs/{object_id}.{extension}"),
-        ObjectKind::OriginalAudio => format!("audio/original/{object_id}.{extension}"),
+        ObjectKind::OriginalAudio => format!("audio/{object_id}.{extension}"),
         ObjectKind::EncodedAudio {
             codec: AudioCodec::Opus,
         } => {

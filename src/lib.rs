@@ -1,11 +1,10 @@
-pub mod application;
-pub mod domain;
-pub mod ports;
-
 #[cfg(feature = "native")]
 pub mod adapters;
 #[cfg(feature = "native")]
 pub mod api;
+pub mod application;
+#[cfg(feature = "audio-codec")]
+pub mod audio_codec;
 #[cfg(feature = "native")]
 pub mod audio_encoding;
 #[cfg(feature = "native")]
@@ -14,10 +13,12 @@ pub mod backup;
 pub mod db;
 #[cfg(feature = "native")]
 mod db_models;
+pub mod domain;
 #[cfg(feature = "native")]
 mod external;
 #[cfg(feature = "native")]
 pub mod media_sync;
+pub mod ports;
 
 #[cfg(feature = "native")]
 use reqwest::Client;
@@ -37,6 +38,7 @@ pub struct AppState {
     pub audio_encoding_notify: Arc<Notify>,
     pub epubs_dir: Arc<String>,
     pub uploads_dir: Arc<String>,
+    pub object_storage: Arc<adapters::native_object_storage::NativeObjectStorage>,
     pub discogs_token: String,
     pub musicbrainz_contact: String,
 }

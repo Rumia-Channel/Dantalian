@@ -55,6 +55,57 @@ impl WasabiClient {
         self.send(Method::Delete, key, None).await.map(|_| ())
     }
 
+    pub async fn put_object(
+        &self,
+        key: &str,
+        content_type: &str,
+        bytes: &[u8],
+    ) -> Result<(), AppError> {
+        let url = self.object_url(key)?;
+        let now = now_seconds();
+        let payload_hash = sigv4::sha256_hex(bytes);
+        let mut canonical_headers = BTreeMap::new();
+        canonical_headers.insert("content-type".to_string(), content_type.to_string());
+        canonical_headers.insert("host".to_string(), host_header(&url)?);
+        canonical_headers.insert("x-amz-content-sha256".to_string(), payload_hash.clone());
+        canonical_headers.insert("x-amz-date".to_string(), sigv4::amz_date(now));
+        let signed = sigv4::sign_authorization(
+            "PUT",
+            url.path(),
+            "",
+            &canonical_headers,
+            &payload_hash,
+            &self.config.access_key_id,
+            &self.config.secret_access_key,
+            &self.config.region,
+            now,
+        );
+        let request_headers = Headers::new();
+        for (name, value) in &canonical_headers {
+            request_headers.set(name, value).map_err(storage_error)?;
+        }
+        request_headers
+            .set("authorization", &signed.authorization)
+            .map_err(storage_error)?;
+        let mut init = RequestInit::new();
+        init.with_method(Method::Put)
+            .with_headers(request_headers)
+            .with_body(Some(worker::js_sys::Uint8Array::from(bytes).into()));
+        let request = Request::new_with_init(url.as_str(), &init).map_err(storage_error)?;
+        let mut response = Fetch::Request(request)
+            .send()
+            .await
+            .map_err(storage_error)?;
+        let status = response.status_code();
+        if (200..300).contains(&status) {
+            return Ok(());
+        }
+        let _ = response.text().await;
+        Err(AppError::Storage(format!(
+            "Wasabi upload failed with status {status}"
+        )))
+    }
+
     async fn send(
         &self,
         method: Method,
@@ -163,6 +214,15 @@ impl dantalian::ports::object_storage::ObjectStorage for WasabiClient {
 
     async fn delete(&self, key: &str) -> Result<(), AppError> {
         self.delete_object(key).await
+    }
+
+    async fn put_object(
+        &self,
+        key: &str,
+        content_type: &str,
+        bytes: &[u8],
+    ) -> Result<(), AppError> {
+        WasabiClient::put_object(self, key, content_type, bytes).await
     }
 
     async fn temporary_get_url(&self, key: &str) -> Result<String, AppError> {

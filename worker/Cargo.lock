@@ -140,8 +140,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
- "fdk-aac-rust",
- "opus-rs",
  "serde",
  "serde_json",
 ]
@@ -151,7 +149,9 @@ name = "dantalian-worker"
 version = "0.1.0"
 dependencies = [
  "dantalian",
+ "futures-util",
  "hmac",
+ "quick-xml",
  "serde",
  "serde_json",
  "sha2",
@@ -182,12 +182,6 @@ dependencies = [
  "quote",
  "syn 3.0.3",
 ]
-
-[[package]]
-name = "fdk-aac-rust"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
 
 [[package]]
 name = "find-msvc-tools"
@@ -509,12 +503,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
-name = "opus-rs"
-version = "0.1.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7f1ce2826529746cac003d7338e9c0f47cdd2979ba769c61cc26fdebc402f4c"
-
-[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -580,6 +568,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]

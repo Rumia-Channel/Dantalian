@@ -60,25 +60,6 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(metadata) => metadata,
         Err(error) => return error_response(error),
     };
-    let config = match WasabiConfig::from_env(&ctx.env) {
-        Ok(config) => config,
-        Err(error) => return error_response(AppError::Storage(storage_message(error))),
-    };
-    let storage = WasabiStorage::new(config.clone());
-    let object_id = Uuid::new_v4().simple().to_string();
-    let key = match object_key(
-        config.prefix.as_deref(),
-        ObjectKind::CoverImage,
-        &object_id,
-        &extension,
-    ) {
-        Ok(key) => key,
-        Err(error) => return error_response(error),
-    };
-    let upload_url = match storage.presigned_put_url(&key, &content_type) {
-        Ok(url) => url,
-        Err(error) => return error_response(error),
-    };
 
     let db = match ctx.d1("DB") {
         Ok(db) => db,
@@ -103,6 +84,21 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
             return error_response(AppError::NotFound);
         }
     }
+    let config = match WasabiConfig::from_env(&ctx.env) {
+        Ok(config) => config,
+        Err(error) => return error_response(AppError::Storage(storage_message(error))),
+    };
+    let storage = WasabiStorage::new(config.clone());
+    let object_id = Uuid::new_v4().simple().to_string();
+    let key = match object_key(
+        config.prefix.as_deref(),
+        ObjectKind::CoverImage,
+        &object_id,
+        &extension,
+    ) {
+        Ok(key) => key,
+        Err(error) => return error_response(error),
+    };
 
     let object_key_value = D1Type::Text(&key);
     let book_id_value = request.book_id.map(|id| bind_id(id, "Book id")).transpose();
@@ -142,6 +138,23 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     if let Err(error) = statement.run().await {
         return error_response(AppError::Database(error.to_string()));
     }
+
+    let upload_url = match storage.presigned_put_url(&key, &content_type) {
+        Ok(url) => url,
+        Err(error) => {
+            let cleanup = match db
+                .prepare("DELETE FROM cover_objects WHERE object_key = ?")
+                .bind_refs(&object_key_value)
+            {
+                Ok(statement) => statement.run().await,
+                Err(cleanup_error) => Err(cleanup_error),
+            };
+            if let Err(cleanup_error) = cleanup {
+                worker::console_error!("failed to clean up pending cover upload: {cleanup_error}");
+            }
+            return error_response(error);
+        }
+    };
 
     Response::from_json(&CoverInitResponse {
         object_key: key,

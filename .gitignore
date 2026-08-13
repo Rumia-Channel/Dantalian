@@ -6,5 +6,6 @@ worker/.dev.vars
 .env
 /worker/target
 /worker/build
+/worker/public
 /worker/.wrangler
 /node_modules

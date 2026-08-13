@@ -292,9 +292,11 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                 await renderCdEdit(parentId);
             }
         } else {
-            const errBody = await res.json().catch(() => ({}));
-            console.error("uploadTrackAudio failed:", res.status, errBody);
-            alert(`音声のアップロードに失敗しました (HTTP ${res.status})`);
+            const message = typeof describeUploadError === "function"
+                ? await describeUploadError(res, "音声")
+                : `音声のアップロードに失敗しました (HTTP ${res.status})`;
+            console.error("uploadTrackAudio failed:", res.status, message);
+            alert(message);
         }
     } catch (err) {
         console.error("uploadTrackAudio error:", err);

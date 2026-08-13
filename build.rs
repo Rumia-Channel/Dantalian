@@ -101,10 +101,12 @@ fn main() {
             meta.modified().unwrap().hash(&mut hasher);
         }
     }
-
     let hash = hasher.finish();
-    let version = format!("{:x}", hash);
-    generate_license_page(&version);
+
+    let version = format!("{hash:x}");
+    if std::env::var_os("CARGO_FEATURE_NATIVE").is_some() {
+        generate_license_page(&version);
+    }
     println!("cargo:rustc-env=ASSET_VERSION={version}");
 }
 

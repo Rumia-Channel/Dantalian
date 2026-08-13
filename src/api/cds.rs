@@ -4,6 +4,7 @@ use crate::db::{CdInfo, CdWithTracks, NewCd, NewTrack};
 use crate::db_models::CdMetadata;
 use crate::external;
 use crate::external::audio_meta::TrackMetadata;
+use crate::ports::object_storage::ObjectStorage;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -1401,14 +1402,17 @@ pub async fn upload_cd_cover(
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash),
         ext
     );
-    let filepath = std::path::Path::new(state.images_dir.as_str()).join(&filename);
-
-    std::fs::write(&filepath, &bytes).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
+    let object_key = format!("images/{filename}");
+    state
+        .object_storage
+        .put_object(&object_key, &ct, &bytes)
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+        })?;
 
     state
         .db
@@ -1422,8 +1426,7 @@ pub async fn upload_cd_cover(
 
     if let Some(old) = &cd.cover_url {
         if old != &filename {
-            let old_path = std::path::Path::new(state.images_dir.as_str()).join(old);
-            let _ = std::fs::remove_file(old_path);
+            let _ = state.object_storage.delete(&format!("images/{old}")).await;
         }
     }
 
@@ -1451,8 +1454,7 @@ pub async fn delete_cd_cover(
         })?;
 
     if let Some(old) = &cd.cover_url {
-        let old_path = std::path::Path::new(state.images_dir.as_str()).join(old);
-        let _ = std::fs::remove_file(old_path);
+        let _ = state.object_storage.delete(&format!("images/{old}")).await;
     }
 
     state.db.update_cd_cover_url(id, None).map_err(|e| {

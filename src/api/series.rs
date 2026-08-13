@@ -72,6 +72,9 @@ mod tests {
             client: Client::new(),
             client_ipv4: Client::new(),
             images_dir: Arc::new(String::new()),
+            object_storage: Arc::new(
+                crate::adapters::native_object_storage::NativeObjectStorage::new(".", ""),
+            ),
             audio_dir: Arc::new(String::new()),
             audio_encoding_notify: Arc::new(Notify::new()),
             epubs_dir: Arc::new(String::new()),
