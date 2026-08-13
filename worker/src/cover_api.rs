@@ -49,8 +49,8 @@ struct CoverCompleteResponse {
     object_key: String,
     book_id: Option<i64>,
     download_url: String,
+    head_url: String,
 }
-
 pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request = match parse_json::<CoverInitRequest>(&mut req).await {
         Ok(request) => request,
@@ -74,7 +74,7 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
             .prepare("SELECT id FROM books WHERE id = ?")
             .bind_refs(&book_id)
         {
-            Ok(statement) => match statement.first::<i32>(None).await {
+            Ok(statement) => match statement.first::<serde_json::Value>(None).await {
                 Ok(value) => value.is_some(),
                 Err(error) => return error_response(AppError::Database(error.to_string())),
             },
@@ -213,6 +213,24 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     }
 
     let status = D1Type::Text("complete");
+    if let Some(book_id) = record.book_id {
+        let book_id = match bind_id(book_id, "Book id") {
+            Ok(value) => value,
+            Err(error) => return error_response(error),
+        };
+        let file_name = record
+            .object_key
+            .rsplit('/')
+            .next()
+            .unwrap_or(&record.object_key);
+        let file_name = D1Type::Text(file_name);
+        db.prepare("UPDATE books SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind_refs([&file_name, &book_id])
+            .map_err(|error| worker::Error::RustError(error.to_string()))?
+            .run()
+            .await
+            .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    }
     db.prepare("UPDATE cover_objects SET status = ? WHERE object_key = ?")
         .bind_refs([&status, &key])
         .map_err(|error| worker::Error::RustError(error.to_string()))?
@@ -223,11 +241,16 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         Ok(url) => url,
         Err(error) => return error_response(error),
     };
+    let head_url = match storage.presigned_head_url(&record.object_key) {
+        Ok(url) => url,
+        Err(error) => return error_response(error),
+    };
     let _ = (&record.extension, &record.status);
     Response::from_json(&CoverCompleteResponse {
         object_key: record.object_key,
         book_id: record.book_id,
         download_url,
+        head_url,
     })
 }
 
