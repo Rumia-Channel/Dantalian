@@ -1,8 +1,10 @@
+use std::future::Future;
+
 use dantalian::{
     application::error::AppError,
     ports::{
         audio_jobs::{AudioJob, AudioJobQueue, AudioJobRequest, AudioJobStatus},
-        object_storage::{AudioCodec, validate_object_key},
+        object_storage::AudioCodec,
     },
 };
 use uuid::Uuid;
@@ -123,12 +125,8 @@ impl<'a> D1AudioJobQueue<'a> {
 }
 
 impl AudioJobQueue for D1AudioJobQueue<'_> {
-    fn submit(
-        &self,
-        request: AudioJobRequest,
-    ) -> impl std::future::Future<Output = Result<AudioJob, AppError>> {
+    fn submit(&self, request: AudioJobRequest) -> impl Future<Output = Result<AudioJob, AppError>> {
         async move {
-            validate_request(&request)?;
             let id = Uuid::new_v4().simple().to_string();
             let now = Date::now().as_millis().to_string();
             let bitrate_kbps = i32::try_from(request.bitrate_kbps)
@@ -159,21 +157,15 @@ impl AudioJobQueue for D1AudioJobQueue<'_> {
         }
     }
 
-    fn get(&self, job_id: &str) -> impl std::future::Future<Output = Result<AudioJob, AppError>> {
+    fn get(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>> {
         async move { self.load(job_id).await }
     }
 
-    fn mark_running(
-        &self,
-        job_id: &str,
-    ) -> impl std::future::Future<Output = Result<AudioJob, AppError>> {
+    fn mark_running(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>> {
         async move { self.transition(job_id, "queued", "running", None).await }
     }
 
-    fn mark_completed(
-        &self,
-        job_id: &str,
-    ) -> impl std::future::Future<Output = Result<AudioJob, AppError>> {
+    fn mark_completed(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>> {
         async move { self.transition(job_id, "running", "completed", None).await }
     }
 
@@ -181,7 +173,7 @@ impl AudioJobQueue for D1AudioJobQueue<'_> {
         &self,
         job_id: &str,
         error_summary: &str,
-    ) -> impl std::future::Future<Output = Result<AudioJob, AppError>> {
+    ) -> impl Future<Output = Result<AudioJob, AppError>> {
         async move { self.fail(job_id, error_summary).await }
     }
 }
@@ -220,35 +212,6 @@ impl AudioJobRow {
             updated_at: self.updated_at,
         })
     }
-}
-
-fn validate_request(request: &AudioJobRequest) -> Result<(), AppError> {
-    validate_object_key(&request.input_object_key)?;
-    validate_object_key(&request.output_object_key)?;
-    if request.input_object_key == request.output_object_key {
-        return Err(AppError::Validation(
-            "audio job input and output keys must differ".to_string(),
-        ));
-    }
-    let expected_extension = match request.codec {
-        AudioCodec::Opus => ".opus",
-        AudioCodec::Aac => ".aac",
-    };
-    if !request
-        .output_object_key
-        .to_ascii_lowercase()
-        .ends_with(expected_extension)
-    {
-        return Err(AppError::Validation(format!(
-            "audio job output key must end with {expected_extension}"
-        )));
-    }
-    if !(8..=512).contains(&request.bitrate_kbps) {
-        return Err(AppError::Validation(
-            "audio bitrate must be between 8 and 512 kbps".to_string(),
-        ));
-    }
-    Ok(())
 }
 
 fn validate_error_summary(value: &str) -> Result<&str, AppError> {

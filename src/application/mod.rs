@@ -1,3 +1,5 @@
+pub mod audio_jobs;
+
 pub mod author;
 pub mod book;
 pub mod borrower;
