@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Dantalian">
+  <rect width="64" height="64" rx="12" fill="#5e60ce"/>
+  <path d="M17 14h13c11 0 18 7 18 18s-7 18-18 18H17V14Zm12 29c6 0 10-4 10-11s-4-11-10-11h-4v22h4Z" fill="#fff"/>
+</svg>

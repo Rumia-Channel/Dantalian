@@ -27,6 +27,7 @@ fn main() {
         "static/css/music.css",
         "static/css/playlist.css",
         "static/css/licenses.css",
+        "static/css/auth.css",
     ];
 
     let js_files = [
@@ -69,6 +70,8 @@ fn main() {
         "static/fonts/MaterialIconsOutlined-Regular.otf",
     ];
 
+    let image_files = ["static/favicon.svg"];
+
     println!("cargo:rerun-if-changed=about.toml");
     println!("cargo:rerun-if-changed=about.hbs");
     println!("cargo:rerun-if-changed=Cargo.toml");
@@ -83,6 +86,7 @@ fn main() {
         .chain(css_files.iter())
         .chain(js_files.iter())
         .chain(font_files.iter())
+        .chain(image_files.iter())
     {
         println!("cargo:rerun-if-changed={}", file);
     }
@@ -94,6 +98,7 @@ fn main() {
         .chain(css_files.iter())
         .chain(js_files.iter())
         .chain(font_files.iter())
+        .chain(image_files.iter())
     {
         let path = Path::new(file);
         if path.exists() {

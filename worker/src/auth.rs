@@ -36,10 +36,38 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
     difference == 0
 }
 
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return None;
+            }
+            let high = (bytes[index + 1] as char).to_digit(16)?;
+            let low = (bytes[index + 2] as char).to_digit(16)?;
+            decoded.push((high * 16 + low) as u8);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
 fn cookie_value(cookie_header: &str, name: &str) -> Option<String> {
     cookie_header.split(';').find_map(|part| {
         let (key, value) = part.trim().split_once('=')?;
-        (key == name).then(|| value.trim().to_string())
+        (key == name).then(|| {
+            let value = value.trim();
+            if value.contains('%') {
+                percent_decode(value).unwrap_or_else(|| value.to_string())
+            } else {
+                value.to_string()
+            }
+        })
     })
 }
 
@@ -49,6 +77,13 @@ fn bearer_value(authorization: &str) -> Option<&str> {
         .eq_ignore_ascii_case("bearer")
         .then_some(token.trim())
         .filter(|token| !token.is_empty())
+}
+
+fn requires_auth(path: &str) -> bool {
+    path.starts_with("/api/")
+        || path.starts_with("/audio/")
+        || path.starts_with("/images/")
+        || path.starts_with("/epubs/")
 }
 
 fn decision(env: &Env, request: &Request) -> Result<AuthDecision> {
@@ -90,6 +125,10 @@ fn decision(env: &Env, request: &Request) -> Result<AuthDecision> {
 }
 
 pub fn authorize(env: &Env, request: &Request) -> Result<Option<Response>> {
+    if !requires_auth(&request.path()) {
+        return Ok(None);
+    }
+
     if request.path() == "/api/health" {
         return Ok(None);
     }
@@ -144,8 +183,18 @@ pub fn authorize_processor(env: &Env, request: &Request) -> Result<Option<Respon
 
 #[cfg(test)]
 mod tests {
-    use super::{bearer_value, constant_time_equal, cookie_value};
+    use super::{bearer_value, constant_time_equal, cookie_value, requires_auth};
 
+    #[test]
+    fn protects_api_and_media_but_not_static_assets() {
+        assert!(requires_auth("/api/series"));
+        assert!(requires_auth("/audio/file"));
+        assert!(requires_auth("/images/file"));
+        assert!(requires_auth("/epubs/file"));
+        assert!(!requires_auth("/"));
+        assert!(!requires_auth("/favicon.svg"));
+        assert!(!requires_auth("/css/base.css"));
+    }
     #[test]
     fn compares_tokens_without_prefix_shortcuts() {
         assert!(constant_time_equal("token", "token"));
@@ -161,6 +210,10 @@ mod tests {
         assert_eq!(
             cookie_value("a=1; dantalian_api_token=abc; z=2", "dantalian_api_token"),
             Some("abc".into())
+        );
+        assert_eq!(
+            cookie_value("dantalian_api_token=abc%20def", "dantalian_api_token"),
+            Some("abc def".into())
         );
     }
 }
