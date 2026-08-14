@@ -16,8 +16,18 @@ use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 
-const TARGET_BITRATE: u32 = 192_000;
+const DEFAULT_BITRATE_KBPS: u32 = 192;
+const TARGET_BITRATE: u32 = DEFAULT_BITRATE_KBPS * 1_000;
 const OPUS_LOOKAHEAD_48K: u64 = 312;
+
+fn bitrate_bps(bitrate_kbps: u32) -> Result<u32, String> {
+    if !(8..=512).contains(&bitrate_kbps) {
+        return Err("audio bitrate must be between 8 and 512 kbps".to_string());
+    }
+    bitrate_kbps
+        .checked_mul(1_000)
+        .ok_or_else(|| "audio bitrate overflows".to_string())
+}
 
 #[derive(Debug, Clone, Copy)]
 struct AudioProfile {
@@ -68,6 +78,23 @@ pub fn encode_opus_file(
     source_extension: &str,
     source_id: &str,
 ) -> Result<(), String> {
+    encode_opus_file_with_bitrate(
+        input,
+        output,
+        source_extension,
+        source_id,
+        DEFAULT_BITRATE_KBPS,
+    )
+}
+
+pub fn encode_opus_file_with_bitrate(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    source_extension: &str,
+    source_id: &str,
+    bitrate_kbps: u32,
+) -> Result<(), String> {
+    let bitrate_bps = bitrate_bps(bitrate_kbps)?;
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let mut output =
@@ -80,6 +107,7 @@ pub fn encode_opus_file(
             encoder = Some(OpusStreamEncoder::new(
                 profile,
                 source_id,
+                bitrate_bps,
                 output.take().expect("Opus output initialized"),
             )?);
         }
@@ -183,6 +211,16 @@ pub fn encode_aac_file(
     output: impl AsRef<Path>,
     source_extension: &str,
 ) -> Result<(), String> {
+    encode_aac_file_with_bitrate(input, output, source_extension, DEFAULT_BITRATE_KBPS)
+}
+
+pub fn encode_aac_file_with_bitrate(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    source_extension: &str,
+    bitrate_kbps: u32,
+) -> Result<(), String> {
+    let bitrate_bps = bitrate_bps(bitrate_kbps)?;
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let mut output =
@@ -194,6 +232,7 @@ pub fn encode_aac_file(
         if encoder.is_none() {
             encoder = Some(AacStreamEncoder::new(
                 profile,
+                bitrate_bps,
                 output.take().expect("AAC output initialized"),
             )?);
         }
@@ -410,13 +449,21 @@ struct OpusStreamEncoder<W: Write> {
 }
 
 impl<W: Write> OpusStreamEncoder<W> {
-    fn new(profile: AudioProfile, source_id: &str, output: W) -> Result<Self, String> {
-        let encoder = OpusEncoder::new(
+    fn new(
+        profile: AudioProfile,
+        source_id: &str,
+        bitrate_bps: u32,
+        output: W,
+    ) -> Result<Self, String> {
+        let mut encoder = OpusEncoder::new(
             profile.target_rate as i32,
             usize::from(profile.channels),
             Application::Audio,
         )
         .map_err(|error| format!("Opus encoder creation failed: {error}"))?;
+        encoder.bitrate_bps =
+            i32::try_from(bitrate_bps).map_err(|_| "Opus bitrate is too large".to_string())?;
+        encoder.use_cbr = false;
         let mut hasher = DefaultHasher::new();
         source_id.hash(&mut hasher);
         let serial = hasher.finish() as u32;
@@ -528,9 +575,8 @@ struct AacStreamEncoder<W: Write> {
     pending_pcm: Vec<i16>,
     encoded_frames: u32,
 }
-
 impl<W: Write> AacStreamEncoder<W> {
-    fn new(profile: AudioProfile, output: W) -> Result<Self, String> {
+    fn new(profile: AudioProfile, bitrate_bps: u32, output: W) -> Result<Self, String> {
         let mut parameters = PureRustEncoderParameters::new(2);
         parameters
             .set_parameter(EncoderParameter::AudioObjectType, 2)
@@ -542,7 +588,7 @@ impl<W: Write> AacStreamEncoder<W> {
             .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
             .map_err(|error| format!("invalid AAC sample rate: {error:?}"))?;
         parameters
-            .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
+            .set_parameter(EncoderParameter::Bitrate, bitrate_bps)
             .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
         parameters
             .set_parameter(EncoderParameter::TransportMux, 2)
@@ -752,7 +798,10 @@ fn opus_tags() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_aac, encode_aac_file, encode_opus, encode_opus_file, opus_sample_rate};
+    use super::{
+        encode_aac, encode_aac_file, encode_aac_file_with_bitrate, encode_opus, encode_opus_file,
+        encode_opus_file_with_bitrate, opus_sample_rate,
+    };
 
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
@@ -788,6 +837,52 @@ mod tests {
         assert!(aac.starts_with(&[0xff, 0xf1]));
 
         std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn applies_requested_bitrate_to_streaming_encoders() {
+        let root = std::env::temp_dir().join(format!(
+            "dantalian-audio-codec-bitrate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create bitrate test directory");
+        let input = root.join("input.wav");
+        let opus_low = root.join("opus-low.ogg");
+        let opus_high = root.join("opus-high.ogg");
+        let aac_low = root.join("aac-low.aac");
+        let aac_high = root.join("aac-high.aac");
+        let mut input_bytes = pcm_wav(44_100, 2, 44_100);
+        for (index, byte) in input_bytes[44..].iter_mut().enumerate() {
+            *byte = ((index * 37) % 251) as u8;
+        }
+        std::fs::write(&input, input_bytes).expect("write bitrate input");
+
+        encode_opus_file_with_bitrate(&input, &opus_low, "wav", "low", 256)
+            .expect("low bitrate Opus encoding");
+        encode_opus_file_with_bitrate(&input, &opus_high, "wav", "high", 512)
+            .expect("high bitrate Opus encoding");
+        encode_aac_file_with_bitrate(&input, &aac_low, "wav", 256)
+            .expect("low bitrate AAC encoding");
+        encode_aac_file_with_bitrate(&input, &aac_high, "wav", 512)
+            .expect("high bitrate AAC encoding");
+
+        assert_ne!(
+            std::fs::metadata(&opus_low)
+                .expect("low Opus metadata")
+                .len(),
+            std::fs::metadata(&opus_high)
+                .expect("high Opus metadata")
+                .len()
+        );
+        assert!(std::fs::metadata(&aac_low).expect("low AAC metadata").len() > 0);
+        assert!(
+            std::fs::metadata(&aac_high)
+                .expect("high AAC metadata")
+                .len()
+                > 0
+        );
+
+        std::fs::remove_dir_all(root).expect("remove bitrate test directory");
     }
 
     fn pcm_wav(sample_rate: u32, channels: u16, frames: usize) -> Vec<u8> {

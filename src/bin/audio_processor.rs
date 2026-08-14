@@ -282,6 +282,7 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
         }
 
         let codec = claim.job.codec;
+        let bitrate_kbps = claim.job.bitrate_kbps;
         let source_extension = extension(&claim.job.input_object_key)
             .map(str::to_string)
             .ok_or(ProcessError::Permanent("input object extension is invalid"))?;
@@ -289,17 +290,19 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
         let input_for_encoder = input_path.clone();
         let output_for_encoder = output_path.clone();
         tokio::task::spawn_blocking(move || match codec {
-            AudioCodec::Opus => dantalian::audio_codec::encode_opus_file(
+            AudioCodec::Opus => dantalian::audio_codec::encode_opus_file_with_bitrate(
                 input_for_encoder,
                 output_for_encoder,
                 &source_extension,
                 &job_id,
+                bitrate_kbps,
             )
             .map_err(|_| ProcessError::Permanent("audio Opus encoding failed")),
-            AudioCodec::Aac => dantalian::audio_codec::encode_aac_file(
+            AudioCodec::Aac => dantalian::audio_codec::encode_aac_file_with_bitrate(
                 input_for_encoder,
                 output_for_encoder,
                 &source_extension,
+                bitrate_kbps,
             )
             .map_err(|_| ProcessError::Permanent("audio AAC encoding failed")),
         })
