@@ -1,6 +1,10 @@
 name = "dantalian-audio-controller"
 main = "container/controller.ts"
 compatibility_date = "2026-08-14"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "npm run typecheck:container"
 
 [[containers]]
 class_name = "AudioProcessorContainer"
@@ -8,6 +12,7 @@ image = "container/Dockerfile"
 instance_type = "standard-1"
 max_instances = 4
 
+[durable_objects]
 [[durable_objects.bindings]]
 name = "AUDIO_PROCESSOR"
 class_name = "AudioProcessorContainer"
@@ -20,8 +25,11 @@ new_sqlite_classes = ["AudioProcessorContainer"]
 binding = "DANTALIAN_API"
 service = "dantalian-worker"
 
+[queues]
 [[queues.consumers]]
 queue = "dantalian-audio-jobs"
 max_batch_size = 10
+max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "dantalian-audio-jobs-dlq"
+max_concurrency = 2
