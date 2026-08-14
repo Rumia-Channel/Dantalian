@@ -1,6 +1,8 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{Cursor, Write};
+use std::io::{BufWriter, Cursor, Write};
+use std::path::Path;
 
 use fdk_aac_rust::encoder::{
     ConfiguredPureRustEncoder, EncoderParameter, PureRustEncoderParameters,
@@ -11,7 +13,7 @@ use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, TrackType};
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 
 const TARGET_BITRATE: u32 = 192_000;
@@ -57,6 +59,46 @@ pub fn encode_opus(
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let decoded = decode_audio(source, &source_extension)?;
+    encode_opus_decoded(decoded, source_id, Vec::new())
+}
+
+pub fn encode_opus_file(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    source_extension: &str,
+    source_id: &str,
+) -> Result<(), String> {
+    let source_extension = normalize_extension(source_extension)
+        .ok_or_else(|| "Invalid audio source extension".to_string())?;
+    let mut output =
+        Some(BufWriter::new(File::create(output).map_err(|error| {
+            format!("Opus output create failed: {error}")
+        })?));
+    let mut encoder = None;
+    stream_audio_file(input, &source_extension, |profile, samples| {
+        if encoder.is_none() {
+            encoder = Some(OpusStreamEncoder::new(
+                profile,
+                source_id,
+                output.take().expect("Opus output initialized"),
+            )?);
+        }
+        encoder
+            .as_mut()
+            .expect("Opus encoder initialized")
+            .accept(samples)
+    })?;
+    encoder
+        .ok_or_else(|| "audio contains no decodable samples".to_string())?
+        .finish()?;
+    Ok(())
+}
+
+fn encode_opus_decoded<W: Write>(
+    decoded: DecodedAudio,
+    source_id: &str,
+    output: W,
+) -> Result<W, String> {
     let profile = profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
     let mut encoder = OpusEncoder::new(
@@ -64,34 +106,17 @@ pub fn encode_opus(
         usize::from(profile.channels),
         Application::Audio,
     )
-    .map_err(|error| format!("Opus encoder creation failed: {}", error))?;
+    .map_err(|error| format!("Opus encoder creation failed: {error}"))?;
     encoder.bitrate_bps = TARGET_BITRATE as i32;
     encoder.use_cbr = false;
 
     let frame_samples = (profile.target_rate / 50) as usize;
     let frame_len = frame_samples * usize::from(profile.channels);
-    let mut packets = Vec::new();
-    for chunk in pcm.chunks(frame_len) {
-        let mut frame = vec![0.0_f32; frame_len];
-        for (destination, sample) in frame.iter_mut().zip(chunk) {
-            *destination = f32::from(*sample) / 32_768.0;
-        }
-        let mut output = vec![0_u8; 4096];
-        let encoded_len = encoder
-            .encode(&frame, frame_samples, &mut output)
-            .map_err(|error| format!("Opus encode failed: {}", error))?;
-        output.truncate(encoded_len);
-        packets.push(output);
-    }
-    if packets.is_empty() {
-        return Err("Opus encoder produced no packets".to_string());
-    }
-
-    let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
+    let mut writer = PacketWriter::new(output);
     let mut hasher = DefaultHasher::new();
     source_id.hash(&mut hasher);
     let serial = hasher.finish() as u32;
-    let mut writer = PacketWriter::new(Vec::new());
+    let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
     writer
         .write_packet(
             opus_head(profile.source_rate, profile.channels, pre_skip),
@@ -99,32 +124,49 @@ pub fn encode_opus(
             PacketWriteEndInfo::EndPage,
             0,
         )
-        .map_err(|error| format!("Ogg Opus header write failed: {}", error))?;
+        .map_err(|error| format!("Ogg Opus header write failed: {error}"))?;
     writer
         .write_packet(opus_tags(), serial, PacketWriteEndInfo::EndPage, 0)
-        .map_err(|error| format!("Ogg Opus tags write failed: {}", error))?;
+        .map_err(|error| format!("Ogg Opus tags write failed: {error}"))?;
 
-    let frame_samples = frame_samples as u64;
     let pcm_frames = (pcm.len() / usize::from(profile.channels)) as u64;
     let final_granule_position = OPUS_LOOKAHEAD_48K
         + (pcm_frames * 48_000 + u64::from(profile.target_rate) - 1)
             / u64::from(profile.target_rate);
+    let frame_samples_u64 = frame_samples as u64;
     let mut granule_position = OPUS_LOOKAHEAD_48K;
-    let packet_count = packets.len();
-    for (index, packet) in packets.into_iter().enumerate() {
-        granule_position = if index + 1 == packet_count {
+    let mut chunks = pcm.chunks(frame_len).peekable();
+    while let Some(chunk) = chunks.next() {
+        let mut frame = vec![0.0_f32; frame_len];
+        for (destination, sample) in frame.iter_mut().zip(chunk) {
+            *destination = f32::from(*sample) / 32_768.0;
+        }
+        let mut packet = vec![0_u8; 4096];
+        let packet_len = encoder
+            .encode(&frame, frame_samples, &mut packet)
+            .map_err(|error| format!("Opus encode failed: {error}"))?;
+        packet.truncate(packet_len);
+        let is_last = chunks.peek().is_none();
+        granule_position = if is_last {
             final_granule_position
         } else {
-            granule_position + frame_samples * 48_000 / u64::from(profile.target_rate)
-        };
-        let end_info = if index + 1 == packet_count {
-            PacketWriteEndInfo::EndStream
-        } else {
-            PacketWriteEndInfo::NormalPacket
+            granule_position + frame_samples_u64 * 48_000 / u64::from(profile.target_rate)
         };
         writer
-            .write_packet(packet, serial, end_info, granule_position)
-            .map_err(|error| format!("Ogg Opus packet write failed: {}", error))?;
+            .write_packet(
+                packet,
+                serial,
+                if is_last {
+                    PacketWriteEndInfo::EndStream
+                } else {
+                    PacketWriteEndInfo::NormalPacket
+                },
+                granule_position,
+            )
+            .map_err(|error| format!("Ogg Opus packet write failed: {error}"))?;
+    }
+    if granule_position == OPUS_LOOKAHEAD_48K {
+        return Err("Opus encoder produced no packets".to_string());
     }
     Ok(writer.into_inner())
 }
@@ -133,29 +175,62 @@ pub fn encode_aac(source: &[u8], source_extension: &str) -> Result<Vec<u8>, Stri
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let decoded = decode_audio(source, &source_extension)?;
+    encode_aac_decoded(decoded, Vec::new())
+}
+
+pub fn encode_aac_file(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    source_extension: &str,
+) -> Result<(), String> {
+    let source_extension = normalize_extension(source_extension)
+        .ok_or_else(|| "Invalid audio source extension".to_string())?;
+    let mut output =
+        Some(BufWriter::new(File::create(output).map_err(|error| {
+            format!("AAC output create failed: {error}")
+        })?));
+    let mut encoder = None;
+    stream_audio_file(input, &source_extension, |profile, samples| {
+        if encoder.is_none() {
+            encoder = Some(AacStreamEncoder::new(
+                profile,
+                output.take().expect("AAC output initialized"),
+            )?);
+        }
+        encoder
+            .as_mut()
+            .expect("AAC encoder initialized")
+            .accept(samples)
+    })?;
+    encoder
+        .ok_or_else(|| "audio contains no decodable samples".to_string())?
+        .finish()?;
+    Ok(())
+}
+
+fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, String> {
     let profile = profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
     let mut parameters = PureRustEncoderParameters::new(2);
     parameters
         .set_parameter(EncoderParameter::AudioObjectType, 2)
-        .map_err(|error| format!("invalid AAC audio object type: {:?}", error))?;
+        .map_err(|error| format!("invalid AAC audio object type: {error:?}"))?;
     parameters
         .set_parameter(EncoderParameter::ChannelMode, u32::from(profile.channels))
-        .map_err(|error| format!("invalid AAC channel mode: {:?}", error))?;
+        .map_err(|error| format!("invalid AAC channel mode: {error:?}"))?;
     parameters
         .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
-        .map_err(|error| format!("invalid AAC sample rate: {:?}", error))?;
+        .map_err(|error| format!("invalid AAC sample rate: {error:?}"))?;
     parameters
         .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
-        .map_err(|error| format!("invalid AAC bitrate: {:?}", error))?;
+        .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
     parameters
         .set_parameter(EncoderParameter::TransportMux, 2)
-        .map_err(|error| format!("invalid AAC transport: {:?}", error))?;
+        .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
     let mut encoder = ConfiguredPureRustEncoder::from_parameters(&parameters)
-        .map_err(|error| format!("could not initialize AAC encoder: {:?}", error))?;
-
+        .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
     let frame_len = encoder.input_samples_per_channel() * usize::from(profile.channels);
-    let mut output = Vec::new();
+    let mut output = output;
     let mut encoded_frames = 0;
     for chunk in pcm.chunks(frame_len) {
         let mut frame = vec![0.0_f32; frame_len];
@@ -164,7 +239,7 @@ pub fn encode_aac(source: &[u8], source_extension: &str) -> Result<Vec<u8>, Stri
         }
         let encoded = encoder
             .encode_transport_f32(&frame)
-            .map_err(|error| format!("AAC encode failed: {:?}", error))?;
+            .map_err(|error| format!("AAC encode failed: {error:?}"))?;
         if !encoded.is_empty() {
             output
                 .write_all(&encoded)
@@ -187,16 +262,366 @@ fn profile_for(decoded: &DecodedAudio) -> AudioProfile {
 }
 
 fn decode_audio(source: &[u8], source_extension: &str) -> Result<DecodedAudio, String> {
+    decode_audio_source(Cursor::new(source), source_extension)
+}
+
+struct StreamingResampler {
+    source_rate: u32,
+    target_rate: u32,
+    channels: usize,
+    source: Vec<i16>,
+    base_frame: u64,
+    next_source_position: f64,
+}
+
+impl StreamingResampler {
+    fn new(source_rate: u32, target_rate: u32, channels: usize) -> Self {
+        Self {
+            source_rate,
+            target_rate,
+            channels,
+            source: Vec::new(),
+            base_frame: 0,
+            next_source_position: 0.0,
+        }
+    }
+
+    fn push(&mut self, samples: &[i16], end_of_stream: bool) -> Vec<i16> {
+        self.source.extend_from_slice(samples);
+        let available_frames = self.base_frame + (self.source.len() / self.channels) as u64;
+        let mut output = Vec::new();
+        loop {
+            let source_frame = self.next_source_position.floor() as u64;
+            if source_frame >= available_frames
+                || (!end_of_stream && source_frame + 1 >= available_frames)
+            {
+                break;
+            }
+            let first = ((source_frame - self.base_frame) as usize) * self.channels;
+            let second_frame = (source_frame + 1).min(available_frames - 1);
+            let second = ((second_frame - self.base_frame) as usize) * self.channels;
+            let fraction = self.next_source_position.fract();
+            for channel in 0..self.channels {
+                let first_sample = f64::from(self.source[first + channel]);
+                let second_sample = f64::from(self.source[second + channel]);
+                output.push(
+                    (first_sample + (second_sample - first_sample) * fraction)
+                        .round()
+                        .clamp(-32768.0, 32767.0) as i16,
+                );
+            }
+            self.next_source_position += f64::from(self.source_rate) / f64::from(self.target_rate);
+        }
+        let keep_from = (self.next_source_position.floor() as u64).saturating_sub(1);
+        if keep_from > self.base_frame {
+            let remove_frames = (keep_from - self.base_frame) as usize;
+            self.source.drain(..remove_frames * self.channels);
+            self.base_frame = keep_from;
+        }
+        output
+    }
+}
+
+fn stream_audio_file<F>(
+    input: impl AsRef<Path>,
+    source_extension: &str,
+    mut consume: F,
+) -> Result<AudioProfile, String>
+where
+    F: FnMut(AudioProfile, &[i16]) -> Result<(), String>,
+{
+    let source = File::open(input).map_err(|error| format!("audio input open failed: {error}"))?;
     let mut hint = Hint::new();
     hint.with_extension(source_extension);
     let mut format = symphonia::default::get_probe()
         .probe(
             &hint,
-            MediaSourceStream::new(Box::new(Cursor::new(source)), Default::default()),
+            MediaSourceStream::new(Box::new(source), Default::default()),
             FormatOptions::default(),
             MetadataOptions::default(),
         )
-        .map_err(|error| format!("audio format probe failed: {}", error))?;
+        .map_err(|error| format!("audio format probe failed: {error}"))?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .ok_or_else(|| "audio track not found".to_string())?;
+    let track_id = track.id;
+    let codec_params = track
+        .codec_params
+        .as_ref()
+        .and_then(|params| params.audio())
+        .ok_or_else(|| "audio codec parameters not found".to_string())?;
+    let source_rate = codec_params.sample_rate.unwrap_or(48_000);
+    let source_channels = codec_params
+        .channels
+        .as_ref()
+        .map(|value| value.count().clamp(1, 2))
+        .unwrap_or(2);
+    let profile = AudioProfile {
+        source_rate,
+        target_rate: opus_sample_rate(source_rate),
+        channels: source_channels as u8,
+    };
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(codec_params, &AudioDecoderOptions::default())
+        .map_err(|error| format!("audio decoder creation failed: {error}"))?;
+    let mut resampler = StreamingResampler::new(source_rate, profile.target_rate, source_channels);
+    loop {
+        let packet = match format.next_packet() {
+            Ok(Some(packet)) => packet,
+            Ok(None) | Err(SymphoniaError::ResetRequired) => break,
+            Err(error) => return Err(format!("audio packet read failed: {error}")),
+        };
+        if packet.track_id != track_id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(decoded) => decoded,
+            Err(SymphoniaError::DecodeError(_)) | Err(SymphoniaError::IoError(_)) => continue,
+            Err(error) => return Err(format!("audio decode failed: {error}")),
+        };
+        let decoded_channels = decoded.spec().channels().count();
+        let mut packet_samples = Vec::new();
+        decoded.copy_to_vec_interleaved::<i16>(&mut packet_samples);
+        let normalized = normalize_channels(&packet_samples, decoded_channels, source_channels);
+        let resampled = resampler.push(&normalized, false);
+        if !resampled.is_empty() {
+            consume(profile, &resampled)?;
+        }
+    }
+    let tail = resampler.push(&[], true);
+    if !tail.is_empty() {
+        consume(profile, &tail)?;
+    }
+    Ok(profile)
+}
+
+struct OpusStreamEncoder<W: Write> {
+    writer: PacketWriter<'static, W>,
+    encoder: OpusEncoder,
+    serial: u32,
+    target_rate: u32,
+    channels: usize,
+    frame_samples: usize,
+    frame_len: usize,
+    pending_pcm: Vec<i16>,
+    pending_packet: Option<(Vec<u8>, u64)>,
+    encoded_pcm_frames: u64,
+    total_pcm_frames: u64,
+}
+
+impl<W: Write> OpusStreamEncoder<W> {
+    fn new(profile: AudioProfile, source_id: &str, output: W) -> Result<Self, String> {
+        let encoder = OpusEncoder::new(
+            profile.target_rate as i32,
+            usize::from(profile.channels),
+            Application::Audio,
+        )
+        .map_err(|error| format!("Opus encoder creation failed: {error}"))?;
+        let mut hasher = DefaultHasher::new();
+        source_id.hash(&mut hasher);
+        let serial = hasher.finish() as u32;
+        let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
+        let mut writer = PacketWriter::new(output);
+        writer
+            .write_packet(
+                opus_head(profile.source_rate, profile.channels, pre_skip),
+                serial,
+                PacketWriteEndInfo::EndPage,
+                0,
+            )
+            .map_err(|error| format!("Ogg Opus header write failed: {error}"))?;
+        writer
+            .write_packet(opus_tags(), serial, PacketWriteEndInfo::EndPage, 0)
+            .map_err(|error| format!("Ogg Opus tags write failed: {error}"))?;
+        let frame_samples = (profile.target_rate / 50) as usize;
+        Ok(Self {
+            writer,
+            encoder,
+            serial,
+            target_rate: profile.target_rate,
+            channels: usize::from(profile.channels),
+            frame_samples,
+            frame_len: frame_samples * usize::from(profile.channels),
+            pending_pcm: Vec::new(),
+            pending_packet: None,
+            encoded_pcm_frames: 0,
+            total_pcm_frames: 0,
+        })
+    }
+
+    fn accept(&mut self, samples: &[i16]) -> Result<(), String> {
+        self.total_pcm_frames += (samples.len() / self.channels) as u64;
+        self.pending_pcm.extend_from_slice(samples);
+        let complete_len = self.pending_pcm.len() / self.frame_len * self.frame_len;
+        if complete_len == 0 {
+            return Ok(());
+        }
+        let remainder = self.pending_pcm.split_off(complete_len);
+        let complete = std::mem::replace(&mut self.pending_pcm, remainder);
+        for frame in complete.chunks_exact(self.frame_len) {
+            self.encode_frame(frame)?;
+        }
+        Ok(())
+    }
+
+    fn encode_frame(&mut self, samples: &[i16]) -> Result<(), String> {
+        let mut frame = vec![0.0_f32; self.frame_len];
+        for (destination, sample) in frame.iter_mut().zip(samples) {
+            *destination = f32::from(*sample) / 32_768.0;
+        }
+        let mut packet = vec![0_u8; 4096];
+        let packet_len = self
+            .encoder
+            .encode(&frame, self.frame_samples, &mut packet)
+            .map_err(|error| format!("Opus encode failed: {error}"))?;
+        packet.truncate(packet_len);
+        self.encoded_pcm_frames += self.frame_samples as u64;
+        let granule_position = OPUS_LOOKAHEAD_48K
+            + (self.encoded_pcm_frames * 48_000 + u64::from(self.target_rate) - 1)
+                / u64::from(self.target_rate);
+        if let Some((previous, previous_granule)) = self.pending_packet.take() {
+            self.writer
+                .write_packet(
+                    previous,
+                    self.serial,
+                    PacketWriteEndInfo::NormalPacket,
+                    previous_granule,
+                )
+                .map_err(|error| format!("Ogg Opus packet write failed: {error}"))?;
+        }
+        self.pending_packet = Some((packet, granule_position));
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<(), String> {
+        if !self.pending_pcm.is_empty() {
+            let mut frame = vec![0_i16; self.frame_len];
+            frame[..self.pending_pcm.len()].copy_from_slice(&self.pending_pcm);
+            self.encode_frame(&frame)?;
+        }
+        let Some((packet, _)) = self.pending_packet.take() else {
+            return Err("Opus encoder produced no packets".to_string());
+        };
+        let final_granule_position = OPUS_LOOKAHEAD_48K
+            + (self.total_pcm_frames * 48_000 + u64::from(self.target_rate) - 1)
+                / u64::from(self.target_rate);
+        self.writer
+            .write_packet(
+                packet,
+                self.serial,
+                PacketWriteEndInfo::EndStream,
+                final_granule_position,
+            )
+            .map_err(|error| format!("Ogg Opus packet write failed: {error}"))?;
+        self.writer
+            .into_inner()
+            .flush()
+            .map_err(|error| format!("Ogg Opus output flush failed: {error}"))?;
+        Ok(())
+    }
+}
+
+struct AacStreamEncoder<W: Write> {
+    output: W,
+    encoder: ConfiguredPureRustEncoder,
+    frame_len: usize,
+    pending_pcm: Vec<i16>,
+    encoded_frames: u32,
+}
+
+impl<W: Write> AacStreamEncoder<W> {
+    fn new(profile: AudioProfile, output: W) -> Result<Self, String> {
+        let mut parameters = PureRustEncoderParameters::new(2);
+        parameters
+            .set_parameter(EncoderParameter::AudioObjectType, 2)
+            .map_err(|error| format!("invalid AAC audio object type: {error:?}"))?;
+        parameters
+            .set_parameter(EncoderParameter::ChannelMode, u32::from(profile.channels))
+            .map_err(|error| format!("invalid AAC channel mode: {error:?}"))?;
+        parameters
+            .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
+            .map_err(|error| format!("invalid AAC sample rate: {error:?}"))?;
+        parameters
+            .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
+            .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
+        parameters
+            .set_parameter(EncoderParameter::TransportMux, 2)
+            .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
+        let encoder = ConfiguredPureRustEncoder::from_parameters(&parameters)
+            .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
+        let channels = usize::from(profile.channels);
+        let frame_len = encoder.input_samples_per_channel() * channels;
+        Ok(Self {
+            output,
+            encoder,
+            frame_len,
+            pending_pcm: Vec::new(),
+            encoded_frames: 0,
+        })
+    }
+
+    fn accept(&mut self, samples: &[i16]) -> Result<(), String> {
+        self.pending_pcm.extend_from_slice(samples);
+        let complete_len = self.pending_pcm.len() / self.frame_len * self.frame_len;
+        if complete_len == 0 {
+            return Ok(());
+        }
+        let remainder = self.pending_pcm.split_off(complete_len);
+        let complete = std::mem::replace(&mut self.pending_pcm, remainder);
+        for frame in complete.chunks_exact(self.frame_len) {
+            self.encode_frame(frame)?;
+        }
+        Ok(())
+    }
+
+    fn encode_frame(&mut self, samples: &[i16]) -> Result<(), String> {
+        let mut frame = vec![0.0_f32; self.frame_len];
+        for (destination, sample) in frame.iter_mut().zip(samples) {
+            *destination = f32::from(*sample) / 32_768.0;
+        }
+        let encoded = self
+            .encoder
+            .encode_transport_f32(&frame)
+            .map_err(|error| format!("AAC encode failed: {error:?}"))?;
+        if !encoded.is_empty() {
+            self.output
+                .write_all(&encoded)
+                .map_err(|error| error.to_string())?;
+            self.encoded_frames += 1;
+        }
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<(), String> {
+        if !self.pending_pcm.is_empty() {
+            let mut frame = vec![0_i16; self.frame_len];
+            frame[..self.pending_pcm.len()].copy_from_slice(&self.pending_pcm);
+            self.encode_frame(&frame)?;
+        }
+        if self.encoded_frames == 0 {
+            return Err("AAC encoder produced no frames".to_string());
+        }
+        self.output
+            .flush()
+            .map_err(|error| format!("AAC output flush failed: {error}"))?;
+        Ok(())
+    }
+}
+
+fn decode_audio_source<S: MediaSource>(
+    source: S,
+    source_extension: &str,
+) -> Result<DecodedAudio, String> {
+    let mut hint = Hint::new();
+    hint.with_extension(source_extension);
+    let mut format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            MediaSourceStream::new(Box::new(source), Default::default()),
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .map_err(|error| format!("audio format probe failed: {error}"))?;
     let track = format
         .default_track(TrackType::Audio)
         .ok_or_else(|| "audio track not found".to_string())?;
@@ -327,7 +752,7 @@ fn opus_tags() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_aac, encode_opus, opus_sample_rate};
+    use super::{encode_aac, encode_aac_file, encode_opus, encode_opus_file, opus_sample_rate};
 
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
@@ -343,6 +768,26 @@ mod tests {
         let aac = encode_aac(&source, "wav").expect("AAC encoding");
         assert!(opus.starts_with(b"OggS"));
         assert!(aac.starts_with(&[0xff, 0xf1]));
+    }
+
+    #[test]
+    fn encodes_audio_file_to_a_streaming_output() {
+        let root =
+            std::env::temp_dir().join(format!("dantalian-audio-codec-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let input = root.join("input.wav");
+        let opus_output = root.join("output.ogg");
+        let aac_output = root.join("output.aac");
+        std::fs::write(&input, pcm_wav(44_100, 2, 4_410)).expect("write input");
+
+        encode_opus_file(&input, &opus_output, "wav", "file-source").expect("Opus file encoding");
+        encode_aac_file(&input, &aac_output, "wav").expect("AAC file encoding");
+        let opus = std::fs::read(&opus_output).expect("read Opus output");
+        let aac = std::fs::read(&aac_output).expect("read AAC output");
+        assert!(opus.starts_with(b"OggS"));
+        assert!(aac.starts_with(&[0xff, 0xf1]));
+
+        std::fs::remove_dir_all(root).expect("remove test directory");
     }
 
     fn pcm_wav(sample_rate: u32, channels: u16, frames: usize) -> Vec<u8> {

@@ -1,4 +1,6 @@
-use std::{env, time::Duration};
+use std::{env, fs, time::Duration};
+
+use fs2::available_space;
 
 use aws_sdk_s3::{
     config::{Credentials, Region},
@@ -10,15 +12,19 @@ use dantalian::ports::{
 };
 use reqwest::{Client, StatusCode};
 use serde::Serialize;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const DEFAULT_LEASE_SECONDS: u64 = 900;
+const MIN_DISK_HEADROOM_BYTES: u64 = 512 * 1024 * 1024;
 const POLL_INTERVAL_SECONDS: u64 = 5;
+const MAX_PROCESSOR_INPUT_BYTES: i64 = 3 * 1024 * 1024 * 1024;
 
 #[derive(Clone)]
 struct Config {
     worker_base_url: String,
     api_token: String,
     processor_id: String,
+    audio_job_id: Option<String>,
     lease_seconds: u64,
     once: bool,
     bucket: String,
@@ -68,10 +74,10 @@ async fn main() -> Result<(), String> {
                     log_event("audio_job.completed", &config, Some(&claim), None, None);
                 }
             }
-            None if config.once => return Ok(()),
+            None if config.audio_job_id.is_some() || config.once => return Ok(()),
             None => tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECONDS)).await,
         }
-        if config.once {
+        if config.audio_job_id.is_some() || config.once {
             return Ok(());
         }
     }
@@ -87,6 +93,12 @@ impl Config {
             .unwrap_or_else(|_| format!("processor-{}", std::process::id()));
         if processor_id.is_empty() || processor_id.len() > 128 {
             return Err("DANTALIAN_PROCESSOR_ID must be 1-128 characters".to_string());
+        }
+        let audio_job_id = env::var("DANTALIAN_AUDIO_JOB_ID").ok();
+        if let Some(job_id) = &audio_job_id {
+            if job_id.len() != 32 || !job_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err("DANTALIAN_AUDIO_JOB_ID must be a 32-character hex id".to_string());
+            }
         }
         let lease_seconds = env::var("DANTALIAN_PROCESSOR_LEASE_SECONDS")
             .ok()
@@ -117,6 +129,7 @@ impl Config {
             worker_base_url,
             api_token,
             processor_id,
+            audio_job_id,
             lease_seconds,
             once: env::var("DANTALIAN_PROCESSOR_ONCE").as_deref() == Ok("1"),
             bucket,
@@ -127,7 +140,7 @@ impl Config {
 
 async fn claim(client: &Client, config: &Config) -> Result<Option<AudioJobClaim>, String> {
     let response = client
-        .post(format!("{}/api/audio/jobs/claim", config.worker_base_url))
+        .post(api_url(config, "claim"))
         .bearer_auth(&config.api_token)
         .json(&ClaimRequest {
             processor_id: &config.processor_id,
@@ -189,7 +202,7 @@ fn spawn_heartbeat(
         loop {
             tokio::time::sleep(interval).await;
             let result = client
-                .post(format!("{}/api/audio/jobs/renew", config.worker_base_url))
+                .post(api_url(&config, "renew"))
                 .bearer_auth(&config.api_token)
                 .json(&serde_json::json!({
                     "claim": &claim,
@@ -205,56 +218,124 @@ fn spawn_heartbeat(
 }
 
 async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), ProcessError> {
-    let input = config
-        .s3_client
-        .get_object()
-        .bucket(&config.bucket)
-        .key(&claim.job.input_object_key)
-        .send()
-        .await
-        .map_err(|_| ProcessError::Retryable("input object download failed"))?
-        .body
-        .collect()
-        .await
-        .map_err(|_| ProcessError::Retryable("input object read failed"))?
-        .into_bytes()
-        .to_vec();
-    let codec = claim.job.codec;
-    let source_extension = extension(&claim.job.input_object_key)
-        .map(str::to_string)
-        .ok_or(ProcessError::Permanent("input object extension is invalid"))?;
-    let job_id = claim.job.id.clone();
-    let encoded = tokio::task::spawn_blocking(move || match codec {
-        AudioCodec::Opus => dantalian::audio_codec::encode_opus(&input, &source_extension, &job_id)
+    let workspace = env::temp_dir().join(format!("dantalian-audio-{}", claim.job.id));
+    fs::create_dir_all(&workspace)
+        .map_err(|_| ProcessError::Retryable("audio workspace creation failed"))?;
+    let input_path = workspace.join("input");
+    let output_path = workspace.join("output");
+
+    let result = async {
+        let metadata = config
+            .s3_client
+            .head_object()
+            .bucket(&config.bucket)
+            .key(&claim.job.input_object_key)
+            .send()
+            .await
+            .map_err(|_| ProcessError::Retryable("input object metadata lookup failed"))?;
+        let input_size = metadata
+            .content_length()
+            .ok_or(ProcessError::Permanent("input object size is unavailable"))?;
+        if !(1..=MAX_PROCESSOR_INPUT_BYTES).contains(&input_size) {
+            return Err(ProcessError::Permanent(
+                "input object exceeds processor limit",
+            ));
+        }
+        let required_space = (input_size as u64)
+            .checked_add(MIN_DISK_HEADROOM_BYTES)
+            .ok_or(ProcessError::Permanent(
+                "input object disk requirement overflows",
+            ))?;
+        let available_space = available_space(&workspace)
+            .map_err(|_| ProcessError::Retryable("audio disk headroom lookup failed"))?;
+        if available_space < required_space {
+            return Err(ProcessError::Retryable(
+                "audio processor disk headroom is insufficient",
+            ));
+        }
+
+        let object = config
+            .s3_client
+            .get_object()
+            .bucket(&config.bucket)
+            .key(&claim.job.input_object_key)
+            .send()
+            .await
+            .map_err(|_| ProcessError::Retryable("input object download failed"))?;
+        let mut reader = object
+            .body
+            .into_async_read()
+            .take((MAX_PROCESSOR_INPUT_BYTES + 1) as u64);
+        let mut file = tokio::fs::File::create(&input_path)
+            .await
+            .map_err(|_| ProcessError::Retryable("input workspace open failed"))?;
+        let copied = tokio::io::copy(&mut reader, &mut file)
+            .await
+            .map_err(|_| ProcessError::Retryable("input object streaming failed"))?;
+        file.flush()
+            .await
+            .map_err(|_| ProcessError::Retryable("input workspace flush failed"))?;
+        if copied > MAX_PROCESSOR_INPUT_BYTES as u64 {
+            return Err(ProcessError::Permanent(
+                "input object exceeds processor limit",
+            ));
+        }
+
+        let codec = claim.job.codec;
+        let source_extension = extension(&claim.job.input_object_key)
+            .map(str::to_string)
+            .ok_or(ProcessError::Permanent("input object extension is invalid"))?;
+        let job_id = claim.job.id.clone();
+        let input_for_encoder = input_path.clone();
+        let output_for_encoder = output_path.clone();
+        tokio::task::spawn_blocking(move || match codec {
+            AudioCodec::Opus => dantalian::audio_codec::encode_opus_file(
+                input_for_encoder,
+                output_for_encoder,
+                &source_extension,
+                &job_id,
+            )
             .map_err(|_| ProcessError::Permanent("audio Opus encoding failed")),
-        AudioCodec::Aac => dantalian::audio_codec::encode_aac(&input, &source_extension)
+            AudioCodec::Aac => dantalian::audio_codec::encode_aac_file(
+                input_for_encoder,
+                output_for_encoder,
+                &source_extension,
+            )
             .map_err(|_| ProcessError::Permanent("audio AAC encoding failed")),
-    })
-    .await
-    .map_err(|_| ProcessError::Permanent("audio processor task failed"))??;
-    let content_type = match codec {
-        AudioCodec::Opus => "audio/ogg",
-        AudioCodec::Aac => "audio/aac",
-    };
-    config
-        .s3_client
-        .put_object()
-        .bucket(&config.bucket)
-        .key(&claim.job.output_object_key)
-        .content_type(content_type)
-        .body(ByteStream::from(encoded))
-        .send()
+        })
         .await
-        .map_err(|_| ProcessError::Retryable("output object upload failed"))?;
-    Ok(())
+        .map_err(|_| ProcessError::Permanent("audio processor task failed"))??;
+
+        let content_type = match codec {
+            AudioCodec::Opus => "audio/ogg",
+            AudioCodec::Aac => "audio/aac",
+        };
+        let output = ByteStream::from_path(&output_path)
+            .await
+            .map_err(|_| ProcessError::Retryable("output workspace read failed"))?;
+        config
+            .s3_client
+            .put_object()
+            .bucket(&config.bucket)
+            .key(&claim.job.output_object_key)
+            .content_type(content_type)
+            .body(output)
+            .send()
+            .await
+            .map_err(|_| ProcessError::Retryable("output object upload failed"))?;
+        Ok(())
+    }
+    .await;
+
+    match tokio::fs::remove_dir_all(&workspace).await {
+        Ok(()) => result,
+        Err(_) => Err(ProcessError::Retryable("audio workspace cleanup failed")),
+    }
 }
 
 async fn complete(client: &Client, config: &Config, claim: &AudioJobClaim) -> Result<(), String> {
     let response = client
-        .post(format!(
-            "{}/api/audio/jobs/complete",
-            config.worker_base_url
-        ))
+        .post(api_url(config, "complete"))
         .bearer_auth(&config.api_token)
         .json(&ClaimBody { claim })
         .send()
@@ -274,7 +355,7 @@ async fn fail(
     failure: AudioJobFailure,
 ) -> Result<(), String> {
     let response = client
-        .post(format!("{}/api/audio/jobs/fail", config.worker_base_url))
+        .post(api_url(config, "fail"))
         .bearer_auth(&config.api_token)
         .json(&FailureBody { claim, failure })
         .send()
@@ -330,6 +411,16 @@ fn extension(key: &str) -> Option<&str> {
     key.rsplit_once('.')
         .map(|(_, extension)| extension)
         .filter(|extension| !extension.is_empty() && extension.len() <= 10)
+}
+
+fn api_url(config: &Config, operation: &str) -> String {
+    match config.audio_job_id.as_deref() {
+        Some(job_id) => format!(
+            "{}/api/internal/audio/jobs/{job_id}/{operation}",
+            config.worker_base_url
+        ),
+        None => format!("{}/api/audio/jobs/{operation}", config.worker_base_url),
+    }
 }
 
 fn required_env(name: &str) -> Result<String, String> {
