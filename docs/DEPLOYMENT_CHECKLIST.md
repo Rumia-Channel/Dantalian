@@ -24,13 +24,24 @@
 - [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
 - [ ] Deployed Cloudflare Worker to Wasabi completion and multipart E2E pass.
-+- [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
+- [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
 - [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
 
 ## Verification record
 
 The checked items above record repository, local Wrangler, local live Wasabi, and Cloudflare remote-preview verification completed on 2026-08-13. The remote preview initially failed because the Worker-side authenticated Wasabi `HEAD` request returned HTTP 403 from the endpoint's Cloudflare edge. Wasabi metadata validation now uses a bounded `GET` with `Range: bytes=0-0`, reads the original size from `Content-Range`, and never proxies the object body to the client. Local and remote-preview basic, multipart, and audio object-existence checks pass. A temporary deployed Worker rehearsal was deleted after the public `workers.dev` URL returned HTTP 404 (`error code: 1042`), so the deployed Worker item remains unchecked. Credentials and signed URLs were not printed in verification logs.
+
+## External audio processor deployment
+
+- [ ] Create `dantalian-audio-jobs` and `dantalian-audio-jobs-dlq`; do not put audio bytes in the queue payload.
+- [ ] Configure the controller `PROCESSOR_API_BASE_URL` to its externally reachable `/internal-api` route.
+- [ ] Store `DANTALIAN_PROCESSOR_TOKEN` only as a controller secret and configure the same value as the Worker processor credential.
+- [ ] Store a dedicated least-privilege Wasabi access key for the processor; never use the Wasabi account root key.
+- [ ] Configure the controller service binding to the deployed `dantalian-worker`.
+- [ ] Deploy `wrangler.audio.toml` with `max_instances = 4`; verify queue messages are acknowledged after container start, not after audio completion.
+- [ ] Verify processor logs contain only job id, attempt, status, and redacted error class/summary.
+- [ ] Run a short Opus and AAC job through queued, running, completed, and failed/retry transitions before traffic shift.
 
 ## Credential incident and cleanup
 

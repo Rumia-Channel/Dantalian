@@ -1,0 +1,27 @@
+name = "dantalian-audio-controller"
+main = "container/controller.ts"
+compatibility_date = "2026-08-14"
+
+[[containers]]
+class_name = "AudioProcessorContainer"
+image = "container/Dockerfile"
+instance_type = "standard-1"
+max_instances = 4
+
+[[durable_objects.bindings]]
+name = "AUDIO_PROCESSOR"
+class_name = "AudioProcessorContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AudioProcessorContainer"]
+
+[[services]]
+binding = "DANTALIAN_API"
+service = "dantalian-worker"
+
+[[queues.consumers]]
+queue = "dantalian-audio-jobs"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "dantalian-audio-jobs-dlq"

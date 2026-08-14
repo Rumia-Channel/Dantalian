@@ -75,6 +75,10 @@ The authenticated API currently exposes `GET /api/audio/jobs/:id` for status and
 
 There is deliberately no public list or cancel endpoint in this cutover. A list endpoint needs pagination and owner-scoped operational authorization; cancellation also needs an explicit policy for an in-flight processor and any output object. Until that contract exists, operators use the job id from structured processor events and the authenticated status/retry routes. Do not edit D1 status rows manually.
 
+The queue-backed processor is deployed separately with `wrangler.audio.toml`. Its queue payload contains only the 32-character audio job id. The controller starts a named container instance (`audio-<job-id>`) and acknowledges the queue message after startup; the processor then claims the job through the controller's authenticated `/internal-api` service-binding proxy. D1 remains the job state authority. If the container fails before startup, Queue retries the message; if processing fails after a lease, the processor reports the failure and the job retry policy applies.
+
+The processor downloads and uploads Wasabi objects directly through its dedicated Wasabi credential. It stages each object in the container's ephemeral filesystem, removes the workspace on success or failure, and does not route object bytes through the Worker. Configure `PROCESSOR_API_BASE_URL` to the controller's `/internal-api` URL and never store that URL or any credential in a queue message.
+
 ## Post-migration checks
 
 1. Compare every source and destination table count in the reconciliation report.

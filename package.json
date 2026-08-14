@@ -1,6 +1,11 @@
 {
-  "dependencies": {},
+  "scripts": {
+    "typecheck:container": "tsc --project tsconfig.container.json"
+  },
   "devDependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@cloudflare/workers-types": "^5.20260814.1",
+    "typescript": "^7.0.2",
     "wrangler": "^4.120.1"
   }
 }

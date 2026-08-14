@@ -1,0 +1,7 @@
+**/target
+**/node_modules
+**/.wrangler
+.git
+.github
+worker/public
+static
