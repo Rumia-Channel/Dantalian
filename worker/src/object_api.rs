@@ -117,7 +117,7 @@ pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let kind = format
         .map(|codec| ObjectKind::EncodedAudio { codec })
         .unwrap_or(ObjectKind::OriginalAudio);
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -134,7 +134,7 @@ pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 async fn redirect_file(ctx: &RouteContext<()>, name: &str, kind: ObjectKind) -> Result<Response> {
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -278,7 +278,7 @@ async fn upload(
     };
     let extension = extension(&file.name(), fallback);
     let file_name = format!("{file_hash}.{extension}");
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -433,7 +433,7 @@ async fn delete_named_object(
         .get(column)
         .and_then(|value| value.as_str())
         .map(ToOwned::to_owned);
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -525,7 +525,7 @@ async fn delete_track_audio(ctx: &RouteContext<()>, parent_column: &str) -> Resu
         .and_then(|value| value.as_str())
         .map(ToOwned::to_owned);
     if let (Some(file_hash), Some(file_name)) = (file_hash, file_name) {
-        let config = match WasabiConfig::from_env(&ctx.env) {
+        let config = match WasabiConfig::from_env(&ctx.env).await {
             Ok(config) => config,
             Err(error) => return error_response(AppError::Storage(error.to_string())),
         };

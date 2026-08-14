@@ -68,7 +68,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         Err(error) => return error_response(error),
     };
 
-    let storage = match storage(&ctx) {
+    let storage = match storage(&ctx).await {
         Ok(storage) => storage,
         Err(error) => return error_response(error),
     };
@@ -193,7 +193,7 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     if let Err(response) = validate_claim_path(&ctx, &request.claim) {
         return Ok(response);
     }
-    let storage = match storage(&ctx) {
+    let storage = match storage(&ctx).await {
         Ok(storage) => storage,
         Err(error) => return error_response(error),
     };
@@ -233,9 +233,10 @@ pub async fn fail(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     }
 }
 
-fn storage(ctx: &RouteContext<()>) -> Result<WasabiStorage, AppError> {
-    let config =
-        WasabiConfig::from_env(&ctx.env).map_err(|error| AppError::Storage(error.to_string()))?;
+async fn storage(ctx: &RouteContext<()>) -> Result<WasabiStorage, AppError> {
+    let config = WasabiConfig::from_env(&ctx.env)
+        .await
+        .map_err(|error| AppError::Storage(error.to_string()))?;
     Ok(WasabiStorage::new(config))
 }
 

@@ -84,7 +84,7 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
             return error_response(AppError::NotFound);
         }
     }
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(storage_message(error))),
     };
@@ -188,7 +188,7 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         },
         Err(error) => return error_response(AppError::Database(error.to_string())),
     };
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(storage_message(error))),
     };

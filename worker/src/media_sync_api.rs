@@ -66,8 +66,9 @@ async fn sync(db: D1Database, env: &Env) -> std::result::Result<SyncResult, AppE
             message: "media is uploaded directly to object storage",
         });
     }
-    let config =
-        WasabiConfig::from_env(env).map_err(|error| AppError::Storage(error.to_string()))?;
+    let config = WasabiConfig::from_env(env)
+        .await
+        .map_err(|error| AppError::Storage(error.to_string()))?;
     let storage = WasabiStorage::new(config);
     let rows = db
         .prepare("SELECT object_key FROM object_uploads WHERE status = 'complete'")

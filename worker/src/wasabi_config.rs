@@ -23,13 +23,28 @@ impl std::fmt::Debug for WasabiConfig {
 }
 
 impl WasabiConfig {
-    pub fn from_env(env: &Env) -> Result<Self> {
+    pub async fn from_env(env: &Env) -> Result<Self> {
         Ok(Self {
-            access_key_id: env.secret("WASABI_ACCESS_KEY_ID")?.to_string(),
-            secret_access_key: env.secret("WASABI_SECRET_ACCESS_KEY")?.to_string(),
+            access_key_id: required_secret(
+                env,
+                "WASABI_ACCESS_KEY_ID_STORE",
+                &["WASABI_ACCESS_KEY_ID"],
+            )
+            .await?,
+            secret_access_key: required_secret(
+                env,
+                "WASABI_SECRET_ACCESS_KEY_STORE",
+                &["WASABI_SECRET_ACCESS_KEY"],
+            )
+            .await?,
             endpoint: required_var(env, "WASABI_ENDPOINT")?,
-            region: required_var(env, "WASABI_REGION")?,
-            bucket: required_var(env, "WASABI_BUCKET")?,
+            region: required_secret(env, "WASABI_REGION_STORE", &["WASABI_REGION"]).await?,
+            bucket: required_secret(
+                env,
+                "WASABI_BUCKET_STORE",
+                &["WASABI_BUCKET", "DANTALIAN_BUCKET"],
+            )
+            .await?,
             prefix: env
                 .var("WASABI_PREFIX")
                 .ok()
@@ -37,6 +52,36 @@ impl WasabiConfig {
                 .filter(|value| !value.trim().is_empty()),
         })
     }
+}
+
+async fn required_secret(
+    env: &Env,
+    store_binding: &str,
+    direct_bindings: &[&str],
+) -> Result<String> {
+    if let Ok(store) = env.secret_store(store_binding) {
+        if let Some(value) = store.get().await? {
+            return non_empty_secret(store_binding, value);
+        }
+    }
+    for binding in direct_bindings {
+        if let Ok(value) = env.secret(binding) {
+            return non_empty_secret(binding, value.to_string());
+        }
+    }
+    Err(worker::Error::RustError(format!(
+        "{} is not configured",
+        direct_bindings[0]
+    )))
+}
+
+fn non_empty_secret(binding: &str, value: String) -> Result<String> {
+    if value.trim().is_empty() {
+        return Err(worker::Error::RustError(format!(
+            "{binding} must not be empty"
+        )));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]

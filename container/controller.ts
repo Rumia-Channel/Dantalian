@@ -18,16 +18,25 @@ type QueueBatch<T> = {
   messages: QueueMessage<T>[];
 };
 
+type SecretStoreBinding = {
+  get(): Promise<string | undefined>;
+};
+
 type Env = {
   AUDIO_PROCESSOR: DurableObjectNamespace<AudioProcessorContainer>;
   DANTALIAN_API: Fetcher;
   DANTALIAN_PROCESSOR_TOKEN?: string;
   PROCESSOR_API_BASE_URL?: string;
-  WASABI_ACCESS_KEY_ID: string;
-  WASABI_SECRET_ACCESS_KEY: string;
-  WASABI_BUCKET: string;
-  WASABI_ENDPOINT: string;
-  WASABI_REGION: string;
+  WASABI_ACCESS_KEY_ID?: string;
+  WASABI_SECRET_ACCESS_KEY?: string;
+  WASABI_BUCKET?: string;
+  DANTALIAN_BUCKET?: string;
+  WASABI_ENDPOINT?: string;
+  WASABI_REGION?: string;
+  WASABI_ACCESS_KEY_ID_STORE?: SecretStoreBinding;
+  WASABI_SECRET_ACCESS_KEY_STORE?: SecretStoreBinding;
+  WASABI_REGION_STORE?: SecretStoreBinding;
+  WASABI_BUCKET_STORE?: SecretStoreBinding;
 };
 
 export class AudioProcessorContainer extends Container<Env> {
@@ -65,6 +74,28 @@ export default {
       if (!processorBaseUrl) {
         throw new Error("PROCESSOR_API_BASE_URL is not configured");
       }
+      const [accessKeyId, secretAccessKey, region, bucket] = await Promise.all([
+        requiredSecret(
+          env.WASABI_ACCESS_KEY_ID_STORE,
+          env.WASABI_ACCESS_KEY_ID,
+          "WASABI_ACCESS_KEY_ID",
+        ),
+        requiredSecret(
+          env.WASABI_SECRET_ACCESS_KEY_STORE,
+          env.WASABI_SECRET_ACCESS_KEY,
+          "WASABI_SECRET_ACCESS_KEY",
+        ),
+        requiredSecret(env.WASABI_REGION_STORE, env.WASABI_REGION, "WASABI_REGION"),
+        requiredSecret(
+          env.WASABI_BUCKET_STORE,
+          env.WASABI_BUCKET ?? env.DANTALIAN_BUCKET,
+          "DANTALIAN_BUCKET",
+        ),
+      ]);
+      const endpoint = env.WASABI_ENDPOINT?.trim();
+      if (!endpoint) {
+        throw new Error("WASABI_ENDPOINT is not configured");
+      }
       const container = env.AUDIO_PROCESSOR.getByName(`audio-${jobId}`);
       console.log(JSON.stringify({ event: "audio_job.container_start_requested", job_id: jobId }));
       try {
@@ -75,11 +106,11 @@ export default {
             DANTALIAN_PROCESSOR_ONCE: "1",
             DANTALIAN_WORKER_BASE_URL: processorBaseUrl,
             DANTALIAN_API_TOKEN: processorToken,
-            WASABI_ACCESS_KEY_ID: env.WASABI_ACCESS_KEY_ID,
-            WASABI_SECRET_ACCESS_KEY: env.WASABI_SECRET_ACCESS_KEY,
-            WASABI_BUCKET: env.WASABI_BUCKET,
-            WASABI_ENDPOINT: env.WASABI_ENDPOINT,
-            WASABI_REGION: env.WASABI_REGION,
+            WASABI_ACCESS_KEY_ID: accessKeyId,
+            WASABI_SECRET_ACCESS_KEY: secretAccessKey,
+            WASABI_BUCKET: bucket,
+            WASABI_ENDPOINT: endpoint,
+            WASABI_REGION: region,
           },
         });
       } catch (error) {
@@ -165,4 +196,17 @@ function constantTimeBearerEqual(value: string, expected: string): boolean {
     difference |= (supplied[index] ?? 0) ^ (wanted[index] ?? 0);
   }
   return difference === 0;
+}
+
+async function requiredSecret(
+  binding: SecretStoreBinding | undefined,
+  directValue: string | undefined,
+  name: string,
+): Promise<string> {
+  const storedValue = binding ? await binding.get() : undefined;
+  const value = storedValue?.trim() || directValue?.trim();
+  if (!value) {
+    throw new Error(`${name} is not configured`);
+  }
+  return value;
 }

@@ -77,7 +77,7 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(content_type) => content_type,
         Err(error) => return error_response(error),
     };
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -149,7 +149,7 @@ pub async fn sign_part(_req: Request, ctx: RouteContext<()>) -> Result<Response>
             "multipart session is no longer uploadable".to_string(),
         ));
     }
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -201,7 +201,7 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         Ok(parts) => parts,
         Err(error) => return error_response(error),
     };
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
@@ -260,7 +260,7 @@ pub async fn abort(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
             "multipart session is no longer abortable".to_string(),
         ));
     }
-    let config = match WasabiConfig::from_env(&ctx.env) {
+    let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
