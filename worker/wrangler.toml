@@ -16,6 +16,10 @@ database_name = "dantalian-local"
 database_id = "local-dantalian"
 migrations_dir = "migrations"
 
+[[queues.producers]]
+queue = "dantalian-audio-jobs"
+binding = "AUDIO_JOB_QUEUE"
+
 
 [triggers]
 crons = ["0 * * * *"]

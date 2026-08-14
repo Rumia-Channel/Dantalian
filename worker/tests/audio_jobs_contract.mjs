@@ -3,6 +3,7 @@ import test from "node:test";
 
 const baseUrl = process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8793";
 const apiToken = process.env.WORKER_API_TOKEN ?? "dantalian-ci-test-token";
+const processorToken = process.env.WORKER_PROCESSOR_TOKEN ?? apiToken;
 const headers = {
   authorization: `Bearer ${apiToken}`,
   "content-type": "application/json",
@@ -84,6 +85,32 @@ test("audio job retry rejects malformed identifiers before querying D1", async (
   const response = await fetch(`${baseUrl}/api/audio/jobs/not-a-job-id/retry`, {
     method: "POST",
     headers: { authorization: `Bearer ${apiToken}` },
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "invalid audio job id" });
+});
+
+test("internal processor routes require the processor credential", async () => {
+  const response = await fetch(`${baseUrl}/api/internal/audio/jobs/not-a-job-id/claim`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ processor_id: "processor-test" }),
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual((await response.json()).code, "processor_authentication_required");
+});
+
+test("internal processor routes validate the targeted job id", async () => {
+  const response = await fetch(`${baseUrl}/api/internal/audio/jobs/not-a-job-id/claim`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${processorToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ processor_id: "processor-test" }),
   });
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "invalid audio job id" });

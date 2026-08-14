@@ -82,11 +82,23 @@ pub struct AudioJobFailure {
     pub backoff_seconds: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioJobDispatchMessage {
+    pub version: u8,
+    pub job_id: String,
+}
+
 pub trait AudioJobRepository {
     fn submit(&self, request: AudioJobRequest) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn get(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn claim_next(
         &self,
+        processor_id: &str,
+        lease_seconds: u64,
+    ) -> impl Future<Output = Result<Option<AudioJobClaim>, AppError>>;
+    fn claim_by_id(
+        &self,
+        job_id: &str,
         processor_id: &str,
         lease_seconds: u64,
     ) -> impl Future<Output = Result<Option<AudioJobClaim>, AppError>>;
@@ -107,6 +119,7 @@ pub trait AudioJobRepository {
     ) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn retry(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>>;
+    fn dispatchable_ids(&self, limit: u32) -> impl Future<Output = Result<Vec<String>, AppError>>;
 }
 
 #[cfg(test)]

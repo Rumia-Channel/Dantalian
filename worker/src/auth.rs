@@ -115,6 +115,33 @@ pub fn authorize(env: &Env, request: &Request) -> Result<Option<Response>> {
     }
 }
 
+const PROCESSOR_TOKEN_SECRET: &str = "DANTALIAN_PROCESSOR_TOKEN";
+
+pub fn authorize_processor(env: &Env, request: &Request) -> Result<Option<Response>> {
+    let token = env_string(env, PROCESSOR_TOKEN_SECRET);
+    let authorization = request.headers().get("authorization")?;
+    let supplied = authorization.as_deref().and_then(bearer_value);
+    match token {
+        None => Ok(Some(
+            Response::from_json(&serde_json::json!({
+                "error": "processor authentication is not configured",
+                "code": "processor_authentication_not_configured",
+            }))?
+            .with_status(500),
+        )),
+        Some(token) if supplied.is_some_and(|value| constant_time_equal(value, &token)) => Ok(None),
+        Some(_) => {
+            let mut response = Response::from_json(&serde_json::json!({
+                "error": "processor authentication required",
+                "code": "processor_authentication_required",
+            }))?
+            .with_status(401);
+            response.headers_mut().set("www-authenticate", "Bearer")?;
+            Ok(Some(response))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{bearer_value, constant_time_equal, cookie_value};

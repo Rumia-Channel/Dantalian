@@ -203,6 +203,73 @@ impl AudioJobRepository for D1AudioJobRepository<'_> {
         }
     }
 
+    fn claim_by_id(
+        &self,
+        job_id: &str,
+        processor_id: &str,
+        lease_seconds: u64,
+    ) -> impl Future<Output = Result<Option<AudioJobClaim>, AppError>> {
+        let job_id = job_id.to_string();
+        let processor_id = processor_id.to_string();
+        async move {
+            validate_processor_id(&processor_id)?;
+            let lease_seconds = lease_seconds.clamp(MIN_LEASE_SECONDS, MAX_LEASE_SECONDS);
+            let now = Date::now().as_millis();
+            let now_value = now.to_string();
+            let lease_until = now
+                .checked_add(lease_seconds.saturating_mul(1_000))
+                .ok_or_else(|| AppError::Validation("audio lease is too long".to_string()))?
+                .to_string();
+            let lease_token = Uuid::new_v4().simple().to_string();
+            let row = self
+                .db
+                .prepare(
+                    r#"UPDATE audio_jobs
+                     SET status = 'running',
+                         attempt_count = attempt_count + 1,
+                         lease_until = ?,
+                         started_at = COALESCE(started_at, ?),
+                         finished_at = NULL,
+                         next_attempt_at = NULL,
+                         processor_id = ?,
+                         lease_token = ?,
+                         updated_at = ?
+                     WHERE id = ?
+                       AND owner = ?
+                       AND attempt_count < ?
+                       AND (
+                         (status = 'queued' AND
+                          (next_attempt_at IS NULL OR CAST(next_attempt_at AS INTEGER) <= ?))
+                         OR
+                         (status = 'running' AND lease_until IS NOT NULL AND
+                          CAST(lease_until AS INTEGER) <= ?)
+                       )
+                     RETURNING id, status, input_object_key, output_object_key, codec,
+                        bitrate_kbps, idempotency_key, attempt_count, lease_until,
+                        started_at, finished_at, next_attempt_at, processor_id,
+                        provider_job_id, output_size_bytes, error_summary,
+                        created_at, updated_at, lease_token"#,
+                )
+                .bind_refs([
+                    &D1Type::Text(&lease_until),
+                    &D1Type::Text(&now_value),
+                    &D1Type::Text(&processor_id),
+                    &D1Type::Text(&lease_token),
+                    &D1Type::Text(&now_value),
+                    &D1Type::Text(&job_id),
+                    &D1Type::Text(OWNER_SCOPE),
+                    &D1Type::Integer(i32::try_from(MAX_AUDIO_JOB_ATTEMPTS).unwrap_or(i32::MAX)),
+                    &D1Type::Text(&now_value),
+                    &D1Type::Text(&now_value),
+                ])
+                .map_err(db_error)?
+                .first::<AudioJobRow>(None)
+                .await
+                .map_err(db_error)?;
+            row.map(AudioJobRow::into_claim).transpose()
+        }
+    }
+
     fn renew_lease(
         &self,
         claim: &AudioJobClaim,
@@ -388,7 +455,29 @@ impl AudioJobRepository for D1AudioJobRepository<'_> {
     fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>> {
         async move {
             let now = now_millis();
-            let result = self
+            let requeued = self
+                .db
+                .prepare(
+                    "UPDATE audio_jobs
+                     SET status = 'queued',
+                         error_summary = 'audio job lease expired; requeued',
+                         finished_at = NULL, updated_at = ?, lease_until = NULL,
+                         processor_id = NULL, lease_token = NULL, next_attempt_at = NULL
+                     WHERE owner = ? AND status = 'running'
+                       AND attempt_count < ? AND lease_until IS NOT NULL
+                       AND CAST(lease_until AS INTEGER) <= ?",
+                )
+                .bind_refs([
+                    &D1Type::Text(&now),
+                    &D1Type::Text(OWNER_SCOPE),
+                    &D1Type::Integer(i32::try_from(MAX_AUDIO_JOB_ATTEMPTS).unwrap_or(i32::MAX)),
+                    &D1Type::Text(&now),
+                ])
+                .map_err(db_error)?
+                .run()
+                .await
+                .map_err(db_error)?;
+            let failed = self
                 .db
                 .prepare(
                     "UPDATE audio_jobs
@@ -411,13 +500,51 @@ impl AudioJobRepository for D1AudioJobRepository<'_> {
                 .run()
                 .await
                 .map_err(db_error)?;
-            Ok(result
-                .meta()
-                .map_err(db_error)?
-                .and_then(|meta| meta.changes)
-                .unwrap_or_default() as u32)
+            let changed = |result: worker::d1::D1Result| -> Result<usize, AppError> {
+                Ok(result
+                    .meta()
+                    .map_err(db_error)?
+                    .and_then(|meta| meta.changes)
+                    .unwrap_or_default())
+            };
+            Ok((changed(requeued)? + changed(failed)?) as u32)
         }
     }
+
+    fn dispatchable_ids(&self, limit: u32) -> impl Future<Output = Result<Vec<String>, AppError>> {
+        let limit = i32::try_from(limit.clamp(1, 100)).unwrap_or(100);
+        async move {
+            let now = now_millis();
+            let rows = self
+                .db
+                .prepare(
+                    "SELECT id FROM audio_jobs
+                     WHERE owner = ? AND status = 'queued'
+                       AND attempt_count < ?
+                       AND (next_attempt_at IS NULL OR CAST(next_attempt_at AS INTEGER) <= ?)
+                     ORDER BY created_at, id
+                     LIMIT ?",
+                )
+                .bind_refs([
+                    &D1Type::Text(OWNER_SCOPE),
+                    &D1Type::Integer(i32::try_from(MAX_AUDIO_JOB_ATTEMPTS).unwrap_or(i32::MAX)),
+                    &D1Type::Text(&now),
+                    &D1Type::Integer(limit),
+                ])
+                .map_err(db_error)?
+                .all()
+                .await
+                .map_err(db_error)?
+                .results::<AudioJobIdRow>()
+                .map_err(db_error)?;
+            Ok(rows.into_iter().map(|row| row.id).collect())
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AudioJobIdRow {
+    id: String,
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -32,7 +32,12 @@ use worker::*;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    if let Some(response) = auth::authorize(&env, &req)? {
+    let auth_response = if req.path().starts_with("/api/internal/audio/jobs/") {
+        auth::authorize_processor(&env, &req)?
+    } else {
+        auth::authorize(&env, &req)?
+    };
+    if let Some(response) = auth_response {
         return Ok(response);
     }
     Router::new()
@@ -90,6 +95,16 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/audio/jobs/renew", audio_job_api::renew)
         .post_async("/api/audio/jobs/complete", audio_job_api::complete)
         .post_async("/api/audio/jobs/fail", audio_job_api::fail)
+        .post_async(
+            "/api/internal/audio/jobs/:id/claim",
+            audio_job_api::claim_by_id,
+        )
+        .post_async("/api/internal/audio/jobs/:id/renew", audio_job_api::renew)
+        .post_async(
+            "/api/internal/audio/jobs/:id/complete",
+            audio_job_api::complete,
+        )
+        .post_async("/api/internal/audio/jobs/:id/fail", audio_job_api::fail)
         .post_async("/api/uploads/covers/init", cover_api::init)
         .post_async("/api/uploads/covers/complete", cover_api::complete)
         .post_async("/api/uploads/multipart/init", multipart_api::init)
@@ -196,6 +211,9 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 // in Cloudflare's managed backup/export boundary.
 #[event(scheduled)]
 pub async fn scheduled(event: ScheduledEvent, env: Env, ctx: ScheduleContext) {
+    if let Err(error) = audio_job_api::recover_and_dispatch(&env).await {
+        worker::console_error!("scheduled audio dispatch recovery failed: {error}");
+    }
     if let Err(error) = media_sync_api::run_scheduled(event, env, ctx).await {
         worker::console_error!("scheduled media sync failed: {error}");
     }

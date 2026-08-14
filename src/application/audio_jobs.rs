@@ -55,6 +55,17 @@ where
             .await
     }
 
+    pub async fn claim_by_id(
+        &self,
+        job_id: &str,
+        processor_id: &str,
+        lease_seconds: u64,
+    ) -> Result<Option<AudioJobClaim>, AppError> {
+        self.repository
+            .claim_by_id(job_id, processor_id, lease_seconds)
+            .await
+    }
+
     pub async fn renew_lease(
         &self,
         claim: &AudioJobClaim,
@@ -92,6 +103,10 @@ where
 
     pub async fn recover_expired(&self) -> Result<u32, AppError> {
         self.repository.recover_expired().await
+    }
+
+    pub async fn dispatchable_ids(&self, limit: u32) -> Result<Vec<String>, AppError> {
+        self.repository.dispatchable_ids(limit).await
     }
 }
 
@@ -266,6 +281,20 @@ mod tests {
             }
         }
 
+        fn claim_by_id(
+            &self,
+            _job_id: &str,
+            _processor_id: &str,
+            _lease_seconds: u64,
+        ) -> impl Future<Output = Result<Option<AudioJobClaim>, AppError>> {
+            async {
+                Ok(Some(AudioJobClaim {
+                    job: job(AudioJobStatus::Running),
+                    lease_token: "lease-token".to_string(),
+                }))
+            }
+        }
+
         fn renew_lease(
             &self,
             claim: &AudioJobClaim,
@@ -297,6 +326,13 @@ mod tests {
 
         fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>> {
             async { Ok(0) }
+        }
+
+        fn dispatchable_ids(
+            &self,
+            _limit: u32,
+        ) -> impl Future<Output = Result<Vec<String>, AppError>> {
+            async { Ok(Vec::new()) }
         }
     }
 
