@@ -316,6 +316,28 @@ pub async fn lookup_cd_candidates(jan: &str) -> Result<Vec<MusicBrainzCandidate>
     Ok(releases.into_iter().map(mb_candidate).collect())
 }
 
+fn escape_lucene_phrase(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+pub async fn lookup_cd_candidates_by_title(title: &str) -> Result<Vec<MusicBrainzCandidate>> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(Vec::new());
+    }
+    let escaped = escape_lucene_phrase(title);
+    for query in [
+        format!("release:\"{escaped}\""),
+        format!("release:{escaped}"),
+    ] {
+        let releases = musicbrainz_search(&query, 20).await?;
+        if !releases.is_empty() {
+            return Ok(releases.into_iter().map(mb_candidate).collect());
+        }
+    }
+    Ok(Vec::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MbRelease, MusicBrainzCandidate, mb_candidate, mb_cd};

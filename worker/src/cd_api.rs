@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
+use crate::amazon_api;
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use crate::musicbrainz_api;
 use dantalian::application::error::AppError;
@@ -272,6 +273,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     let mut tracks = body.tracks.take();
     let mut source = "manual";
 
+    let external_lookup = title.is_none();
     if title.is_none() {
         let Some(jan) = jan.as_deref() else {
             return Ok(bad_request("title or jan is required"));
@@ -296,11 +298,24 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
             let mut candidates = match musicbrainz_api::lookup_cd_candidates(jan).await {
                 Ok(candidates) => candidates,
                 Err(error) => {
-                    return error_response(AppError::Internal(format!(
-                        "MusicBrainz search failed: {error}"
-                    )));
+                    worker::console_error!(
+                        "MusicBrainz search failed for JAN; trying Amazon title fallback: {error}"
+                    );
+                    Vec::new()
                 }
             };
+            let mut amazon_title = None;
+            if candidates.is_empty() {
+                amazon_title = amazon_api::lookup_amazon_title_for_jan(jan)
+                    .await
+                    .ok()
+                    .flatten();
+                if let Some(title) = amazon_title.as_deref() {
+                    candidates = musicbrainz_api::lookup_cd_candidates_by_title(title)
+                        .await
+                        .unwrap_or_default();
+                }
+            }
             match candidates.len() {
                 0 => {
                     return Response::from_json(&serde_json::json!({
@@ -328,13 +343,17 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
                     }
                 }
                 _ => {
-                    return Response::from_json(&serde_json::json!({
+                    let mut response = serde_json::json!({
                         "code": "musicbrainz_candidates",
                         "error": "MusicBrainzの候補を選択してください",
                         "jan": jan,
                         "candidates": candidates
-                    }))
-                    .map(|response| response.with_status(300));
+                    });
+                    if let Some(amazon_title) = amazon_title {
+                        response["amazon_title"] = serde_json::Value::String(amazon_title);
+                    }
+                    return Response::from_json(&response)
+                        .map(|response| response.with_status(300));
                 }
             }
         };
@@ -359,6 +378,28 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
                 .collect(),
         );
         source = "musicbrainz";
+    }
+
+    if external_lookup {
+        match amazon_api::lookup_amazon_cover_for_jan(jan.as_deref().unwrap_or_default()).await {
+            Ok(Some(cover)) => match amazon_api::persist_cover(&ctx, &cover).await {
+                Ok(file_name) => {
+                    cover_url = Some(file_name);
+                    source = "amazon";
+                }
+                Err(error) => {
+                    worker::console_error!(
+                        "Amazon CD cover storage failed; keeping MusicBrainz metadata: {error}"
+                    );
+                }
+            },
+            Ok(None) => {}
+            Err(error) => {
+                worker::console_error!(
+                    "Amazon CD cover lookup failed; keeping MusicBrainz metadata: {error}"
+                );
+            }
+        }
     }
 
     let Some(title) = title else {

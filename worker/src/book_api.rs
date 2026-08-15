@@ -5,12 +5,8 @@ use crate::{
     amazon_api,
     error::{bad_request, error_response, parse_id, parse_json},
     external_api,
-    wasabi::{WasabiConfig, WasabiStorage},
 };
-use dantalian::{
-    application::error::AppError,
-    ports::object_storage::{ObjectKind, object_key},
-};
+use dantalian::application::error::AppError;
 
 const BOOK_COLUMNS: &str = "id,isbn,isdn,jan,title,publisher,publish_date,cover_url,description,series_id,series_number,media_type,title_transcription,series_title,series_title_transcription,alternative,alternative_transcription,volume,volume_transcription,price,extent,jpno,ndl_url,isdn_region,isdn_class,isdn_type,isdn_rating_gender,isdn_rating_age,isdn_genre_code,isdn_genre_name,isdn_genre_user,isdn_c_code,isdn_author,isdn_shape,isdn_contents,isdn_barcode2,isdn_sample_image_url,isdn_useroption,isdn_external_links,catalog_number,artist,label,disc_count,epub_file_hash,epub_file_name,reading_status,storage_location_id,label_id,created_at,updated_at";
 
@@ -285,26 +281,6 @@ fn decode_cursor(value: &str) -> std::result::Result<i32, Response> {
     Ok(id)
 }
 
-async fn persist_amazon_cover(
-    ctx: &RouteContext<()>,
-    cover: &amazon_api::AmazonCover,
-) -> Result<String> {
-    let config = WasabiConfig::from_env(&ctx.env).await?;
-    let file_name = format!("{}.{}", cover.object_id, cover.extension);
-    let key = object_key(
-        config.prefix.as_deref(),
-        ObjectKind::CoverImage,
-        &cover.object_id,
-        &cover.extension,
-    )
-    .map_err(|error| worker::Error::from(error.to_string()))?;
-    WasabiStorage::new(config)
-        .put_object(&key, &cover.content_type, &cover.bytes)
-        .await
-        .map_err(|error| worker::Error::from(error.to_string()))?;
-    Ok(file_name)
-}
-
 fn has_cover_url(body: &serde_json::Value) -> bool {
     body.get("cover_url")
         .and_then(|value| value.as_str())
@@ -316,6 +292,39 @@ fn set_cover_url(body: &mut serde_json::Value, file_name: String) {
         object.insert(
             "cover_url".to_string(),
             serde_json::Value::String(file_name),
+        );
+    }
+}
+
+fn set_amazon_metadata(
+    body: &mut serde_json::Value,
+    info: &dantalian::amazon::AmazonInfo,
+    metadata_verified: bool,
+) {
+    if !metadata_verified {
+        return;
+    }
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    if let Some(description) = info
+        .description
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        object.insert(
+            "description".to_string(),
+            serde_json::Value::String(description.to_string()),
+        );
+    }
+    if let Some(publish_date) = info
+        .publish_date
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        object.insert(
+            "publish_date".to_string(),
+            serde_json::Value::String(publish_date.to_string()),
         );
     }
 }
@@ -435,27 +444,37 @@ async fn register(
                         .into_iter()
                         .filter_map(|field| body.get(field).and_then(|value| value.as_str()))
                         .collect::<Vec<_>>();
-                    match amazon_api::lookup_amazon_cover(
+                    match amazon_api::lookup_amazon_metadata(
                         identifier.as_deref().unwrap_or_default(),
                         &amazon_search_terms,
                     )
                     .await
                     {
-                        Ok(Some(cover)) => match persist_amazon_cover(&ctx, &cover).await {
-                            Ok(file_name) => {
-                                set_cover_url(&mut body, file_name);
-                                source = "amazon";
+                        Ok(Some(metadata)) => {
+                            let amazon_api::AmazonMetadata {
+                                info,
+                                metadata_verified,
+                                cover,
+                            } = metadata;
+                            set_amazon_metadata(&mut body, &info, metadata_verified);
+                            if let Some(cover) = cover {
+                                match amazon_api::persist_cover(&ctx, &cover).await {
+                                    Ok(file_name) => {
+                                        set_cover_url(&mut body, file_name);
+                                        source = "amazon";
+                                    }
+                                    Err(error) => {
+                                        worker::console_error!(
+                                            "Amazon cover storage failed; keeping NDL metadata: {error}"
+                                        );
+                                    }
+                                }
                             }
-                            Err(error) => {
-                                worker::console_error!(
-                                    "Amazon cover storage failed; keeping NDL metadata: {error}"
-                                );
-                            }
-                        },
+                        }
                         Ok(None) => {}
                         Err(error) => {
                             worker::console_error!(
-                                "Amazon cover lookup failed; keeping NDL metadata: {error}"
+                                "Amazon metadata lookup failed; keeping NDL metadata: {error}"
                             );
                         }
                     }
@@ -1042,10 +1061,30 @@ pub async fn author_order(mut req: Request, ctx: RouteContext<()>) -> Result<Res
 
 #[cfg(test)]
 mod tests {
-    use super::BOOK_MUTABLE_COLUMNS;
-
+    use super::{BOOK_MUTABLE_COLUMNS, set_amazon_metadata};
+    use dantalian::amazon::AmazonInfo;
+    use serde_json::json;
     #[test]
     fn book_field_updates_persist_cover_urls() {
         assert!(BOOK_MUTABLE_COLUMNS.contains(&"cover_url"));
+    }
+
+    #[test]
+    fn amazon_metadata_overrides_ndl_description_and_date() {
+        let mut body = json!({
+            "description": "NDL description",
+            "publish_date": "2020-01-01"
+        });
+        let info = AmazonInfo {
+            description: Some("Amazon description".to_string()),
+            publish_date: Some("2021-02-03".to_string()),
+            ..AmazonInfo::default()
+        };
+        set_amazon_metadata(&mut body, &info, true);
+        assert_eq!(body["description"], "Amazon description");
+        assert_eq!(body["publish_date"], "2021-02-03");
+
+        set_amazon_metadata(&mut body, &info, false);
+        assert_eq!(body["description"], "Amazon description");
     }
 }

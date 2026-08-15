@@ -388,6 +388,18 @@ pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
     }
 }
 
+pub fn amazon_info_matches_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
+    expected_isbn13.is_none_or(|expected| {
+        info.isbn13
+            .as_deref()
+            .is_none_or(|actual| actual == expected)
+    })
+}
+
+pub fn amazon_metadata_is_verified(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
+    expected_isbn13.is_none_or(|_| info.isbn13.is_some())
+}
+
 fn detail_value_after_label<'a>(html: &'a str, label: &str) -> Option<&'a str> {
     let position = html.find(label)? + label.len();
     let tail = &html[position..];
@@ -599,6 +611,7 @@ mod tests {
             <div id="black-curtain-verification"></div>
             <span id="productTitle">Example &amp; Title</span>
             <img id="imgBlkFront" src="https://m.media-amazon.com/images/I/cover.jpg">
+            <div id="bookDescription_feature_div"><span>Amazon description</span></div>
             <ul id="detailBullets_feature_div">
                 <li>発売日 : 2015/1/26</li>
                 <li>ISBN-13 : 978-4569823522</li>
@@ -610,9 +623,25 @@ mod tests {
             info.cover_url.as_deref(),
             Some("https://m.media-amazon.com/images/I/cover.jpg")
         );
+        assert_eq!(info.description.as_deref(), Some("Amazon description"));
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
         assert_eq!(info.isbn13.as_deref(), Some("9784569823522"));
         assert!(needs_black_curtain_eligibility(html));
+    }
+
+    #[test]
+    fn validates_amazon_metadata_against_expected_isbn() {
+        let info = AmazonInfo {
+            isbn13: Some("9784569823522".to_string()),
+            ..AmazonInfo::default()
+        };
+        assert!(amazon_info_matches_isbn(&info, Some("9784569823522")));
+        assert!(!amazon_info_matches_isbn(&info, Some("9784569823521")));
+        assert!(!amazon_metadata_is_verified(
+            &AmazonInfo::default(),
+            Some("9784569823522")
+        ));
+        assert!(amazon_metadata_is_verified(&info, Some("9784569823522")));
     }
 
     #[test]

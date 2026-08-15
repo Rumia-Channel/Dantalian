@@ -215,24 +215,22 @@ async fn lookup_amazon_cover(
     expected_isbn13: Option<&str>,
 ) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let amazon_info = lookup_amazon_info(client, lookup_key).await?;
-    let metadata_verified = expected_isbn13.is_none() || amazon_info.isbn13.is_some();
-    if let Some(expected) = expected_isbn13 {
-        if !amazon_cover_matches_expected_isbn(&amazon_info, expected) {
-            warn!(
-                key = %lookup_key,
-                expected_isbn13 = %expected,
-                actual_isbn13 = ?amazon_info.isbn13,
-                "Amazon ISBN-13 did not match; ignoring product metadata and cover"
-            );
-            return Ok((None, None, None));
-        }
-        if !metadata_verified {
-            warn!(
-                key = %lookup_key,
-                expected_isbn13 = %expected,
-                "Amazon detail has no ISBN-13; keeping cover but ignoring product metadata"
-            );
-        }
+    let metadata_verified = amazon::amazon_metadata_is_verified(&amazon_info, expected_isbn13);
+    if !amazon::amazon_info_matches_isbn(&amazon_info, expected_isbn13) {
+        warn!(
+            key = %lookup_key,
+            expected_isbn13 = ?expected_isbn13,
+            actual_isbn13 = ?amazon_info.isbn13,
+            "Amazon ISBN-13 did not match; ignoring product metadata and cover"
+        );
+        return Ok((None, None, None));
+    }
+    if expected_isbn13.is_some() && !metadata_verified {
+        warn!(
+            key = %lookup_key,
+            expected_isbn13 = ?expected_isbn13,
+            "Amazon detail has no ISBN-13; keeping cover but ignoring product metadata"
+        );
     }
     let description = metadata_verified
         .then(|| amazon_info.description.clone())
@@ -328,10 +326,9 @@ fn amazon_isbn13_matches(info: &AmazonInfo, expected: &str) -> bool {
     info.isbn13.as_deref() == Some(expected)
 }
 
+#[cfg(test)]
 fn amazon_cover_matches_expected_isbn(info: &AmazonInfo, expected: &str) -> bool {
-    info.isbn13
-        .as_deref()
-        .is_none_or(|actual| actual == expected)
+    amazon::amazon_info_matches_isbn(info, Some(expected))
 }
 
 #[cfg(test)]

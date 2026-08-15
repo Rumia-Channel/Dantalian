@@ -1,17 +1,22 @@
-#[cfg(test)]
-use dantalian::amazon::amazon_search_url as shared_amazon_search_url;
 use dantalian::amazon::{
-    amazon_detail_url, amazon_isbn_detail_url, amazon_search_urls, black_curtain_eligibility_url,
-    image_content_type as shared_image_content_type, is_allowed_amazon_url,
-    needs_black_curtain_eligibility, parse_amazon_image_url,
+    AmazonInfo, amazon_detail_url, amazon_info_matches_isbn, amazon_isbn_detail_url,
+    amazon_metadata_is_verified, amazon_search_urls, black_curtain_eligibility_url,
+    image_content_type as shared_image_content_type, is_allowed_amazon_url, isbn_lookup_variants,
+    needs_black_curtain_eligibility, parse_amazon_detail,
     parse_amazon_search_result as shared_parse_amazon_search_result,
 };
+#[cfg(test)]
+use dantalian::amazon::{amazon_search_url as shared_amazon_search_url, parse_amazon_image_url};
 use sha2::{Digest, Sha256};
 #[cfg(test)]
 use url::Url;
-use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
+use worker::{Fetch, Headers, Method, Request, RequestInit, Result, RouteContext};
 
-use crate::external_api::fetch_with_timeout;
+use crate::{
+    external_api::fetch_with_timeout,
+    wasabi::{WasabiConfig, WasabiStorage},
+};
+use dantalian::ports::object_storage::{ObjectKind, object_key};
 
 const AMAZON_MAX_COVER_BYTES: usize = 10 * 1024 * 1024;
 const AMAZON_USER_AGENT: &str =
@@ -28,6 +33,7 @@ fn amazon_request(url: &str) -> Result<Request> {
     let headers = Headers::new();
     headers.set("User-Agent", AMAZON_USER_AGENT)?;
     headers.set("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")?;
+
     headers.set(
         "Accept",
         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -36,6 +42,12 @@ fn amazon_request(url: &str) -> Result<Request> {
     let mut init = RequestInit::new();
     init.with_method(Method::Get).with_headers(headers);
     Request::new_with_init(url, &init)
+}
+
+pub(crate) struct AmazonMetadata {
+    pub(crate) info: AmazonInfo,
+    pub(crate) metadata_verified: bool,
+    pub(crate) cover: Option<AmazonCover>,
 }
 
 fn parse_amazon_search_result(html: &str) -> Option<String> {
@@ -54,10 +66,6 @@ fn amazon_detail_url_for_request(href: &str) -> Option<String> {
 
 fn image_content_type(value: &str) -> Option<(&'static str, &'static str)> {
     shared_image_content_type(value)
-}
-
-fn image_url_from_detail(html: &str) -> Option<String> {
-    parse_amazon_image_url(html).filter(|url| is_allowed_amazon_url(url))
 }
 
 async fn fetch_detail_html(detail_url: &str) -> Result<Option<String>> {
@@ -90,16 +98,12 @@ async fn fetch_detail_html(detail_url: &str) -> Result<Option<String>> {
     Ok(Some(retry_response.text().await?))
 }
 
-pub(crate) async fn lookup_amazon_cover(
-    isbn: &str,
-    search_terms: &[&str],
-) -> Result<Option<AmazonCover>> {
-    let mut keys = Vec::with_capacity(search_terms.len() + 1);
-    keys.push(isbn);
-    keys.extend(search_terms.iter().copied());
-
+async fn lookup_amazon_info(
+    search_keys: &[&str],
+    fallback_isbn: Option<&str>,
+) -> Result<Option<AmazonInfo>> {
     let mut href = None;
-    for search_url in amazon_search_urls(&keys) {
+    for search_url in amazon_search_urls(search_keys) {
         let Ok(mut search_response) = fetch_with_timeout(
             Fetch::Request(amazon_request(&search_url)?),
             "Amazon search",
@@ -122,23 +126,22 @@ pub(crate) async fn lookup_amazon_cover(
     let detail_url = href
         .as_deref()
         .and_then(amazon_detail_url_for_request)
-        .or_else(|| amazon_isbn_detail_url(isbn));
+        .or_else(|| fallback_isbn.and_then(amazon_isbn_detail_url));
     let Some(detail_url) = detail_url else {
         return Ok(None);
     };
     let Some(detail_html) = fetch_detail_html(&detail_url).await? else {
-        worker::console_error!("Amazon detail request returned a non-success status");
         return Ok(None);
     };
-    let Some(image_url) = image_url_from_detail(&detail_html) else {
-        worker::console_error!(
-            "Amazon detail returned no supported cover image (response bytes: {})",
-            detail_html.len()
-        );
+    Ok(Some(parse_amazon_detail(&detail_html)))
+}
+
+async fn fetch_cover(url: &str) -> Result<Option<AmazonCover>> {
+    if !is_allowed_amazon_url(url) {
         return Ok(None);
-    };
+    }
     let mut image_response =
-        fetch_with_timeout(Fetch::Request(amazon_request(&image_url)?), "Amazon cover").await?;
+        fetch_with_timeout(Fetch::Request(amazon_request(url)?), "Amazon cover").await?;
     if !(200..300).contains(&image_response.status_code()) {
         return Ok(None);
     }
@@ -169,6 +172,70 @@ pub(crate) async fn lookup_amazon_cover(
         content_type: content_type.to_string(),
         bytes,
     }))
+}
+
+pub(crate) async fn lookup_amazon_metadata(
+    isbn: &str,
+    search_terms: &[&str],
+) -> Result<Option<AmazonMetadata>> {
+    let mut keys = Vec::with_capacity(search_terms.len() + 1);
+    keys.push(isbn);
+    keys.extend(search_terms.iter().copied());
+    let Some(info) = lookup_amazon_info(&keys, Some(isbn)).await? else {
+        return Ok(None);
+    };
+    let variants = isbn_lookup_variants(isbn);
+    let expected_isbn13 = variants
+        .iter()
+        .find(|variant| variant.len() == 13)
+        .map(String::as_str);
+    if !amazon_info_matches_isbn(&info, expected_isbn13) {
+        return Ok(None);
+    }
+    let metadata_verified = amazon_metadata_is_verified(&info, expected_isbn13);
+    let cover = match info.cover_url.as_deref() {
+        Some(url) => fetch_cover(url).await?,
+        None => None,
+    };
+    Ok(Some(AmazonMetadata {
+        info,
+        metadata_verified,
+        cover,
+    }))
+}
+
+pub(crate) async fn lookup_amazon_title_for_jan(jan: &str) -> Result<Option<String>> {
+    Ok(lookup_amazon_info(&[jan], None)
+        .await?
+        .and_then(|info| info.title)
+        .filter(|title| !title.trim().is_empty()))
+}
+
+pub(crate) async fn lookup_amazon_cover_for_jan(jan: &str) -> Result<Option<AmazonCover>> {
+    let Some(info) = lookup_amazon_info(&[jan], None).await? else {
+        return Ok(None);
+    };
+    match info.cover_url.as_deref() {
+        Some(url) => fetch_cover(url).await,
+        None => Ok(None),
+    }
+}
+
+pub(crate) async fn persist_cover(ctx: &RouteContext<()>, cover: &AmazonCover) -> Result<String> {
+    let config = WasabiConfig::from_env(&ctx.env).await?;
+    let file_name = format!("{}.{}", cover.object_id, cover.extension);
+    let key = object_key(
+        config.prefix.as_deref(),
+        ObjectKind::CoverImage,
+        &cover.object_id,
+        &cover.extension,
+    )
+    .map_err(|error| worker::Error::from(error.to_string()))?;
+    WasabiStorage::new(config)
+        .put_object(&key, &cover.content_type, &cover.bytes)
+        .await
+        .map_err(|error| worker::Error::from(error.to_string()))?;
+    Ok(file_name)
 }
 
 #[cfg(test)]
