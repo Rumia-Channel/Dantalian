@@ -27,7 +27,6 @@ fn main() {
         "static/css/music.css",
         "static/css/playlist.css",
         "static/css/licenses.css",
-        "static/css/auth.css",
     ];
 
     let js_files = [

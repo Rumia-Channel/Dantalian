@@ -1,6 +1,7 @@
 name = "dantalian-worker"
 main = "build/worker/shim.mjs"
 compatibility_date = "2026-08-11"
+workers_dev = false
 
 [assets]
 directory = "public"
@@ -9,6 +10,9 @@ run_worker_first = ["/api/*", "/audio/*", "/images/*", "/epubs/*"]
 
 [build]
 command = "node build_assets.mjs && worker-build --release"
+
+[vars]
+DANTALIAN_AUTH_REQUIRED = "false"
 
 [[d1_databases]]
 binding = "DB"

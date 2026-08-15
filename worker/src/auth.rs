@@ -93,12 +93,12 @@ fn decision(env: &Env, request: &Request) -> Result<AuthDecision> {
         .map(|value| is_true(Some(&value)))
         .unwrap_or(!dev_mode);
 
+    if !required {
+        return Ok(AuthDecision::Allow);
+    }
+
     if token.is_none() {
-        return Ok(if required {
-            AuthDecision::ConfigurationError
-        } else {
-            AuthDecision::Allow
-        });
+        return Ok(AuthDecision::ConfigurationError);
     }
 
     let supplied = request
