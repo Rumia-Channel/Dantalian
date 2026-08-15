@@ -41,10 +41,11 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         return Ok(response);
     }
     Router::new()
-        .get_async("/api/health", |_req, _ctx| async move {
+        .get_async("/api/health", |_req, ctx| async move {
             Response::from_json(&serde_json::json!({
                 "ok": true,
                 "runtime": "cloudflare-worker",
+                "authentication_required": auth::authentication_required(&ctx.env),
             }))
         })
         .get_async("/api/series", series_api::list)

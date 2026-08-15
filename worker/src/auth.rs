@@ -86,12 +86,16 @@ fn requires_auth(path: &str) -> bool {
         || path.starts_with("/epubs/")
 }
 
+pub fn authentication_required(env: &Env) -> bool {
+    let dev_mode = is_true(env_string(env, DEV_VAR).as_deref());
+    env_string(env, REQUIRED_VAR)
+        .map(|value| is_true(Some(&value)))
+        .unwrap_or(!dev_mode)
+}
+
 fn decision(env: &Env, request: &Request) -> Result<AuthDecision> {
     let token = env_string(env, TOKEN_SECRET);
-    let dev_mode = is_true(env_string(env, DEV_VAR).as_deref());
-    let required = env_string(env, REQUIRED_VAR)
-        .map(|value| is_true(Some(&value)))
-        .unwrap_or(!dev_mode);
+    let required = authentication_required(env);
 
     if !required {
         return Ok(AuthDecision::Allow);

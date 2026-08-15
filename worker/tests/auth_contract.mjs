@@ -20,7 +20,13 @@ test("authentication protects API routes while keeping health public", async () 
   }
   const health = await request("/api/health");
   assert.equal(health.status, 200);
-
+  assert.equal(typeof health.body.authentication_required, "boolean");
+  if (process.env.WORKER_EXPECT_AUTH_REQUIRED !== undefined) {
+    assert.equal(
+      health.body.authentication_required,
+      process.env.WORKER_EXPECT_AUTH_REQUIRED === "true",
+    );
+  }
   const missing = await request("/api/series");
   assert.equal(missing.status, 401);
   assert.equal(missing.body.code, "authentication_required");
