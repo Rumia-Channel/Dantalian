@@ -28,10 +28,12 @@ fn amazon_request(url: &Url) -> Result<Request> {
     Request::new_with_init(url.as_str(), &init)
 }
 
-fn amazon_mobile_search_url(isbn: &str, path: &str, query: &str) -> Result<Url> {
+fn amazon_mobile_search_url(value: &str, path: &str, query: &str) -> Result<Url> {
     let mut url = Url::parse(&format!("https://www.amazon.co.jp{path}"))
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    url.query_pairs_mut().append_pair(query, isbn);
+    url.query_pairs_mut()
+        .append_pair(query, value)
+        .append_pair("i", "stripbooks");
     Ok(url)
 }
 
@@ -54,19 +56,28 @@ fn isbn10_for_amazon(isbn: &str) -> Option<String> {
     Some(format!("{body}{check}"))
 }
 
-fn amazon_search_urls(isbn: &str) -> Result<Vec<Url>> {
+fn amazon_search_urls(isbn: &str, search_terms: &[&str]) -> Result<Vec<Url>> {
     let digits: String = isbn.chars().filter(char::is_ascii_digit).collect();
-    let mut keys = Vec::new();
+    let mut keys = search_terms
+        .iter()
+        .map(|term| term.trim())
+        .filter(|term| !term.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
     if digits.len() == 13 && digits.starts_with("978") {
         let legacy = format!("{}{}", &digits[3..12], &digits[12..]);
-        keys.push(legacy);
+        if !keys.contains(&legacy) {
+            keys.push(legacy);
+        }
         if let Some(isbn10) = isbn10_for_amazon(isbn) {
             if !keys.contains(&isbn10) {
                 keys.push(isbn10);
             }
         }
     }
-    keys.push(isbn.to_string());
+    if !keys.contains(&isbn.to_string()) {
+        keys.push(isbn.to_string());
+    }
     let mut urls = Vec::new();
     for key in keys {
         urls.push(amazon_mobile_search_url(&key, "/gp/search/", "keywords")?);
@@ -81,6 +92,9 @@ fn is_physical_product_href(href: &str) -> bool {
         .next()
         .unwrap_or(href)
         .to_ascii_lowercase();
+    if path.starts_with("http") && !path.starts_with("https://www.amazon.co.jp/") {
+        return false;
+    }
     let Some((product_path, _)) = path
         .split_once("/dp/")
         .or_else(|| path.split_once("/gp/aw/d/"))
@@ -307,9 +321,12 @@ fn amazon_detail_url(href: &str) -> Result<Url> {
     }
 }
 
-pub(crate) async fn lookup_amazon_cover(isbn: &str) -> Result<Option<AmazonCover>> {
+pub(crate) async fn lookup_amazon_cover(
+    isbn: &str,
+    search_terms: &[&str],
+) -> Result<Option<AmazonCover>> {
     let mut href = None;
-    for search_url in amazon_search_urls(isbn)? {
+    for search_url in amazon_search_urls(isbn, search_terms)? {
         let Ok(mut search_response) = fetch_with_timeout(
             Fetch::Request(amazon_request(&search_url)?),
             "Amazon search",

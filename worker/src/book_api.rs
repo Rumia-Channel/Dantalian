@@ -431,8 +431,15 @@ async fn register(
             Ok(Some(book)) => {
                 merge_ndl_book(&mut body, &book);
                 if !isdn && !request_cover_supplied {
-                    match amazon_api::lookup_amazon_cover(identifier.as_deref().unwrap_or_default())
-                        .await
+                    let amazon_search_terms = ["title", "alternative"]
+                        .into_iter()
+                        .filter_map(|field| body.get(field).and_then(|value| value.as_str()))
+                        .collect::<Vec<_>>();
+                    match amazon_api::lookup_amazon_cover(
+                        identifier.as_deref().unwrap_or_default(),
+                        &amazon_search_terms,
+                    )
+                    .await
                     {
                         Ok(Some(cover)) => match persist_amazon_cover(&ctx, &cover).await {
                             Ok(file_name) => {
