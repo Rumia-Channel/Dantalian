@@ -19,8 +19,9 @@ test("ISBN registration stores the Amazon physical-book cover", async () => {
     headers: { authorization: `Bearer ${apiToken}` },
     signal: AbortSignal.timeout(30_000),
   });
-  assert.equal(existing.status, 200, await existing.text());
-  const existingPage = await existing.json();
+  const existingText = await existing.text();
+  assert.equal(existing.status, 200, existingText);
+  const existingPage = JSON.parse(existingText);
   const cached = existingPage.items?.find((book) => book.isbn === isbn);
   if (cached) {
     const cleanup = await fetch(`${baseUrl}/api/books/${cached.id}`, {
