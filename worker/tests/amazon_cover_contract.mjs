@@ -32,13 +32,24 @@ test("ISBN registration stores the Amazon physical-book cover", async () => {
     assert.equal(cleanup.status, 204, await cleanup.text());
   }
 
-  const response = await fetch(`${baseUrl}/api/books`, {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify({ isbn }),
-    signal: AbortSignal.timeout(90_000),
-  });
-  const body = await response.json();
+  let response;
+  let body;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    response = await fetch(`${baseUrl}/api/books`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ isbn }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    body = await response.json();
+    if (
+      response.status !== 502 ||
+      !String(body.error ?? "").includes("NDL request timed out")
+    ) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
   const bookId = body.book?.id;
 
   try {
