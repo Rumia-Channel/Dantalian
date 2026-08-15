@@ -122,20 +122,47 @@ fn href_marker(html: &str, cursor: usize) -> Option<(usize, char)> {
     }
 }
 
-fn first_physical_product_href(html: &str) -> Option<String> {
+fn is_nonphysical_product_anchor(html: &str, href_start: usize) -> bool {
+    let anchor = &html[href_start..];
+    let anchor = anchor
+        .split_once("</a>")
+        .map(|(anchor, _)| anchor)
+        .unwrap_or(anchor)
+        .to_ascii_lowercase();
+    [
+        "kindle",
+        "audible",
+        "ebook",
+        "e-book",
+        "digital",
+        "電子書籍",
+        "オーディオブック",
+    ]
+    .into_iter()
+    .any(|marker| anchor.contains(marker))
+}
+
+fn product_hrefs(html: &str) -> Vec<String> {
+    let mut hrefs = Vec::new();
     let mut cursor = 0;
     while let Some((start, quote)) = href_marker(html, cursor) {
         let value_start = start + 6;
-        let end = html[value_start..]
+        let Some(end) = html[value_start..]
             .find(quote)
-            .map(|offset| value_start + offset)?;
+            .map(|offset| value_start + offset)
+        else {
+            break;
+        };
         let href = &html[value_start..end];
-        if is_physical_product_href(href) {
-            return Some(href.replace("&amp;", "&"));
+        if is_physical_product_href(href) && !is_nonphysical_product_anchor(html, start) {
+            let href = href.replace("&amp;", "&");
+            if !hrefs.iter().any(|value| value == &href) {
+                hrefs.push(href);
+            }
         }
         cursor = end + 1;
     }
-    None
+    hrefs
 }
 
 pub fn is_physical_product_href(href: &str) -> bool {
@@ -175,7 +202,8 @@ fn search_card_marker(html: &str, cursor: usize) -> Option<(usize, usize)> {
         .min_by_key(|(position, _)| *position)
 }
 
-pub fn parse_amazon_search_result(html: &str) -> Option<String> {
+pub fn parse_amazon_search_results(html: &str) -> Vec<String> {
+    let mut results = Vec::new();
     let mut cursor = 0;
     let mut found_marker = false;
     while let Some((start, marker_len)) = search_card_marker(html, cursor) {
@@ -183,16 +211,21 @@ pub fn parse_amazon_search_result(html: &str) -> Option<String> {
         let next_start = search_card_marker(html, start + marker_len)
             .map(|(next, _)| next)
             .unwrap_or(html.len());
-        let card = &html[start..next_start];
-        if let Some(href) = first_physical_product_href(card) {
-            return Some(href);
+        for href in product_hrefs(&html[start..next_start]) {
+            if !results.iter().any(|value| value == &href) {
+                results.push(href);
+            }
         }
         cursor = start + marker_len;
     }
     if !found_marker {
-        return first_physical_product_href(html);
+        results.extend(product_hrefs(html));
     }
-    None
+    results
+}
+
+pub fn parse_amazon_search_result(html: &str) -> Option<String> {
+    parse_amazon_search_results(html).into_iter().next()
 }
 
 fn tag_with_id<'a>(html: &'a str, id: &str) -> Option<&'a str> {
@@ -396,6 +429,10 @@ pub fn amazon_info_matches_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>
     })
 }
 
+pub fn amazon_info_has_expected_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
+    expected_isbn13.is_none_or(|expected| info.isbn13.as_deref() == Some(expected))
+}
+
 pub fn amazon_metadata_is_verified(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
     expected_isbn13.is_none_or(|_| info.isbn13.is_some())
 }
@@ -590,6 +627,17 @@ mod tests {
     }
 
     #[test]
+    fn skips_untyped_kindle_link_for_physical_book() {
+        let html = r#"
+            <div data-component-type="s-search-result">
+                <a href="/dp/B0FX7VSWLJ">Kindle (Digital)</a>
+                <a href="/dp/4041164699">Hardcover</a>
+            </div>
+        "#;
+        assert_eq!(parse_amazon_search_results(html), vec!["/dp/4041164699"]);
+    }
+
+    #[test]
     fn canonicalizes_dp_detail_to_mobile_detail() {
         assert_eq!(
             amazon_detail_url("/secret-hardcover/dp/4041164699/ref=sr_1_1").as_deref(),
@@ -623,6 +671,10 @@ mod tests {
             info.cover_url.as_deref(),
             Some("https://m.media-amazon.com/images/I/cover.jpg")
         );
+        assert!(!amazon_info_has_expected_isbn(
+            &AmazonInfo::default(),
+            Some("9784569823522")
+        ));
         assert_eq!(info.description.as_deref(), Some("Amazon description"));
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
         assert_eq!(info.isbn13.as_deref(), Some("9784569823522"));

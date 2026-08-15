@@ -131,47 +131,23 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     Ok(filename)
 }
 
-fn amazon_search_url(lookup_key: &str) -> String {
-    amazon::amazon_search_url(lookup_key).unwrap_or_default()
+fn empty_amazon_info() -> AmazonInfo {
+    AmazonInfo {
+        title: None,
+        cover_url: None,
+        description: None,
+        publish_date: None,
+        isbn13: None,
+    }
 }
 
-async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonInfo, String> {
-    let search_url = amazon_search_url(lookup_key);
-    debug!(key = %lookup_key, "Amazon search: {}", search_url);
-    let search_body = amazon_request(client, &search_url)
-        .send()
-        .await
-        .map_err(|e| format!("Amazon request failed: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Amazon read failed: {}", e))?;
-
-    let product_url = tokio::task::spawn_blocking({
-        let body = search_body;
-        move || parse_amazon_search_result(&body)
-    })
-    .await
-    .map_err(|e| format!("Amazon search parse panicked: {}", e))?
-    .ok()
-    .flatten();
-
-    let detail_url = product_url
-        .as_deref()
-        .and_then(amazon::amazon_detail_url)
-        .or_else(|| amazon::amazon_isbn_detail_url(lookup_key));
-    let Some(detail_url) = detail_url else {
-        warn!(key = %lookup_key, "No product link found in Amazon search results");
-        return Ok(AmazonInfo {
-            title: None,
-            cover_url: None,
-            description: None,
-            publish_date: None,
-            isbn13: None,
-        });
-    };
+async fn fetch_amazon_detail_info(
+    client: &Client,
+    lookup_key: &str,
+    detail_url: &str,
+) -> Result<AmazonInfo, String> {
     debug!(key = %lookup_key, "Amazon detail: {}", detail_url);
-
-    let detail_body = amazon_request(client, &detail_url)
+    let detail_body = amazon_request(client, detail_url)
         .send()
         .await
         .map_err(|e| format!("Amazon detail request failed: {}", e))?
@@ -181,7 +157,7 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
 
     let detail_body = if amazon::needs_black_curtain_eligibility(&detail_body) {
         debug!(key = %lookup_key, "Amazon black-curtain detected, confirming age eligibility");
-        let eligibility_url = amazon::black_curtain_eligibility_url(&detail_url);
+        let eligibility_url = amazon::black_curtain_eligibility_url(detail_url);
         amazon_request(client, &eligibility_url)
             .send()
             .await
@@ -190,7 +166,7 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
             .await
             .map_err(|e| format!("Amazon age eligibility read failed: {}", e))?;
 
-        amazon_request(client, &detail_url)
+        amazon_request(client, detail_url)
             .send()
             .await
             .map_err(|e| format!("Amazon detail retry failed: {}", e))?
@@ -201,11 +177,70 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
         detail_body
     };
 
-    let amazon_info = tokio::task::spawn_blocking(move || parse_amazon_detail(&detail_body))
+    tokio::task::spawn_blocking(move || parse_amazon_detail(&detail_body))
         .await
-        .map_err(|e| format!("Amazon detail parse panicked: {}", e))?;
+        .map_err(|e| format!("Amazon detail parse panicked: {}", e))
+}
 
-    Ok(amazon_info)
+async fn lookup_amazon_info(
+    client: &Client,
+    lookup_key: &str,
+    expected_isbn13: Option<&str>,
+) -> Result<AmazonInfo, String> {
+    let mut saw_product = false;
+    for search_url in amazon::amazon_search_urls(&[lookup_key]) {
+        debug!(key = %lookup_key, "Amazon search: {}", search_url);
+        let search_body = amazon_request(client, &search_url)
+            .send()
+            .await
+            .map_err(|e| format!("Amazon request failed: {}", e))?
+            .text()
+            .await
+            .map_err(|e| format!("Amazon read failed: {}", e))?;
+
+        let product_urls = tokio::task::spawn_blocking({
+            let body = search_body;
+            move || amazon::parse_amazon_search_results(&body)
+        })
+        .await
+        .map_err(|e| format!("Amazon search parse panicked: {}", e))?;
+
+        for product_url in product_urls {
+            let Some(detail_url) = amazon::amazon_detail_url(&product_url) else {
+                continue;
+            };
+            saw_product = true;
+            let info = match fetch_amazon_detail_info(client, lookup_key, &detail_url).await {
+                Ok(info) => info,
+                Err(error) => {
+                    warn!(key = %lookup_key, "Amazon detail lookup failed: {}", error);
+                    continue;
+                }
+            };
+            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
+                return Ok(info);
+            }
+            debug!(
+                key = %lookup_key,
+                expected_isbn13 = ?expected_isbn13,
+                actual_isbn13 = ?info.isbn13,
+                "Skipping Amazon product without the requested ISBN-13"
+            );
+        }
+    }
+
+    if let Some(detail_url) = amazon::amazon_isbn_detail_url(lookup_key) {
+        if let Ok(info) = fetch_amazon_detail_info(client, lookup_key, &detail_url).await {
+            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
+                return Ok(info);
+            }
+        }
+    }
+
+    if !saw_product {
+        warn!(key = %lookup_key, "No product link found in Amazon search results");
+    }
+    Ok(empty_amazon_info())
 }
 
 async fn lookup_amazon_cover(
@@ -214,7 +249,7 @@ async fn lookup_amazon_cover(
     images_dir: &str,
     expected_isbn13: Option<&str>,
 ) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let amazon_info = lookup_amazon_info(client, lookup_key).await?;
+    let amazon_info = lookup_amazon_info(client, lookup_key, expected_isbn13).await?;
     let metadata_verified = amazon::amazon_metadata_is_verified(&amazon_info, expected_isbn13);
     if !amazon::amazon_info_matches_isbn(&amazon_info, expected_isbn13) {
         warn!(
@@ -306,13 +341,18 @@ pub async fn lookup_amazon_cover_for_jan(
 }
 
 pub async fn lookup_amazon_title_for_jan(client: &Client, jan: &str) -> Option<String> {
-    lookup_amazon_info(client, jan)
+    lookup_amazon_info(client, jan, None)
         .await
         .ok()
         .and_then(|info| info.title)
         .filter(|title| !title.trim().is_empty())
 }
 
+#[cfg(test)]
+fn amazon_search_url(lookup_key: &str) -> String {
+    amazon::amazon_search_url(lookup_key).unwrap_or_default()
+}
+#[cfg(test)]
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
     Ok(amazon::parse_amazon_search_result(html))
 }
@@ -439,9 +479,10 @@ mod tests {
     #[ignore = "requires live NDL and Amazon access"]
     async fn lookup_isbn_uses_amazon_release_date() {
         let client = reqwest::Client::builder().build().expect("HTTP client");
-        let amazon_info = super::lookup_amazon_info(&client, "9784569823522")
-            .await
-            .expect("Amazon lookup should succeed");
+        let amazon_info =
+            super::lookup_amazon_info(&client, "9784569823522", Some("9784569823522"))
+                .await
+                .expect("Amazon lookup should succeed");
         assert_eq!(amazon_info.isbn13.as_deref(), Some("9784569823522"));
         assert!(super::amazon_isbn13_matches(&amazon_info, "9784569823522"));
 

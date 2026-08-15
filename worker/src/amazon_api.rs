@@ -1,12 +1,15 @@
 use dantalian::amazon::{
-    AmazonInfo, amazon_detail_url, amazon_info_matches_isbn, amazon_isbn_detail_url,
-    amazon_metadata_is_verified, amazon_search_urls, black_curtain_eligibility_url,
-    image_content_type as shared_image_content_type, is_allowed_amazon_url, isbn_lookup_variants,
-    needs_black_curtain_eligibility, parse_amazon_detail,
-    parse_amazon_search_result as shared_parse_amazon_search_result,
+    AmazonInfo, amazon_detail_url, amazon_info_has_expected_isbn, amazon_info_matches_isbn,
+    amazon_isbn_detail_url, amazon_metadata_is_verified, amazon_search_urls,
+    black_curtain_eligibility_url, image_content_type as shared_image_content_type,
+    is_allowed_amazon_url, isbn_lookup_variants, needs_black_curtain_eligibility,
+    parse_amazon_detail, parse_amazon_search_results as shared_parse_amazon_search_results,
 };
 #[cfg(test)]
-use dantalian::amazon::{amazon_search_url as shared_amazon_search_url, parse_amazon_image_url};
+use dantalian::amazon::{
+    amazon_search_url as shared_amazon_search_url, parse_amazon_image_url,
+    parse_amazon_search_result as shared_parse_amazon_search_result,
+};
 use sha2::{Digest, Sha256};
 #[cfg(test)]
 use url::Url;
@@ -50,8 +53,13 @@ pub(crate) struct AmazonMetadata {
     pub(crate) cover: Option<AmazonCover>,
 }
 
+#[cfg(test)]
 fn parse_amazon_search_result(html: &str) -> Option<String> {
     shared_parse_amazon_search_result(html)
+}
+
+fn parse_amazon_search_results(html: &str) -> Vec<String> {
+    shared_parse_amazon_search_results(html)
 }
 
 #[cfg(test)]
@@ -102,7 +110,11 @@ async fn lookup_amazon_info(
     search_keys: &[&str],
     fallback_isbn: Option<&str>,
 ) -> Result<Option<AmazonInfo>> {
-    let mut href = None;
+    let expected_isbn13 = fallback_isbn.and_then(|isbn| {
+        isbn_lookup_variants(isbn)
+            .into_iter()
+            .find(|variant| variant.len() == 13)
+    });
     for search_url in amazon_search_urls(search_keys) {
         let Ok(mut search_response) = fetch_with_timeout(
             Fetch::Request(amazon_request(&search_url)?),
@@ -118,22 +130,36 @@ async fn lookup_amazon_info(
         let Ok(search_html) = search_response.text().await else {
             continue;
         };
-        if let Some(found) = parse_amazon_search_result(&search_html) {
-            href = Some(found);
-            break;
+        for href in parse_amazon_search_results(&search_html) {
+            let Some(detail_url) = amazon_detail_url_for_request(&href) else {
+                continue;
+            };
+            let detail_html = match fetch_detail_html(&detail_url).await {
+                Ok(Some(detail_html)) => detail_html,
+                Ok(None) => continue,
+                Err(error) => {
+                    worker::console_error!("Amazon detail lookup failed: {error}");
+                    continue;
+                }
+            };
+            let info = parse_amazon_detail(&detail_html);
+            if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()) {
+                return Ok(Some(info));
+            }
         }
     }
-    let detail_url = href
-        .as_deref()
-        .and_then(amazon_detail_url_for_request)
-        .or_else(|| fallback_isbn.and_then(amazon_isbn_detail_url));
-    let Some(detail_url) = detail_url else {
+
+    let Some(fallback_isbn) = fallback_isbn else {
+        return Ok(None);
+    };
+    let Some(detail_url) = amazon_isbn_detail_url(fallback_isbn) else {
         return Ok(None);
     };
     let Some(detail_html) = fetch_detail_html(&detail_url).await? else {
         return Ok(None);
     };
-    Ok(Some(parse_amazon_detail(&detail_html)))
+    let info = parse_amazon_detail(&detail_html);
+    Ok(amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()).then_some(info))
 }
 
 async fn fetch_cover(url: &str) -> Result<Option<AmazonCover>> {
@@ -242,7 +268,7 @@ pub(crate) async fn persist_cover(ctx: &RouteContext<()>, cover: &AmazonCover) -
 mod tests {
     use super::{
         amazon_detail_url_for_request, amazon_search_url, image_content_type,
-        parse_amazon_image_url, parse_amazon_search_result,
+        parse_amazon_image_url, parse_amazon_search_result, parse_amazon_search_results,
     };
 
     #[test]
@@ -265,6 +291,17 @@ mod tests {
             parse_amazon_search_result(html).as_deref(),
             Some("/secret-hardcover/dp/4041164693")
         );
+    }
+
+    #[test]
+    fn skips_untyped_kindle_link_for_physical_book() {
+        let html = r#"
+            <div data-component-type="s-search-result">
+                <a href="/dp/B0FX7VSWLJ">Kindle (Digital)</a>
+                <a href="/dp/4041164699">Hardcover</a>
+            </div>
+        "#;
+        assert_eq!(parse_amazon_search_results(html), vec!["/dp/4041164699"]);
     }
 
     #[test]
