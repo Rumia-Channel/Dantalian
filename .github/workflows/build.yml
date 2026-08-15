@@ -9,7 +9,7 @@ jobs:
   native:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
@@ -46,7 +46,7 @@ jobs:
       WORKER_API_TOKEN: dantalian-ci-test-token
       WORKER_PROCESSOR_TOKEN: dantalian-ci-processor-token
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
@@ -60,7 +60,7 @@ jobs:
       - name: Build Worker
         run: worker-build --release
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Install Node and Wrangler dependencies
@@ -167,14 +167,14 @@ jobs:
       WASABI_BUCKET_SECRET_NAME: ${{ secrets.WASABI_BUCKET_SECRET_NAME }}
       DANTALIAN_STAGING_API_TOKEN: ${{ secrets.DANTALIAN_STAGING_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Rust
         run: |
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add wasm32-unknown-unknown
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -287,7 +287,7 @@ jobs:
       WASABI_REGION_SECRET_NAME: ${{ secrets.WASABI_REGION_SECRET_NAME }}
       WASABI_BUCKET_SECRET_NAME: ${{ secrets.WASABI_BUCKET_SECRET_NAME }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Verify release tag is based on master
@@ -300,7 +300,7 @@ jobs:
           rustup default 1.96.0
           rustup target add wasm32-unknown-unknown
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
