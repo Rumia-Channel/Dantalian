@@ -15,6 +15,22 @@ const authHeaders = {
 };
 
 test("ISBN registration stores the Amazon physical-book cover", async () => {
+  const existing = await fetch(`${baseUrl}/api/books?limit=100`, {
+    headers: { authorization: `Bearer ${apiToken}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert.equal(existing.status, 200, await existing.text());
+  const existingPage = await existing.json();
+  const cached = existingPage.items?.find((book) => book.isbn === isbn);
+  if (cached) {
+    const cleanup = await fetch(`${baseUrl}/api/books/${cached.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${apiToken}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+    assert.equal(cleanup.status, 204, await cleanup.text());
+  }
+
   const response = await fetch(`${baseUrl}/api/books`, {
     method: "POST",
     headers: authHeaders,
@@ -22,16 +38,19 @@ test("ISBN registration stores the Amazon physical-book cover", async () => {
     signal: AbortSignal.timeout(90_000),
   });
   const body = await response.json();
-
-  assert.equal(response.status, 201, JSON.stringify(body));
-  assert.equal(body.source, "amazon", JSON.stringify(body));
-  assert.equal(body.book?.isbn, isbn, JSON.stringify(body));
-  assert.match(body.book?.cover_url ?? "", /\.[a-z0-9]+$/i, JSON.stringify(body));
-
   const bookId = body.book?.id;
-  assert.ok(Number.isInteger(bookId) && bookId > 0, JSON.stringify(body));
 
   try {
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(body.source, "amazon", JSON.stringify(body));
+    assert.equal(body.book?.isbn, isbn, JSON.stringify(body));
+    assert.match(
+      body.book?.cover_url ?? "",
+      /\.[a-z0-9]+$/i,
+      JSON.stringify(body),
+    );
+    assert.ok(Number.isInteger(bookId) && bookId > 0, JSON.stringify(body));
+
     const coverResponse = await fetch(`${baseUrl}/api/books/${bookId}/cover`, {
       headers: { authorization: `Bearer ${apiToken}` },
       signal: AbortSignal.timeout(30_000),
@@ -43,11 +62,20 @@ test("ISBN registration stores the Amazon physical-book cover", async () => {
     );
     assert.ok(Number(coverResponse.headers.get("content-length") ?? 0) > 0);
   } finally {
-    const cleanup = await fetch(`${baseUrl}/api/books/${bookId}`, {
-      method: "DELETE",
-      headers: { authorization: `Bearer ${apiToken}` },
-      signal: AbortSignal.timeout(30_000),
-    });
-    assert.equal(cleanup.status, 204, await cleanup.text());
+    if (Number.isInteger(bookId) && bookId > 0) {
+      const coverCleanup = await fetch(`${baseUrl}/api/books/${bookId}/cover`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${apiToken}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      assert.ok([204, 404].includes(coverCleanup.status), await coverCleanup.text());
+
+      const cleanup = await fetch(`${baseUrl}/api/books/${bookId}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${apiToken}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      assert.equal(cleanup.status, 204, await cleanup.text());
+    }
   }
 });
