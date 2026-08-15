@@ -16,9 +16,10 @@ isdnForm.addEventListener("submit", async (e) => {
     if (!isdn) return;
 
     isdnBtn.disabled = true;
-    isdnStatus.textContent = "検索中...";
-    isdnStatus.className = "";
-
+    const stopProgress = startRegisterProgress(
+        isdnStatus,
+        "ISDN検索 → メタデータ解析 → 保存",
+    );
     try {
         const res = await fetch("/api/books/isdn", {
             method: "POST",
@@ -41,6 +42,7 @@ isdnForm.addEventListener("submit", async (e) => {
         isdnStatus.textContent = "通信エラーが発生しました";
         isdnStatus.className = "error";
     } finally {
+        stopProgress();
         isdnBtn.disabled = false;
     }
 });

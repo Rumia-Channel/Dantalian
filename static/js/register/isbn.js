@@ -16,9 +16,10 @@ registerForm.addEventListener("submit", async (e) => {
     if (!isbn) return;
 
     registerBtn.disabled = true;
-    registerStatus.textContent = "検索中...";
-    registerStatus.className = "";
-
+    const stopProgress = startRegisterProgress(
+        registerStatus,
+        "NDL検索 → Amazonで紙版確認 → 表紙取得 → 保存",
+    );
     try {
         const res = await fetch("/api/books", {
             method: "POST",
@@ -41,6 +42,7 @@ registerForm.addEventListener("submit", async (e) => {
         registerStatus.textContent = "通信エラーが発生しました";
         registerStatus.className = "error";
     } finally {
+        stopProgress();
         registerBtn.disabled = false;
     }
 });

@@ -93,6 +93,31 @@ function escapeJs(text) {
         .replace(/\u2029/g, "\\u2029");
 }
 
+function startRegisterProgress(element, operation) {
+    const startedAt = Date.now();
+    const formatElapsed = () => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        const minutes = Math.floor(elapsedSeconds / 60);
+        const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+        return `${minutes}:${seconds}`;
+    };
+    const render = () => {
+        element.textContent = `処理中: ${operation}（経過 ${formatElapsed()}）`;
+    };
+    element.className = "pending";
+    element.setAttribute("aria-live", "polite");
+    element.setAttribute("aria-atomic", "true");
+    element.setAttribute("aria-busy", "true");
+    render();
+    const timer = window.setInterval(render, 1000);
+
+    return () => {
+        window.clearInterval(timer);
+        element.removeAttribute("aria-busy");
+    };
+}
+
+
 function normalizePublishDateInput(value) {
     const raw = String(value ?? "").trim();
     if (!raw) return "";

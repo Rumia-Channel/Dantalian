@@ -19,9 +19,10 @@ cdForm.addEventListener("submit", async (e) => {
     const parentId = parentBookId ? parseInt(parentBookId.value) || null : null;
 
     cdBtn.disabled = true;
-    cdStatus.textContent = "検索中...";
-    cdStatus.className = "";
-
+    const stopProgress = startRegisterProgress(
+        cdStatus,
+        "Amazon検索 → MusicBrainz照合 → カバー取得 → 保存",
+    );
     try {
         const body = { jan };
         if (parentId) body.parent_book_id = parentId;
@@ -61,6 +62,7 @@ cdForm.addEventListener("submit", async (e) => {
         cdStatus.textContent = "通信エラーが発生しました";
         cdStatus.className = "error";
     } finally {
+        stopProgress();
         cdBtn.disabled = false;
     }
 });

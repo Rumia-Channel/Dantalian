@@ -29,9 +29,10 @@ audiobookForm.addEventListener("submit", async (e) => {
     const parentId = parentBookId ? parseInt(parentBookId.value) || null : null;
 
     audiobookBtn.disabled = true;
-    audiobookStatus.textContent = "検索中...";
-    audiobookStatus.className = "";
-
+    const stopProgress = startRegisterProgress(
+        audiobookStatus,
+        "Amazon/MusicBrainz検索 → 候補照合 → 保存",
+    );
     try {
         const code = jan || isbn;
         const body = { jan: code, media_type: "audiobook" };
@@ -75,6 +76,7 @@ audiobookForm.addEventListener("submit", async (e) => {
         audiobookStatus.textContent = "通信エラーが発生しました";
         audiobookStatus.className = "error";
     } finally {
+        stopProgress();
         audiobookBtn.disabled = false;
     }
 });
