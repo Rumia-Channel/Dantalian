@@ -724,6 +724,7 @@ const BOOK_MUTABLE_COLUMNS: &[&str] = &[
     "publisher",
     "publish_date",
     "description",
+    "cover_url",
     "series_id",
     "series_number",
     "media_type",
@@ -1037,4 +1038,14 @@ pub async fn author_order(mut req: Request, ctx: RouteContext<()>) -> Result<Res
         .await
         .map_err(db_error)?;
     Ok(Response::empty()?.with_status(204))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BOOK_MUTABLE_COLUMNS;
+
+    #[test]
+    fn book_field_updates_persist_cover_urls() {
+        assert!(BOOK_MUTABLE_COLUMNS.contains(&"cover_url"));
+    }
 }
