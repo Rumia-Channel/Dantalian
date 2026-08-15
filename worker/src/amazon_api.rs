@@ -6,7 +6,7 @@ use crate::external_api::fetch_with_timeout;
 
 const AMAZON_MAX_COVER_BYTES: usize = 10 * 1024 * 1024;
 const AMAZON_USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36";
 
 pub(crate) struct AmazonCover {
     pub(crate) object_id: String,
@@ -28,13 +28,51 @@ fn amazon_request(url: &Url) -> Result<Request> {
     Request::new_with_init(url.as_str(), &init)
 }
 
-fn amazon_search_url(isbn: &str) -> Result<Url> {
-    let mut url = Url::parse("https://www.amazon.co.jp/s")
+fn amazon_mobile_search_url(isbn: &str, path: &str, query: &str) -> Result<Url> {
+    let mut url = Url::parse(&format!("https://www.amazon.co.jp{path}"))
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    url.query_pairs_mut()
-        .append_pair("k", isbn)
-        .append_pair("i", "stripbooks");
+    url.query_pairs_mut().append_pair(query, isbn);
     Ok(url)
+}
+
+fn isbn10_for_amazon(isbn: &str) -> Option<String> {
+    let digits: String = isbn.chars().filter(char::is_ascii_digit).collect();
+    if digits.len() != 13 || !digits.starts_with("978") {
+        return None;
+    }
+    let body = &digits[3..12];
+    let sum: u32 = body
+        .chars()
+        .enumerate()
+        .map(|(index, digit)| (10 - index as u32) * digit.to_digit(10).unwrap_or(0))
+        .sum();
+    let check = match 11 - (sum % 11) {
+        10 => 'X',
+        11 => '0',
+        value => char::from_digit(value, 10)?,
+    };
+    Some(format!("{body}{check}"))
+}
+
+fn amazon_search_urls(isbn: &str) -> Result<Vec<Url>> {
+    let digits: String = isbn.chars().filter(char::is_ascii_digit).collect();
+    let mut keys = Vec::new();
+    if digits.len() == 13 && digits.starts_with("978") {
+        let legacy = format!("{}{}", &digits[3..12], &digits[12..]);
+        keys.push(legacy);
+        if let Some(isbn10) = isbn10_for_amazon(isbn) {
+            if !keys.contains(&isbn10) {
+                keys.push(isbn10);
+            }
+        }
+    }
+    keys.push(isbn.to_string());
+    let mut urls = Vec::new();
+    for key in keys {
+        urls.push(amazon_mobile_search_url(&key, "/gp/search/", "keywords")?);
+        urls.push(amazon_mobile_search_url(&key, "/gp/aw/s", "k")?);
+    }
+    Ok(urls)
 }
 
 fn is_physical_product_href(href: &str) -> bool {
@@ -43,7 +81,10 @@ fn is_physical_product_href(href: &str) -> bool {
         .next()
         .unwrap_or(href)
         .to_ascii_lowercase();
-    let Some((product_path, _)) = path.split_once("/dp/") else {
+    let Some((product_path, _)) = path
+        .split_once("/dp/")
+        .or_else(|| path.split_once("/gp/aw/d/"))
+    else {
         return false;
     };
     !product_path
@@ -119,7 +160,7 @@ fn parse_amazon_search_result(html: &str) -> Option<String> {
         }
         cursor = start + marker_len;
     }
-    None
+    first_physical_product_href(html)
 }
 
 fn tag_with_id<'a>(html: &'a str, id: &str) -> Option<&'a str> {
@@ -171,7 +212,20 @@ fn is_allowed_amazon_host(url: &Url) -> bool {
         || host.ends_with(".ssl-images-amazon.com")
 }
 
+fn extract_json_string(html: &str, marker: &str) -> Option<String> {
+    let start = html.find(marker)? + marker.len();
+    let end = html[start..].find('"').map(|offset| start + offset)?;
+    let value = html[start..end].replace("\\/", "/").replace("\\u0026", "&");
+    (!value.is_empty()).then_some(value)
+}
+
 fn parse_amazon_image_url(html: &str) -> Option<String> {
+    for marker in [r#""landingImageUrl":""#, "landingImageUrl\":\""] {
+        if let Some(url) = valid_amazon_image_url(extract_json_string(html, marker)) {
+            return Some(url);
+        }
+    }
+
     for id in ["landingImage", "imgBlkFront"] {
         let Some(tag) = tag_with_id(html, id) else {
             continue;
@@ -231,26 +285,52 @@ fn image_content_type(value: &str) -> Option<(&str, &str)> {
     }
 }
 
-pub(crate) async fn lookup_amazon_cover(isbn: &str) -> Result<Option<AmazonCover>> {
-    let search_url = amazon_search_url(isbn)?;
-    let mut search_response = fetch_with_timeout(
-        Fetch::Request(amazon_request(&search_url)?),
-        "Amazon search",
-    )
-    .await?;
-    if !(200..300).contains(&search_response.status_code()) {
-        return Ok(None);
+fn amazon_detail_url(href: &str) -> Result<Url> {
+    let absolute = if href.starts_with('/') {
+        format!("https://www.amazon.co.jp{href}")
+    } else {
+        href.to_string()
+    };
+    let parsed =
+        Url::parse(&absolute).map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let path = parsed.path();
+    let asin = path
+        .split("/dp/")
+        .nth(1)
+        .or_else(|| path.split("/gp/aw/d/").nth(1))
+        .and_then(|value| value.split(['/', '?', '#']).next())
+        .filter(|value| !value.is_empty());
+    match asin {
+        Some(asin) => Url::parse(&format!("https://www.amazon.co.jp/gp/aw/d/{asin}"))
+            .map_err(|error| worker::Error::RustError(error.to_string())),
+        None => Ok(parsed),
     }
-    let search_html = search_response.text().await?;
-    let Some(href) = parse_amazon_search_result(&search_html) else {
+}
+
+pub(crate) async fn lookup_amazon_cover(isbn: &str) -> Result<Option<AmazonCover>> {
+    let mut href = None;
+    for search_url in amazon_search_urls(isbn)? {
+        let Ok(mut search_response) = fetch_with_timeout(
+            Fetch::Request(amazon_request(&search_url)?),
+            "Amazon search",
+        )
+        .await
+        else {
+            continue;
+        };
+        if !(200..300).contains(&search_response.status_code()) {
+            continue;
+        }
+        let search_html = search_response.text().await?;
+        if let Some(found) = parse_amazon_search_result(&search_html) {
+            href = Some(found);
+            break;
+        }
+    }
+    let Some(href) = href else {
         return Ok(None);
     };
-    let detail_url = if href.starts_with('/') {
-        Url::parse(&format!("https://www.amazon.co.jp{href}"))
-    } else {
-        Url::parse(&href)
-    }
-    .map_err(|error| worker::Error::RustError(error.to_string()))?;
+    let detail_url = amazon_detail_url(&href)?;
     if !is_allowed_amazon_host(&detail_url) {
         return Ok(None);
     }
@@ -308,14 +388,19 @@ pub(crate) async fn lookup_amazon_cover(isbn: &str) -> Result<Option<AmazonCover
 #[cfg(test)]
 mod tests {
     use super::{
-        amazon_search_url, image_content_type, parse_amazon_image_url, parse_amazon_search_result,
+        amazon_detail_url, image_content_type, isbn10_for_amazon, parse_amazon_image_url,
+        parse_amazon_search_result,
     };
 
     #[test]
-    fn builds_stripbooks_search_url() {
+    fn parses_isbn10_for_amazon_search() {
         assert_eq!(
-            amazon_search_url("9784041164693").unwrap().as_str(),
-            "https://www.amazon.co.jp/s?k=9784041164693&i=stripbooks"
+            isbn10_for_amazon("9784041164693").as_deref(),
+            Some("4041164699")
+        );
+        assert_eq!(
+            isbn10_for_amazon("9780451524935").as_deref(),
+            Some("0451524934")
         );
     }
 
@@ -331,6 +416,24 @@ mod tests {
         assert_eq!(
             parse_amazon_search_result(html).as_deref(),
             Some("/secret-hardcover/dp/4041164693")
+        );
+    }
+
+    #[test]
+    fn selects_mobile_physical_product_link() {
+        let html = r#"
+            <div class="s-result-item">
+                <a href="/gp/aw/d/B0FX7VSWLJ">Hardcover</a>
+            </div>
+        "#;
+
+        assert_eq!(
+            parse_amazon_search_result(html).as_deref(),
+            Some("/gp/aw/d/B0FX7VSWLJ")
+        );
+        assert_eq!(
+            amazon_detail_url("/gp/aw/d/B0FX7VSWLJ").unwrap().as_str(),
+            "https://www.amazon.co.jp/gp/aw/d/B0FX7VSWLJ"
         );
     }
 
@@ -360,6 +463,16 @@ mod tests {
         assert_eq!(
             image_content_type("image/jpeg; charset=binary"),
             Some(("image/jpeg", "jpg"))
+        );
+    }
+
+    #[test]
+    fn extracts_mobile_json_cover_url() {
+        let html = r#"<script>"landingImageUrl":"https:\/\/m.media-amazon.com\/images\/I\/cover.jpg"</script>"#;
+
+        assert_eq!(
+            parse_amazon_image_url(html).as_deref(),
+            Some("https://m.media-amazon.com/images/I/cover.jpg")
         );
     }
 }
