@@ -267,6 +267,16 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
         return;
     }
+    let browserMetadata = null;
+    if (typeof preprocessAudioInBrowser === "function" && typeof isWorkerRuntime === "function") {
+        try {
+            if (await isWorkerRuntime()) {
+                browserMetadata = await preprocessAudioInBrowser(file);
+            }
+        } catch (error) {
+            console.warn("Browser audio preprocessing unavailable:", error);
+        }
+    }
 
     const url = editType === "cd"
         ? `/api/cds/${parentId}/tracks/${trackId}/audio`
@@ -278,10 +288,26 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
             await reloadFn(parentId);
             if (body.file_hash) {
-                await offerToApplyAudioDuration(editType, parentId, trackId, body.file_hash, reloadFn);
+                await offerToApplyAudioDuration(
+                    editType,
+                    parentId,
+                    trackId,
+                    body.file_hash,
+                    reloadFn,
+                    browserMetadata?.duration_seconds,
+                );
             }
             if (body.metadata) {
                 await showExtractedMetadataModal(editType, parentId, trackId, body.metadata, reloadFn);
+            } else if (browserMetadata) {
+                await showExtractedMetadataModal(
+                    editType,
+                    parentId,
+                    trackId,
+                    browserMetadata,
+                    reloadFn,
+                    false,
+                );
             }
             // CD とオーディオブックは同じ cds レコードを更新するため、
             // 音声タグから反映されたアルバム情報もフォームへ再取得して表示する。
@@ -596,8 +622,18 @@ function probeAudioDuration(url) {
     });
 }
 
-async function offerToApplyAudioDuration(editType, parentId, trackId, fileHash, reloadFn) {
-    const secs = await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
+async function offerToApplyAudioDuration(
+    editType,
+    parentId,
+    trackId,
+    fileHash,
+    reloadFn,
+    knownSeconds = null,
+) {
+    const parsedKnownSeconds = Number(knownSeconds);
+    const secs = Number.isFinite(parsedKnownSeconds) && parsedKnownSeconds > 0
+        ? parsedKnownSeconds
+        : await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
     const formatted = secondsToMmSs(secs);
     if (!formatted) return;
     const ok = await showConfirm({
@@ -611,7 +647,14 @@ async function offerToApplyAudioDuration(editType, parentId, trackId, fileHash, 
     await reloadFn(parentId);
 }
 
-async function showExtractedMetadataModal(editType, parentId, trackId, meta, reloadFn) {
+async function showExtractedMetadataModal(
+    editType,
+    parentId,
+    trackId,
+    meta,
+    reloadFn,
+    allowApply = true,
+) {
     if (!meta || typeof meta !== "object") return;
     const fields = [
         ["タイトル", meta.title],
@@ -637,11 +680,11 @@ async function showExtractedMetadataModal(editType, parentId, trackId, meta, rel
     overlay.className = "confirm-overlay";
     overlay.innerHTML = `
         <div class="confirm-box" style="max-width:520px;text-align:left">
-            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">${isCd ? "抽出したメタデータをCD／曲情報へ反映しました" : "抽出したメタデータ"}</div>
+            <div class="confirm-message" style="font-weight:600;margin-bottom:0.6rem">${allowApply && isCd ? "抽出したメタデータをCD／曲情報へ反映しました" : allowApply ? "抽出したメタデータ" : "ブラウザで解析したメタデータ"}</div>
             <table class="edit-meta-table">${rows}</table>
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-skip">閉じる</button>
-                ${isCd || !meta.title ? "" : '<button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">タイトルを反映</button>'}
+                ${allowApply && (!isCd && meta.title) ? '<button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">タイトルを反映</button>' : ""}
             </div>
         </div>
     `;
@@ -655,7 +698,7 @@ async function showExtractedMetadataModal(editType, parentId, trackId, meta, rel
         };
         overlay.querySelector("#meta-modal-skip").addEventListener("click", close);
         const applyBtn = overlay.querySelector("#meta-modal-apply-title");
-        if (applyBtn && meta.title && !isCd) {
+        if (applyBtn && allowApply && meta.title && !isCd) {
             applyBtn.addEventListener("click", async () => {
                 await saveTrackField(parentId, trackId, "title", meta.title, editType);
                 close();

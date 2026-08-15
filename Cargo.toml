@@ -20,6 +20,10 @@ required-features = ["native"]
 name = "dantalian_migrate"
 path = "src/bin/dantalian_migrate.rs"
 required-features = ["native"]
+[[bin]]
+name = "preprocessor"
+path = "src/bin/preprocessor.rs"
+required-features = ["preprocessor-wasm"]
 
 [dependencies]
 aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "default-https-client", "http-1x", "rt-tokio", "rustls"], optional = true }
@@ -49,6 +53,7 @@ tracing = { version = "0", optional = true }
 tracing-subscriber = { version = "0", features = ["env-filter"], optional = true }
 ua_generator = { git = "https://github.com/spider-rs/ua_generator.git", version = "0", optional = true }
 urlencoding = { version = "2", optional = true }
+wasm-bindgen = { version = "0.2.127", optional = true }
 
 [features]
 default = ["native"]
@@ -80,6 +85,9 @@ native = [
     "dep:ua_generator",
     "dep:urlencoding",
 ]
+audio-preprocessor = ["dep:symphonia"]
+preprocessor-wasm = ["audio-preprocessor", "dep:wasm-bindgen"]
+wasm-bindgen = ["dep:wasm-bindgen"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

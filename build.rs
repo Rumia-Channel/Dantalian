@@ -36,6 +36,7 @@ fn main() {
         "static/js/searchable-select.js",
         "static/js/settings.js",
         "static/js/upload.js",
+        "static/js/audio-preprocessor.js",
         "static/js/register/tabs.js",
         "static/js/register/isbn.js",
         "static/js/register/isdn.js",
@@ -65,6 +66,11 @@ fn main() {
         "static/js/app.js",
     ];
 
+    let wasm_files = [
+        "static/wasm/audio_preprocessor.js",
+        "static/wasm/audio_preprocessor_bg.wasm",
+    ];
+
     let font_files = [
         "static/fonts/MaterialIcons-Regular.ttf",
         "static/fonts/MaterialIconsOutlined-Regular.otf",
@@ -85,6 +91,7 @@ fn main() {
         .iter()
         .chain(css_files.iter())
         .chain(js_files.iter())
+        .chain(wasm_files.iter())
         .chain(font_files.iter())
         .chain(image_files.iter())
     {
@@ -96,7 +103,7 @@ fn main() {
     for file in html_files
         .iter()
         .chain(css_files.iter())
-        .chain(js_files.iter())
+        .chain(wasm_files.iter())
         .chain(font_files.iter())
         .chain(image_files.iter())
     {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +9,22 @@ const projectDir = resolve(workerDir, "..");
 const sourceDir = join(projectDir, "static");
 const outputDir = join(workerDir, "public");
 const assetVersionPath = join(workerDir, ".asset-version");
+
+function run(command, args) {
+    return new Promise((resolvePromise, reject) => {
+        const child = spawn(command, args, { cwd: projectDir, stdio: "inherit" });
+        child.once("error", reject);
+        child.once("exit", (code, signal) => {
+            if (code === 0) {
+                resolvePromise();
+                return;
+            }
+            reject(new Error(`${command} exited with ${code ?? signal}`));
+        });
+    });
+}
+
+await run(process.execPath, [join(projectDir, "scripts", "build_audio_preprocessor.mjs")]);
 
 async function filesUnder(directory) {
     const entries = await readdir(directory, { withFileTypes: true });

@@ -9,6 +9,8 @@ pub mod application;
 pub mod audio_codec;
 #[cfg(feature = "native")]
 pub mod audio_encoding;
+#[cfg(feature = "audio-preprocessor")]
+pub mod audio_preprocessor;
 #[cfg(feature = "native")]
 pub mod backup;
 #[cfg(feature = "native")]
