@@ -1,5 +1,5 @@
 use crate::{
-    amazon::{self, AmazonInfo, amazon_info_is_physical_format},
+    amazon::{self, AmazonInfo},
     db::NewBook,
 };
 use base64::Engine;
@@ -138,7 +138,7 @@ fn empty_amazon_info() -> AmazonInfo {
         description: None,
         publish_date: None,
         isbn13: None,
-        physical_format: false,
+        product_format: None,
     }
 }
 
@@ -227,9 +227,7 @@ async fn lookup_amazon_info(
                     continue;
                 }
             };
-            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
-                || amazon_info_is_physical_format(&info)
-            {
+            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
                 return Ok(info);
             }
             debug!(
@@ -244,8 +242,7 @@ async fn lookup_amazon_info(
     if let Some(detail_url) = amazon::amazon_isbn_detail_url(lookup_key) {
         if !attempted_details.iter().any(|url| url == &detail_url)
             && let Ok(info) = fetch_amazon_detail_info(client, lookup_key, &detail_url).await
-            && (amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
-                || amazon_info_is_physical_format(&info))
+            && amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
         {
             return Ok(info);
         }

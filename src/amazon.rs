@@ -1,3 +1,10 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmazonProductFormat {
+    Physical,
+    Kindle,
+    Audible,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AmazonInfo {
     pub title: Option<String>,
@@ -5,18 +12,15 @@ pub struct AmazonInfo {
     pub description: Option<String>,
     pub publish_date: Option<String>,
     pub isbn13: Option<String>,
-    pub physical_format: bool,
+    pub product_format: Option<AmazonProductFormat>,
 }
 
 pub fn isbn10_to_isbn13(isbn10: &str) -> Option<String> {
     let clean = isbn10.trim().replace(['-', ' '], "").to_uppercase();
-    if clean.len() != 10 {
+    if !is_valid_isbn10(&clean) {
         return None;
     }
     let body = &clean[..9];
-    if !body.chars().all(|character| character.is_ascii_digit()) {
-        return None;
-    }
     let mut digits = format!("978{body}");
     let sum: u32 = digits
         .chars()
@@ -32,7 +36,7 @@ pub fn isbn10_to_isbn13(isbn10: &str) -> Option<String> {
 
 pub fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
     let digits: String = isbn13.chars().filter(char::is_ascii_digit).collect();
-    if digits.len() != 13 || !digits.starts_with("978") {
+    if !is_valid_isbn13(&digits) || !digits.starts_with("978") {
         return None;
     }
     let body = &digits[3..12];
@@ -383,7 +387,7 @@ pub fn parse_amazon_image_url(html: &str) -> Option<String> {
     None
 }
 
-fn selected_amazon_format_is_physical(html: &str) -> bool {
+fn selected_amazon_format(html: &str) -> Option<AmazonProductFormat> {
     let mut cursor = 0;
     while let Some(relative_start) = html[cursor..].find("tmm-grid-swatch-") {
         let marker_start = cursor + relative_start;
@@ -409,32 +413,43 @@ fn selected_amazon_format_is_physical(html: &str) -> bool {
                 .map(|offset| opening_end + offset)
                 .unwrap_or(html.len());
             let swatch = html[opening_start..next_marker].to_ascii_lowercase();
-            let physical_id = format_id.as_deref().is_some_and(|id| {
-                matches!(
-                    id,
-                    "HARDCOVER"
-                        | "PAPERBACK"
-                        | "MASS_MARKET"
-                        | "LIBRARY"
-                        | "TEXTBOOK"
-                        | "BOARD_BOOK"
-                        | "COMIC"
-                        | "TANKOBON"
-                )
-            });
-            return physical_id
-                || swatch.contains("ハードカバー")
-                || swatch.contains("ペーパーバック")
-                || swatch.contains("単行本")
-                || swatch.contains("文庫")
-                || swatch.contains("新書")
-                || swatch.contains("コミック")
-                || swatch.contains("hardcover")
-                || swatch.contains("paperback");
+            return match format_id.as_deref() {
+                Some("HARDCOVER") | Some("PAPERBACK") | Some("MASS_MARKET") | Some("LIBRARY")
+                | Some("TEXTBOOK") | Some("BOARD_BOOK") | Some("COMIC") | Some("TANKOBON") => {
+                    Some(AmazonProductFormat::Physical)
+                }
+                Some("KINDLE") | Some("EBOOK") | Some("E_BOOK") | Some("DIGITAL") => {
+                    Some(AmazonProductFormat::Kindle)
+                }
+                Some("AUDIBLE") => Some(AmazonProductFormat::Audible),
+                _ if swatch.contains("ハードカバー")
+                    || swatch.contains("ペーパーバック")
+                    || swatch.contains("単行本")
+                    || swatch.contains("文庫")
+                    || swatch.contains("新書")
+                    || swatch.contains("コミック")
+                    || swatch.contains("hardcover")
+                    || swatch.contains("paperback") =>
+                {
+                    Some(AmazonProductFormat::Physical)
+                }
+                _ if swatch.contains("kindle")
+                    || swatch.contains("ebook")
+                    || swatch.contains("e-book")
+                    || swatch.contains("digital")
+                    || swatch.contains("電子書籍") =>
+                {
+                    Some(AmazonProductFormat::Kindle)
+                }
+                _ if swatch.contains("audible") || swatch.contains("オーディオブック") => {
+                    Some(AmazonProductFormat::Audible)
+                }
+                _ => None,
+            };
         }
         cursor = opening_end;
     }
-    false
+    None
 }
 
 pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
@@ -466,7 +481,7 @@ pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
         .filter(|value| !value.is_empty());
     let isbn13 = parse_amazon_isbn13(html);
     let publish_date = parse_amazon_publish_date(html);
-    let physical_format = selected_amazon_format_is_physical(html);
+    let product_format = selected_amazon_format(html);
 
     AmazonInfo {
         title,
@@ -474,12 +489,8 @@ pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
         description,
         publish_date,
         isbn13,
-        physical_format,
+        product_format,
     }
-}
-
-pub fn amazon_info_is_physical_format(info: &AmazonInfo) -> bool {
-    info.physical_format
 }
 
 pub fn amazon_info_matches_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
@@ -491,7 +502,10 @@ pub fn amazon_info_matches_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>
 }
 
 pub fn amazon_info_has_expected_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
-    expected_isbn13.is_none_or(|expected| info.isbn13.as_deref() == Some(expected))
+    !matches!(
+        info.product_format,
+        Some(AmazonProductFormat::Kindle | AmazonProductFormat::Audible)
+    ) && expected_isbn13.is_none_or(|expected| info.isbn13.as_deref() == Some(expected))
 }
 
 pub fn amazon_metadata_is_verified(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
@@ -501,11 +515,15 @@ pub fn amazon_metadata_is_verified(info: &AmazonInfo, expected_isbn13: Option<&s
 fn detail_value_after_label<'a>(html: &'a str, label: &str) -> Option<&'a str> {
     let position = html.find(label)? + label.len();
     let tail = &html[position..];
-    let end = [tail.find("</li>"), tail.find("</tr>"), tail.find("</div>")]
-        .into_iter()
-        .flatten()
-        .min()
-        .unwrap_or(tail.len());
+    let end = [
+        tail.find("</li>"),
+        tail.find("</tr>"),
+        tail.find("</section>"),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+    .unwrap_or(tail.len().min(2_000));
     Some(&tail[..end])
 }
 
@@ -517,6 +535,44 @@ fn clean_isbn(value: &str) -> String {
         .collect()
 }
 
+fn is_valid_isbn10(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10
+        || !bytes[..9].iter().all(u8::is_ascii_digit)
+        || !(bytes[9].is_ascii_digit() || bytes[9] == b'X')
+    {
+        return false;
+    }
+    let sum: u32 = value
+        .chars()
+        .enumerate()
+        .map(|(index, character)| {
+            let digit = if character == 'X' {
+                10
+            } else {
+                character.to_digit(10).unwrap_or(0)
+            };
+            digit * (10 - index as u32)
+        })
+        .sum();
+    sum % 11 == 0
+}
+
+fn is_valid_isbn13(value: &str) -> bool {
+    value.len() == 13
+        && value.chars().all(|character| character.is_ascii_digit())
+        && matches!(&value[..3], "978" | "979")
+        && value
+            .chars()
+            .enumerate()
+            .map(|(index, character)| {
+                character.to_digit(10).unwrap_or(0) * if index % 2 == 0 { 1 } else { 3 }
+            })
+            .sum::<u32>()
+            % 10
+            == 0
+}
+
 fn parse_amazon_isbn13(html: &str) -> Option<String> {
     for (label, is_isbn10) in [("ISBN-13", false), ("ISBN-10", true)] {
         let Some(value) = detail_value_after_label(html, label) else {
@@ -526,14 +582,10 @@ fn parse_amazon_isbn13(html: &str) -> Option<String> {
         for part in value.split_whitespace() {
             let candidate = clean_isbn(part);
             if is_isbn10 {
-                if let Some(isbn13) = isbn10_to_isbn13(&candidate) {
-                    return Some(isbn13);
+                if is_valid_isbn10(&candidate) {
+                    return isbn10_to_isbn13(&candidate);
                 }
-            } else if candidate.len() == 13
-                && candidate
-                    .chars()
-                    .all(|character| character.is_ascii_digit())
-            {
+            } else if is_valid_isbn13(&candidate) {
                 return Some(candidate);
             }
         }
@@ -666,6 +718,14 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_isbn_checksums() {
+        assert_eq!(isbn10_to_isbn13("0262033845"), None);
+        assert_eq!(isbn10_to_isbn13("026203384X"), None);
+        assert_eq!(isbn13_to_isbn10("9784041164694"), None);
+        assert_eq!(isbn13_to_isbn10("9791234567890"), None);
+    }
+
+    #[test]
     fn builds_native_search_url_first() {
         assert_eq!(
             amazon_search_url("9784041164693").as_deref(),
@@ -743,6 +803,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_digital_formats_even_without_expected_isbn() {
+        let info = AmazonInfo {
+            product_format: Some(AmazonProductFormat::Kindle),
+            ..AmazonInfo::default()
+        };
+        assert!(!amazon_info_has_expected_isbn(&info, None));
+    }
+
+    #[test]
     fn detects_selected_hardcover_format_without_isbn_metadata() {
         let html = r#"
             <div class="a-row formatsRow">
@@ -755,7 +824,7 @@ mod tests {
             </div>
         "#;
         let info = parse_amazon_detail(html);
-        assert!(amazon_info_is_physical_format(&info));
+        assert_eq!(info.product_format, Some(AmazonProductFormat::Physical));
         assert_eq!(info.isbn13, None);
     }
 
@@ -772,7 +841,7 @@ mod tests {
             </div>
         "#;
         let info = parse_amazon_detail(html);
-        assert!(!amazon_info_is_physical_format(&info));
+        assert_eq!(info.product_format, Some(AmazonProductFormat::Kindle));
     }
 
     #[test]
