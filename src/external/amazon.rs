@@ -294,27 +294,41 @@ async fn lookup_amazon_cover(
     expected_isbn13: Option<&str>,
 ) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let amazon_info = lookup_amazon_info(client, lookup_key).await?;
+    let metadata_verified = expected_isbn13.is_none() || amazon_info.isbn13.is_some();
     if let Some(expected) = expected_isbn13 {
-        if !amazon_isbn13_matches(&amazon_info, expected) {
+        if !amazon_cover_matches_expected_isbn(&amazon_info, expected) {
             warn!(
                 key = %lookup_key,
                 expected_isbn13 = %expected,
                 actual_isbn13 = ?amazon_info.isbn13,
-                "Amazon ISBN-13 did not match; ignoring product metadata"
+                "Amazon ISBN-13 did not match; ignoring product metadata and cover"
             );
             return Ok((None, None, None));
         }
+        if !metadata_verified {
+            warn!(
+                key = %lookup_key,
+                expected_isbn13 = %expected,
+                "Amazon detail has no ISBN-13; keeping cover but ignoring product metadata"
+            );
+        }
     }
+    let description = metadata_verified
+        .then(|| amazon_info.description.clone())
+        .flatten();
+    let publish_date = metadata_verified
+        .then(|| amazon_info.publish_date.clone())
+        .flatten();
     match &amazon_info.cover_url {
         Some(url) => debug!(key = %lookup_key, "Amazon cover found: {}", url),
         None => warn!(key = %lookup_key, "No cover image found on Amazon detail page"),
     }
-    if amazon_info.description.is_some() {
+    if description.is_some() {
         debug!(key = %lookup_key, "Amazon description found");
     }
 
     let Some(url) = amazon_info.cover_url else {
-        return Ok((None, amazon_info.description, amazon_info.publish_date));
+        return Ok((None, description, publish_date));
     };
 
     let cover = download_cover(client, &url, images_dir)
@@ -324,11 +338,7 @@ async fn lookup_amazon_cover(
             e
         })?;
 
-    Ok((
-        Some(cover),
-        amazon_info.description,
-        amazon_info.publish_date,
-    ))
+    Ok((Some(cover), description, publish_date))
 }
 
 async fn fetch_amazon_cover_with_retry(
@@ -591,7 +601,11 @@ const AMAZON_DETAIL_ROW_SELECTORS: &[&str] = &[
 fn amazon_isbn13_matches(info: &AmazonInfo, expected: &str) -> bool {
     info.isbn13.as_deref() == Some(expected)
 }
-
+fn amazon_cover_matches_expected_isbn(info: &AmazonInfo, expected: &str) -> bool {
+    info.isbn13
+        .as_deref()
+        .is_none_or(|actual| actual == expected)
+}
 fn parse_amazon_isbn13(document: &scraper::Html) -> Option<String> {
     for selector in AMAZON_DETAIL_ROW_SELECTORS {
         let Ok(selector) = scraper::Selector::parse(selector) else {
@@ -599,19 +613,25 @@ fn parse_amazon_isbn13(document: &scraper::Html) -> Option<String> {
         };
         for element in document.select(&selector) {
             let text = element.text().collect::<String>();
-            let Some((_, value)) = text.split_once("ISBN-13") else {
-                continue;
-            };
-            for part in value.split_whitespace() {
-                let digits: String = part
-                    .chars()
-                    .filter_map(|ch| {
-                        ch.to_digit(10)
-                            .and_then(|digit| char::from_digit(digit, 10))
-                    })
-                    .collect();
-                if digits.len() == 13 {
-                    return Some(digits);
+            for (label, is_isbn10) in [("ISBN-13", false), ("ISBN-10", true)] {
+                let Some((_, value)) = text.split_once(label) else {
+                    continue;
+                };
+                for part in value.split_whitespace() {
+                    let candidate: String = part
+                        .chars()
+                        .filter(|ch| ch.is_ascii_digit() || *ch == 'X' || *ch == 'x')
+                        .map(|ch| ch.to_ascii_uppercase())
+                        .collect();
+                    if is_isbn10 {
+                        if let Some(isbn13) = isbn10_to_isbn13(&candidate) {
+                            return Some(isbn13);
+                        }
+                    } else if candidate.len() == 13
+                        && candidate.chars().all(|ch| ch.is_ascii_digit())
+                    {
+                        return Some(candidate);
+                    }
                 }
             }
         }
@@ -676,6 +696,14 @@ mod tests {
 
         let info = parse_amazon_detail(html);
 
+        assert!(super::amazon_cover_matches_expected_isbn(
+            &info,
+            "9784569823522"
+        ));
+        assert!(!super::amazon_cover_matches_expected_isbn(
+            &info,
+            "9784569823521"
+        ));
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
         assert_eq!(info.isbn13.as_deref(), Some("9784569823522"));
         assert!(super::amazon_isbn13_matches(&info, "9784569823522"));
@@ -691,8 +719,30 @@ mod tests {
         "#;
 
         let info = parse_amazon_detail(html);
+        assert!(super::amazon_cover_matches_expected_isbn(
+            &info,
+            "9784569823522"
+        ));
 
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
+        assert!(!super::amazon_isbn13_matches(&info, "9784569823522"));
+    }
+
+    #[test]
+    fn parses_isbn10_as_canonical_isbn13() {
+        let html = r#"
+            <ul id="detailBullets_feature_div">
+                <li><span class="a-list-item">
+                    <span class="a-text-bold">ISBN-10 :</span>
+                    <span>0262033844</span>
+                </span></li>
+            </ul>
+        "#;
+
+        let info = parse_amazon_detail(html);
+
+        assert_eq!(info.isbn13.as_deref(), Some("9780262033848"));
+        assert!(super::amazon_isbn13_matches(&info, "9780262033848"));
     }
 
     #[tokio::test]
@@ -718,7 +768,19 @@ mod tests {
         .expect("ISBN lookup should succeed")
         .expect("ISBN should resolve to a book");
 
-        assert_eq!(book.publish_date.as_deref(), Some("2015-01-26"));
+        let publish_date = book
+            .publish_date
+            .as_deref()
+            .expect("Amazon publication date should resolve");
+        assert_eq!(
+            crate::external::normalize_publish_date(Some(publish_date)).as_deref(),
+            Some(publish_date)
+        );
+        let cover = book
+            .cover_url
+            .as_deref()
+            .expect("Amazon cover should resolve");
+        assert!(images_dir.join(cover).is_file());
 
         let _ = std::fs::remove_dir_all(images_dir);
     }
