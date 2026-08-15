@@ -37,7 +37,7 @@ impl WasabiConfig {
                 &["WASABI_SECRET_ACCESS_KEY"],
             )
             .await?,
-            endpoint: required_var(env, "WASABI_ENDPOINT")?,
+            endpoint: required_secret(env, "WASABI_ENDPOINT_STORE", &["WASABI_ENDPOINT"]).await?,
             region: required_secret(env, "WASABI_REGION_STORE", &["WASABI_REGION"]).await?,
             bucket: required_secret(
                 env,
@@ -104,14 +104,4 @@ mod tests {
         assert!(debug.contains("endpoint"));
         assert!(debug.contains("***"));
     }
-}
-
-fn required_var(env: &Env, name: &str) -> Result<String> {
-    let value = env.var(name)?.to_string();
-    if value.trim().is_empty() {
-        return Err(worker::Error::RustError(format!(
-            "{name} must not be empty"
-        )));
-    }
-    Ok(value)
 }
