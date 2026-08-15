@@ -107,8 +107,9 @@ function openMusicBrainzCandidatePicker({ jan, parentBookId = null, amazonTitle 
 
     const modal = ensureCdCandidateModal();
     modal._context = { jan, parentBookId, mediaType, onRegistered };
-    modal.querySelector("[data-cd-candidate-intro]").innerHTML =
-        `Amazonで取得したタイトル「${escapeHtml(amazonTitle || "（タイトル不明）")}」に一致する候補があります。`;
+    modal.querySelector("[data-cd-candidate-intro]").innerHTML = amazonTitle
+        ? `Amazonで取得したタイトル「${escapeHtml(amazonTitle)}」に一致する候補があります。`
+        : `JAN「${escapeHtml(jan)}」に一致するMusicBrainz候補があります。`;
     modal.querySelector("[data-cd-candidate-list]").innerHTML = list.length > 0
         ? list.map((candidate) => `
         <button type="button" class="cd-candidate-item" data-mb-release-id="${escapeAttr(candidate.id)}">

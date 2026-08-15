@@ -53,7 +53,7 @@ cdForm.addEventListener("submit", async (e) => {
             return;
         }
 
-        const sourceLabel = data.cd ? "MusicBrainz" : "キャッシュ";
+        const sourceLabel = data.source === "musicbrainz" ? "MusicBrainz" : "入力値";
         cdStatus.textContent = `「${data.cd?.title || data.title}」を${sourceLabel}から登録しました`;
         cdStatus.className = "success";
         cdInput.value = "";
