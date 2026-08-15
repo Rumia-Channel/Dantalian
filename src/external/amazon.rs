@@ -198,8 +198,15 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     Ok(filename)
 }
 
+fn amazon_search_url(lookup_key: &str) -> String {
+    format!(
+        "https://www.amazon.co.jp/s?k={}&i=stripbooks",
+        urlencoding::encode(lookup_key)
+    )
+}
+
 async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonInfo, String> {
-    let search_url = format!("https://www.amazon.co.jp/s?k={}", lookup_key);
+    let search_url = amazon_search_url(lookup_key);
     debug!(key = %lookup_key, "Amazon search: {}", search_url);
     let search_body = amazon_request(client, &search_url)
         .send()
@@ -394,6 +401,20 @@ pub async fn lookup_amazon_title_for_jan(client: &Client, jan: &str) -> Option<S
         .filter(|title| !title.trim().is_empty())
 }
 
+fn is_physical_product_href(href: &str) -> bool {
+    let path = href
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(href)
+        .to_ascii_lowercase();
+    let Some((product_path, _)) = path.split_once("/dp/") else {
+        return false;
+    };
+    !product_path
+        .split(|ch: char| matches!(ch, '/' | '-' | '_'))
+        .any(|segment| matches!(segment, "ebook" | "kindle" | "digital" | "audible"))
+}
+
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
     let document = scraper::Html::parse_document(html);
 
@@ -412,13 +433,7 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
             .filter_map(|a| a.value().attr("href"))
             .collect();
 
-        if let Some(href) = hrefs
-            .iter()
-            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
-        {
-            return Ok(Some((*href).to_string()));
-        }
-        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
             return Ok(Some((*href).to_string()));
         }
     }
@@ -433,13 +448,7 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
             .filter_map(|a| a.value().attr("href"))
             .collect();
 
-        if let Some(href) = hrefs
-            .iter()
-            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
-        {
-            return Ok(Some((*href).to_string()));
-        }
-        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
             return Ok(Some((*href).to_string()));
         }
     }
@@ -452,13 +461,7 @@ fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
             .select(&a_selector)
             .filter_map(|a| a.value().attr("href"))
             .collect();
-        if let Some(href) = hrefs
-            .iter()
-            .find(|h| h.contains("/dp/") && !h.contains("/ebook/dp/"))
-        {
-            return Ok(Some((*href).to_string()));
-        }
-        if let Some(href) = hrefs.iter().find(|h| h.contains("/dp/")) {
+        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
             return Ok(Some((*href).to_string()));
         }
     }
@@ -677,7 +680,7 @@ fn parse_amazon_publish_date(document: &scraper::Html) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_amazon_detail;
+    use super::{parse_amazon_detail, parse_amazon_search_result};
 
     #[test]
     fn parses_release_date_from_amazon_detail_bullets() {
@@ -743,6 +746,40 @@ mod tests {
 
         assert_eq!(info.isbn13.as_deref(), Some("9780262033848"));
         assert!(super::amazon_isbn13_matches(&info, "9780262033848"));
+    }
+
+    #[test]
+    fn builds_stripbooks_search_url() {
+        assert_eq!(
+            super::amazon_search_url("9784041164693"),
+            "https://www.amazon.co.jp/s?k=9784041164693&i=stripbooks"
+        );
+    }
+
+    #[test]
+    fn selects_physical_product_over_ebook_variant() {
+        let html = r#"
+            <div data-component-type="s-search-result" data-asin="B0FX7VSWLJ">
+                <a href="/secret-ebook/dp/B0FX7VSWLJ/ref=tmm_kin_swatch_0">Kindle</a>
+                <a href="/secret-hardcover/dp/4041164693/ref=sr_1_1">Hardcover</a>
+            </div>
+        "#;
+
+        assert_eq!(
+            parse_amazon_search_result(html).unwrap().as_deref(),
+            Some("/secret-hardcover/dp/4041164693/ref=sr_1_1")
+        );
+    }
+
+    #[test]
+    fn does_not_fallback_to_ebook_product() {
+        let html = r#"
+            <div data-component-type="s-search-result" data-asin="B0FX7VSWLJ">
+                <a href="/secret-ebook/dp/B0FX7VSWLJ/ref=tmm_kin_swatch_0">Kindle</a>
+            </div>
+        "#;
+
+        assert_eq!(parse_amazon_search_result(html).unwrap(), None);
     }
 
     #[tokio::test]
