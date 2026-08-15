@@ -227,7 +227,7 @@ async fn lookup_amazon_info(
                     continue;
                 }
             };
-            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
+            if amazon::amazon_info_is_acceptable(&info, expected_isbn13) {
                 return Ok(info);
             }
             debug!(
@@ -242,7 +242,7 @@ async fn lookup_amazon_info(
     if let Some(detail_url) = amazon::amazon_isbn_detail_url(lookup_key) {
         if !attempted_details.iter().any(|url| url == &detail_url)
             && let Ok(info) = fetch_amazon_detail_info(client, lookup_key, &detail_url).await
-            && amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
+            && amazon::amazon_info_is_acceptable(&info, expected_isbn13)
         {
             return Ok(info);
         }

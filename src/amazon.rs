@@ -508,6 +508,12 @@ pub fn amazon_info_has_expected_isbn(info: &AmazonInfo, expected_isbn13: Option<
     ) && expected_isbn13.is_none_or(|expected| info.isbn13.as_deref() == Some(expected))
 }
 
+pub fn amazon_info_is_acceptable(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
+    amazon_info_has_expected_isbn(info, expected_isbn13)
+        || (matches!(info.product_format, Some(AmazonProductFormat::Physical))
+            && info.isbn13.is_none())
+}
+
 pub fn amazon_metadata_is_verified(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
     expected_isbn13.is_none_or(|_| info.isbn13.is_some())
 }
@@ -809,6 +815,27 @@ mod tests {
             ..AmazonInfo::default()
         };
         assert!(!amazon_info_has_expected_isbn(&info, None));
+        assert!(!amazon_info_is_acceptable(&info, Some("9784569823522")));
+    }
+
+    #[test]
+    fn accepts_physical_cover_without_isbn_metadata() {
+        let info = AmazonInfo {
+            product_format: Some(AmazonProductFormat::Physical),
+            ..AmazonInfo::default()
+        };
+        assert!(!amazon_info_has_expected_isbn(&info, Some("9784569823522")));
+        assert!(amazon_info_is_acceptable(&info, Some("9784569823522")));
+    }
+
+    #[test]
+    fn rejects_physical_product_with_different_isbn() {
+        let info = AmazonInfo {
+            isbn13: Some("9784569823521".to_string()),
+            product_format: Some(AmazonProductFormat::Physical),
+            ..AmazonInfo::default()
+        };
+        assert!(!amazon_info_is_acceptable(&info, Some("9784569823522")));
     }
 
     #[test]

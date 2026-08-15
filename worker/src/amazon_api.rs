@@ -1,5 +1,5 @@
 use dantalian::amazon::{
-    AmazonInfo, amazon_detail_url, amazon_info_has_expected_isbn, amazon_info_matches_isbn,
+    AmazonInfo, amazon_detail_url, amazon_info_is_acceptable, amazon_info_matches_isbn,
     amazon_isbn_detail_url, amazon_metadata_is_verified, amazon_search_urls,
     black_curtain_eligibility_url, image_content_type as shared_image_content_type,
     is_allowed_amazon_url, isbn_lookup_variants, needs_black_curtain_eligibility,
@@ -151,7 +151,7 @@ async fn lookup_amazon_info(
                 }
             };
             let info = parse_amazon_detail(&detail_html);
-            if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()) {
+            if amazon_info_is_acceptable(&info, expected_isbn13.as_deref()) {
                 return Ok(Some(info));
             }
         }
@@ -170,7 +170,7 @@ async fn lookup_amazon_info(
         return Ok(None);
     };
     let info = parse_amazon_detail(&detail_html);
-    if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()) {
+    if amazon_info_is_acceptable(&info, expected_isbn13.as_deref()) {
         Ok(Some(info))
     } else {
         Ok(None)
