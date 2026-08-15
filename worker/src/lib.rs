@@ -17,6 +17,7 @@ mod label_api;
 mod label_repository;
 mod media_sync_api;
 mod multipart_api;
+mod musicbrainz_api;
 mod object_api;
 mod playlist_api;
 mod series_api;

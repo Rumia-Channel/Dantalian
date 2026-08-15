@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::error::{bad_request, error_response, parse_id, parse_json};
+use crate::musicbrainz_api;
 use dantalian::application::error::AppError;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,6 +35,7 @@ struct CdRequest {
     label: Option<String>,
     catalog_number: Option<String>,
     publish_date: Option<String>,
+    cover_url: Option<String>,
     description: Option<String>,
     disc_count: Option<i64>,
     volume: Option<String>,
@@ -44,6 +46,7 @@ struct CdRequest {
     tracks: Option<Vec<TrackRequest>>,
     author_ids: Option<Vec<i64>>,
     metadata: Option<CdMetadataRequest>,
+    musicbrainz_release_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,7 +236,7 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let body = match parse_json::<CdRequest>(&mut req).await {
+    let mut body = match parse_json::<CdRequest>(&mut req).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -242,15 +245,8 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         .as_deref()
         .map(|value| value.replace(['-', ' ', '　'], ""))
         .filter(|value| !value.is_empty());
-    let title = body
-        .title
-        .clone()
-        .unwrap_or_else(|| format!("JAN {}", jan.clone().unwrap_or_default()));
-    if title.trim().is_empty() {
-        return Ok(bad_request("title or jan is required"));
-    }
     let db = ctx.d1("DB")?;
-    let jan_value = jan.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null);
+
     if let Some(jan) = jan.as_deref() {
         if let Some(existing) = db
             .prepare("SELECT id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id FROM cds WHERE jan = ?")
@@ -264,18 +260,124 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
             return Response::from_json(&serde_json::json!({"cd": value}));
         }
     }
+
+    let mut title = body.title.clone().filter(|value| !value.trim().is_empty());
+    let mut artist = body.artist.clone();
+    let mut publisher = body.publisher.clone();
+    let mut label = body.label.clone();
+    let mut catalog_number = body.catalog_number.clone();
+    let mut publish_date = body.publish_date.clone();
+    let mut cover_url = body.cover_url.clone();
+    let mut disc_count = body.disc_count;
+    let mut tracks = body.tracks.take();
+    let mut source = "manual";
+
+    if title.is_none() {
+        let Some(jan) = jan.as_deref() else {
+            return Ok(bad_request("title or jan is required"));
+        };
+        let cd = if let Some(release_id) = body.musicbrainz_release_id.as_deref() {
+            match musicbrainz_api::lookup_cd_by_release_id(release_id).await {
+                Ok(Some(cd)) => cd,
+                Ok(None) => {
+                    return Response::from_json(&serde_json::json!({
+                        "code": "cd_not_found",
+                        "error": "MusicBrainz release not found"
+                    }))
+                    .map(|response| response.with_status(404));
+                }
+                Err(error) => {
+                    return error_response(AppError::Internal(format!(
+                        "MusicBrainz release lookup failed: {error}"
+                    )));
+                }
+            }
+        } else {
+            let mut candidates = match musicbrainz_api::lookup_cd_candidates(jan).await {
+                Ok(candidates) => candidates,
+                Err(error) => {
+                    return error_response(AppError::Internal(format!(
+                        "MusicBrainz search failed: {error}"
+                    )));
+                }
+            };
+            match candidates.len() {
+                0 => {
+                    return Response::from_json(&serde_json::json!({
+                        "code": "cd_not_found",
+                        "error": "CD not found for JAN"
+                    }))
+                    .map(|response| response.with_status(404));
+                }
+                1 => {
+                    let candidate = candidates.pop().expect("candidate length checked");
+                    match musicbrainz_api::lookup_cd_candidate(&candidate.id).await {
+                        Ok(Some(cd)) => cd,
+                        Ok(None) => {
+                            return Response::from_json(&serde_json::json!({
+                                "code": "cd_not_found",
+                                "error": "MusicBrainz release not found"
+                            }))
+                            .map(|response| response.with_status(404));
+                        }
+                        Err(error) => {
+                            return error_response(AppError::Internal(format!(
+                                "MusicBrainz release lookup failed: {error}"
+                            )));
+                        }
+                    }
+                }
+                _ => {
+                    return Response::from_json(&serde_json::json!({
+                        "code": "musicbrainz_candidates",
+                        "error": "MusicBrainzの候補を選択してください",
+                        "jan": jan,
+                        "candidates": candidates
+                    }))
+                    .map(|response| response.with_status(300));
+                }
+            }
+        };
+        title = Some(cd.title);
+        artist = cd.artist;
+        publisher = cd.publisher;
+        label = cd.label;
+        catalog_number = cd.catalog_number;
+        publish_date = cd.publish_date;
+        cover_url = cd.cover_url;
+        disc_count = cd.disc_count;
+        tracks = Some(
+            cd.tracks
+                .into_iter()
+                .map(|track| TrackRequest {
+                    disc_number: Some(track.disc_number),
+                    track_number: track.track_number,
+                    title: track.title,
+                    duration: track.duration,
+                    metadata: serde_json::Map::new(),
+                })
+                .collect(),
+        );
+        source = "musicbrainz";
+    }
+
+    let Some(title) = title else {
+        return Ok(bad_request("title or jan is required"));
+    };
+    let jan_value = jan.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null);
     let row = db
-        .prepare("INSERT INTO cds (jan,title,artist,publisher,label,catalog_number,publish_date,description,disc_count,volume,parent_book_id,media_type,series_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id")
+        .prepare("INSERT INTO cds (jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,parent_book_id,media_type,series_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id")
         .bind_refs([
             &jan_value,
             &D1Type::Text(&title),
-            &body.artist.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
-            &body.publisher.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
-            &body.label.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
-            &body.catalog_number.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
-            &body.publish_date.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &artist.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &publisher.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &label.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &catalog_number.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &publish_date.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
+            &cover_url.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
             &body.description.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
-            &body.disc_count.map(|value| D1Type::Integer(i32::try_from(value).unwrap_or(i32::MAX))).unwrap_or(D1Type::Null),
+            &disc_count.map(|value| D1Type::Integer(i32::try_from(value).unwrap_or(i32::MAX))).unwrap_or(D1Type::Null),
             &body.volume.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
             &body.parent_book_id.map(|value| id_type(value, "parent_book_id")).transpose().map_err(|error| worker::Error::from(error.to_string()))?.unwrap_or(D1Type::Null),
             &D1Type::Text(body.media_type.as_deref().unwrap_or("cd")),
@@ -289,7 +391,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         return error_response(AppError::Internal("cd insert returned no row".into()));
     };
     let cd_id = id_type(cd.id, "cd id").map_err(|error| worker::Error::from(error.to_string()))?;
-    if let Some(tracks) = body.tracks {
+    if let Some(tracks) = tracks {
         for track in tracks {
             let disc_number = D1Type::Integer(
                 i32::try_from(track.disc_number.unwrap_or(1).max(1)).unwrap_or(i32::MAX),
@@ -353,7 +455,8 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         .map_err(db_error)?;
     }
     let value = with_children(&db, cd).await?;
-    Response::from_json(&serde_json::json!({"cd": value})).map(|response| response.with_status(201))
+    Response::from_json(&serde_json::json!({"cd": value, "source": source}))
+        .map(|response| response.with_status(201))
 }
 
 const CD_MUTABLE_COLUMNS: &[&str] = &[
@@ -364,7 +467,7 @@ const CD_MUTABLE_COLUMNS: &[&str] = &[
     "label",
     "catalog_number",
     "publish_date",
-    "description",
+    "cover_url",
     "disc_count",
     "volume",
     "parent_book_id",

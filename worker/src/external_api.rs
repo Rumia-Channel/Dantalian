@@ -51,10 +51,9 @@ pub struct NdlBook {
     pub authors: Vec<NdlAuthor>,
 }
 
-async fn fetch_with_timeout(url: Url, label: &str) -> Result<worker::Response> {
+pub(crate) async fn fetch_with_timeout(fetch: Fetch, label: &str) -> Result<worker::Response> {
     let controller = AbortController::default();
     let signal = controller.signal();
-    let fetch = Fetch::Url(url);
     let request = fetch.send_with_signal(&signal);
     let delay = Delay::from(EXTERNAL_REQUEST_TIMEOUT);
     pin_mut!(request, delay);
@@ -85,7 +84,7 @@ pub async fn lookup_isbn(isbn: &str) -> Result<Option<NdlBook>> {
         .append_pair("startRecord", "1")
         .append_pair("recordPacking", "xml")
         .append_pair("query", &format!("isbn=\"{isbn}\""));
-    let mut response = fetch_with_timeout(url, "NDL").await?;
+    let mut response = fetch_with_timeout(Fetch::Url(url), "NDL").await?;
     if !response.status_code().to_string().starts_with('2') {
         return Ok(None);
     }
@@ -99,7 +98,7 @@ pub async fn lookup_isbn(isbn: &str) -> Result<Option<NdlBook>> {
 pub async fn lookup_isdn(isdn: &str) -> Result<Option<NdlBook>> {
     let url = Url::parse(&format!("https://isdn.jp/xml/{isdn}"))
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    let mut response = fetch_with_timeout(url, "ISDN").await?;
+    let mut response = fetch_with_timeout(Fetch::Url(url), "ISDN").await?;
     if !response.status_code().to_string().starts_with('2') {
         return Ok(None);
     }
