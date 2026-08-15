@@ -16,6 +16,7 @@ fn main() {
 
     let css_files = [
         "static/css/base.css",
+        "static/css/auth.css",
         "static/css/form.css",
         "static/css/book-card.css",
         "static/css/series.css",
