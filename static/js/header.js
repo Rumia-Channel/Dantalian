@@ -179,6 +179,7 @@
         try {
             var url = new URL(rawUrl, window.location.href);
             return url.origin === window.location.origin &&
+                url.pathname !== "/api/health" &&
                 (url.pathname.startsWith("/api/") ||
                     url.pathname.startsWith("/audio/") ||
                     url.pathname.startsWith("/images/") ||

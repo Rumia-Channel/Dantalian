@@ -234,7 +234,15 @@ jobs:
           WORKER_BASE_URL: ${{ steps.deploy.outputs.base_url }}
         run: |
           test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$WORKER_BASE_URL/")" = 200
-          test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$WORKER_BASE_URL/api/health")" = 200
+          for attempt in {1..30}; do
+            if curl --silent --show-error "$WORKER_BASE_URL/api/health" | python -c 'import json, sys; body = json.load(sys.stdin); raise SystemExit(0 if body.get("authentication_required") is True else 1)'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "staging Worker did not report authentication mode"
+          curl --silent --show-error "$WORKER_BASE_URL/api/health"
+          exit 1
       - name: Test staging authentication
         working-directory: worker
         env:
