@@ -1,13 +1,23 @@
+use futures_util::lock::Mutex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use std::time::Duration;
 use url::Url;
 use worker::{Delay, Fetch, Headers, Method, Request, RequestInit, Result};
 
 use crate::external_api::fetch_with_timeout;
 
+const MUSICBRAINZ_MIN_INTERVAL: Duration = Duration::from_millis(1_100);
+const MUSICBRAINZ_MAX_RETRIES: usize = 2;
+
+fn musicbrainz_rate_limit_gate() -> &'static Mutex<()> {
+    static GATE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    &GATE
+}
+
 fn musicbrainz_user_agent() -> String {
     format!(
-        "Dantalian/{} (+https://github.com/Rumia-Channel/dantalian)",
+        "Dantalian/{} (https://github.com/Rumia-Channel/dantalian)",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -17,13 +27,28 @@ fn musicbrainz_request(url: &Url) -> Result<Request> {
     headers
         .set("User-Agent", &musicbrainz_user_agent())
         .map_err(worker::Error::from)?;
+    headers
+        .set("Accept", "application/json")
+        .map_err(worker::Error::from)?;
     let mut init = RequestInit::new();
     init.with_method(Method::Get).with_headers(headers);
     Request::new_with_init(url.as_str(), &init)
 }
 
 async fn fetch_musicbrainz(url: Url, label: &str) -> Result<worker::Response> {
-    fetch_with_timeout(Fetch::Request(musicbrainz_request(&url)?), label).await
+    let _gate = musicbrainz_rate_limit_gate().lock().await;
+    let mut retries = 0;
+    loop {
+        let response =
+            fetch_with_timeout(Fetch::Request(musicbrainz_request(&url)?), label).await?;
+        let retryable = matches!(response.status_code(), 429 | 503);
+        if !retryable || retries >= MUSICBRAINZ_MAX_RETRIES {
+            Delay::from(MUSICBRAINZ_MIN_INTERVAL).await;
+            return Ok(response);
+        }
+        retries += 1;
+        Delay::from(MUSICBRAINZ_MIN_INTERVAL * retries as u32).await;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -340,7 +365,14 @@ pub async fn lookup_cd_candidates_by_title(title: &str) -> Result<Vec<MusicBrain
 
 #[cfg(test)]
 mod tests {
-    use super::{MbRelease, MusicBrainzCandidate, mb_candidate, mb_cd};
+    use super::{MbRelease, MusicBrainzCandidate, mb_candidate, mb_cd, musicbrainz_user_agent};
+
+    #[test]
+    fn identifies_application_and_contact_in_user_agent() {
+        let user_agent = musicbrainz_user_agent();
+        assert!(user_agent.starts_with("Dantalian/"));
+        assert!(user_agent.contains("(https://github.com/Rumia-Channel/dantalian)"));
+    }
 
     #[test]
     fn parses_musicbrainz_release_fields() {
