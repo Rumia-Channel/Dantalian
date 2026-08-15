@@ -71,9 +71,9 @@ The migration does not delete Native rows or Wasabi objects. Rollback is therefo
 
 ## Audio job operations
 
-The authenticated API currently exposes `GET /api/audio/jobs/:id` for status and `POST /api/audio/jobs/:id/retry` for failed-job retry. Processor claims, lease renewal, completion, failure, and expired-lease recovery are bounded by the job state machine.
+The Access-protected API currently exposes `GET /api/audio/jobs/:id` for status and `POST /api/audio/jobs/:id/retry` for failed-job retry. Processor claims, lease renewal, completion, failure, and expired-lease recovery use the separate processor token and remain bounded by the job state machine.
 
-There is deliberately no public list or cancel endpoint in this cutover. A list endpoint needs pagination and owner-scoped operational authorization; cancellation also needs an explicit policy for an in-flight processor and any output object. Until that contract exists, operators use the job id from structured processor events and the authenticated status/retry routes. Do not edit D1 status rows manually.
+There is deliberately no public list or cancel endpoint in this cutover. A list endpoint needs pagination and owner-scoped operational authorization; cancellation also needs an explicit policy for an in-flight processor and any output object. Until that contract exists, operators use the job id from structured processor events and the Access-protected status/retry routes. Do not edit D1 status rows manually.
 
 The queue-backed processor is deployed separately with `wrangler.audio.toml`. Its queue payload contains only the 32-character audio job id. The controller starts a named container instance (`audio-<job-id>`) and acknowledges the queue message after startup; the processor then claims the job through the controller's authenticated `/internal-api` service-binding proxy. D1 remains the job state authority. If the container fails before startup, Queue retries the message; if processing fails after a lease, the processor reports the failure and the job retry policy applies.
 
@@ -82,7 +82,7 @@ The processor downloads and uploads Wasabi objects directly through its dedicate
 ## Post-migration checks
 
 1. Compare every source and destination table count in the reconciliation report.
-2. Verify a book with a cover, EPUB, and audio track through Worker authenticated routes.
+2. Verify a book with a cover, EPUB, and audio track through the Access-protected custom domain.
 3. Verify direct Wasabi GET bytes and `Content-Type` for representative objects.
 4. Verify Worker audio processing remains an external job boundary.
 5. Keep the state and report files with the migration change record; redact secrets before sharing.

@@ -2,16 +2,26 @@
 
 ## Before deployment
 
-- [ ] `develop` is the reviewed source branch; release changes are not made directly on `main` or `master`.
+- [ ] `develop` is the reviewed source branch; merges to `master` are reviewed release candidates, `master` pushes deploy staging, and only `v*` tags deploy production.
 - [ ] Native database backup completed and restore tested.
 - [ ] Native writes are frozen for the migration snapshot.
 - [ ] Current Worker migrations are applied to the target D1 database.
 - [ ] Wasabi bucket, region, endpoint, and a unique migration prefix are confirmed.
 - [ ] D1 and Wasabi credentials are stored only in the deployment secret store.
 - [x] No credential, Authorization header, cookie token, signing key, or full presigned URL appears in logs or artifacts.
-- [x] Worker authentication remains fail-closed when the API token is not configured.
-- [x] Presigned URL routes perform authentication and authorization before signing.
+- [ ] Production custom domain is protected by a Cloudflare Access application with an explicit allow policy.
+- [x] Production Worker uses Cloudflare Access as its user-facing authentication boundary; local/CI can require the app token fail-closed.
+- [ ] Presigned URL routes are only reachable after the Access-protected application boundary.
 - [x] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
+
+## MyDeploy production inputs
+
+- [ ] GitHub Environment `production` contains the Cloudflare API credentials and five Wasabi `*_SECRET_NAME` references used by both target jobs.
+- [ ] GitHub Environment `production` contains a random `DANTALIAN_STAGING_API_TOKEN`; it is used only for staging API tests and is not reused by production.
+- [ ] GitHub Environment `production` contains the base `DANTALIAN_D1_DATABASE_NAME=dantalian` and `DANTALIAN_AUDIO_JOB_QUEUE=dantalian-audio-jobs` values; CI appends `-staging` or `-production` and resolves/creates the resources.
+- [ ] Staging uses `dantalian/staging` as its automatic Wasabi prefix and production uses `dantalian/production`; the bucket remains shared.
+- [ ] Production `SERVICE_DOMAIN` is present only in the production Environment and is attached as the custom domain.
+- [ ] The production Wrangler template contains the non-secret Secrets Store resource ID; it is not copied into GitHub secrets.
 
 ## Verification before traffic shift
 
@@ -49,13 +59,12 @@ The checked items above record repository, local Wrangler, local live Wasabi, an
 - [x] Using the replacement credential, delete only `e2e/20260813/a1/` and `e2e/20260813/a2/` from `test.dantalian.dev`.
 - [x] Confirm both test prefixes are empty; unrelated objects were not targeted.
 - [ ] Store the replacement credential only in the secret store or ignored local configuration; the Wasabi IAM check still identifies the replacement access key as a root key, so least-privilege status is unconfirmed.
-
 ## Traffic shift
 
 - [ ] Deploy Worker with the intended D1 binding, Static Assets binding, Cron, and Wasabi variables.
-- [ ] Confirm `/api/health` is public and protected endpoints require authentication.
-- [ ] Test one representative book, cover, EPUB, CD, and audio track with an authenticated client.
-- [ ] Confirm browser uploads go directly to Wasabi after Worker authorization; large objects do not pass through Worker.
+- [ ] Confirm the production custom domain is protected by Cloudflare Access and `workers.dev` is disabled.
+- [ ] Test one representative book, cover, EPUB, CD, and audio track through the Access-protected domain.
+- [ ] Confirm browser uploads go directly to Wasabi; large objects do not pass through Worker.
 - [ ] Monitor structured migration/job events by `job_id`, `object_key`, status, attempt, processor, and error class. Do not log secrets or full signed URLs.
 - [ ] Keep Native available as rollback until post-deployment reconciliation is complete.
 

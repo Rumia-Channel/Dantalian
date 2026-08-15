@@ -1,0 +1,58 @@
+name = "dantalian-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-08-11"
+workers_dev = false
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/audio/*", "/images/*", "/epubs/*"]
+
+[build]
+command = "node build_assets.mjs && worker-build --release"
+
+[vars]
+DANTALIAN_AUTH_REQUIRED = "false"
+WASABI_PREFIX = "__WASABI_PREFIX__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_ACCESS_KEY_ID_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_ACCESS_KEY_ID_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_SECRET_ACCESS_KEY_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_SECRET_ACCESS_KEY_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_ENDPOINT_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_ENDPOINT_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_REGION_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_REGION_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_BUCKET_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_BUCKET_SECRET_NAME__"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "__DANTALIAN_D1_DATABASE_NAME__"
+database_id = "__DANTALIAN_D1_DATABASE_ID__"
+migrations_dir = "migrations"
+
+[[queues.producers]]
+queue = "__DANTALIAN_AUDIO_JOB_QUEUE__"
+binding = "AUDIO_JOB_QUEUE"
+
+[[routes]]
+pattern = "__SERVICE_DOMAIN__"
+custom_domain = true
+
+[triggers]
+crons = ["0 * * * *"]

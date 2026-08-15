@@ -9,4 +9,8 @@ worker/.dev.vars
 /worker/public
 worker/.asset-version
 /worker/.wrangler
+/worker/wrangler.ci.toml
+/worker/deploy.log
+/worker/staging-secrets.json
+/worker/ci/__pycache__
 /node_modules
