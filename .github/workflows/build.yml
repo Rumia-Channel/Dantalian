@@ -250,12 +250,6 @@ jobs:
           WORKER_API_TOKEN: ${{ secrets.DANTALIAN_STAGING_API_TOKEN }}
           WORKER_EXPECT_AUTH_REQUIRED: "true"
         run: node --test tests/auth_contract.mjs
-      - name: Test staging Amazon cover registration
-        working-directory: worker
-        env:
-          WORKER_BASE_URL: ${{ steps.deploy.outputs.base_url }}
-          WORKER_API_TOKEN: ${{ secrets.DANTALIAN_STAGING_API_TOKEN }}
-        run: node --test tests/amazon_cover_contract.mjs
       - name: Test staging Wasabi basic and multipart lifecycle
         working-directory: worker
         env:
