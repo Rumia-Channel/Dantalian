@@ -250,6 +250,10 @@ fn parse_isdn(xml: &str) -> std::result::Result<Option<NdlBook>, String> {
             result.description = result.extent.clone();
         }
     }
+    result.publish_date = result.publish_date.take().and_then(|value| {
+        dantalian::application::publish_date::normalize_publish_date(Some(&value))
+    });
+
     Ok(Some(result))
 }
 
@@ -423,6 +427,9 @@ fn parse_sru(xml: &str) -> std::result::Result<Option<NdlBook>, String> {
         }
         buf.clear();
     }
+    result.publish_date = result.publish_date.take().and_then(|value| {
+        dantalian::application::publish_date::normalize_publish_date(Some(&value))
+    });
 
     if result.title.is_empty() {
         Ok(None)
@@ -447,12 +454,13 @@ mod tests {
                 <dcndl:title><rdf:Description><rdf:value>Title</rdf:value><dcndl:transcription>Yomi</dcndl:transcription></rdf:Description></dcndl:title>
                 <dcterms:creator><foaf:Agent rdf:about="https://id.ndl.go.jp/auth/1"><foaf:name>Author</foaf:name></foaf:Agent></dcterms:creator>
                 <dcterms:publisher><foaf:Agent><foaf:name>Publisher</foaf:name></foaf:Agent></dcterms:publisher>
-                <dcterms:date>2024</dcterms:date>
+                <dcterms:date>2025.11</dcterms:date>
               </dcndl:BibResource>
             </recordData></record></records></response>
         "#;
         let parsed = parse_sru(xml).unwrap().unwrap();
         assert_eq!(parsed.title, "Title");
+        assert_eq!(parsed.publish_date.as_deref(), Some("2025-11-NN"));
         assert_eq!(parsed.publisher.as_deref(), Some("Publisher"));
         assert_eq!(parsed.authors[0].name, "Author");
         assert_eq!(parsed.authors[0].ndl_id.as_deref(), Some("1"));
@@ -464,7 +472,7 @@ mod tests {
             <response><item>
               <product-name>Media title</product-name>
               <publisher-name>Publisher</publisher-name>
-              <issue-date>2024-01-02</issue-date>
+              <issue-date>2025.11</issue-date>
               <price>1200</price><price-unit>円</price-unit>
               <product-style>Paperback</product-style>
               <product-size>A5</product-size>
@@ -473,6 +481,7 @@ mod tests {
             </item></response>
         "#;
         let parsed = parse_isdn(xml).unwrap().unwrap();
+        assert_eq!(parsed.publish_date.as_deref(), Some("2025-11-NN"));
         assert_eq!(parsed.title, "Media title");
         assert_eq!(parsed.price.as_deref(), Some("1200 円"));
         assert_eq!(parsed.extent.as_deref(), Some("Paperback, A5"));

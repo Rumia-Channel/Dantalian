@@ -5,6 +5,7 @@ pub mod book;
 pub mod borrower;
 pub mod error;
 pub mod label;
+pub mod publish_date;
 pub mod series;
 
 pub mod storage_location;
