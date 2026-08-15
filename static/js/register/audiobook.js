@@ -67,8 +67,8 @@ audiobookForm.addEventListener("submit", async (e) => {
             return;
         }
 
-        let sourceLabel = "MusicBrainz";
-        audiobookStatus.textContent = `「${data.title}」を${sourceLabel}からオーディオブックとして登録しました`;
+        const sourceLabel = data.source === "musicbrainz" ? "MusicBrainz" : "入力値";
+        audiobookStatus.textContent = `「${data.cd?.title || data.title}」を${sourceLabel}からオーディオブックとして登録しました`;
         audiobookStatus.className = "success";
         audiobookInput.value = "";
         if (audiobookJanInput) audiobookJanInput.value = "";
