@@ -2,10 +2,15 @@ use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::{
+    amazon_api,
     error::{bad_request, error_response, parse_id, parse_json},
     external_api,
+    wasabi::{WasabiConfig, WasabiStorage},
 };
-use dantalian::application::error::AppError;
+use dantalian::{
+    application::error::AppError,
+    ports::object_storage::{ObjectKind, object_key},
+};
 
 const BOOK_COLUMNS: &str = "id,isbn,isdn,jan,title,publisher,publish_date,cover_url,description,series_id,series_number,media_type,title_transcription,series_title,series_title_transcription,alternative,alternative_transcription,volume,volume_transcription,price,extent,jpno,ndl_url,isdn_region,isdn_class,isdn_type,isdn_rating_gender,isdn_rating_age,isdn_genre_code,isdn_genre_name,isdn_genre_user,isdn_c_code,isdn_author,isdn_shape,isdn_contents,isdn_barcode2,isdn_sample_image_url,isdn_useroption,isdn_external_links,catalog_number,artist,label,disc_count,epub_file_hash,epub_file_name,reading_status,storage_location_id,label_id,created_at,updated_at";
 
@@ -280,6 +285,41 @@ fn decode_cursor(value: &str) -> std::result::Result<i32, Response> {
     Ok(id)
 }
 
+async fn persist_amazon_cover(
+    ctx: &RouteContext<()>,
+    cover: &amazon_api::AmazonCover,
+) -> Result<String> {
+    let config = WasabiConfig::from_env(&ctx.env).await?;
+    let file_name = format!("{}.{}", cover.object_id, cover.extension);
+    let key = object_key(
+        config.prefix.as_deref(),
+        ObjectKind::CoverImage,
+        &cover.object_id,
+        &cover.extension,
+    )
+    .map_err(|error| worker::Error::from(error.to_string()))?;
+    WasabiStorage::new(config)
+        .put_object(&key, &cover.content_type, &cover.bytes)
+        .await
+        .map_err(|error| worker::Error::from(error.to_string()))?;
+    Ok(file_name)
+}
+
+fn has_cover_url(body: &serde_json::Value) -> bool {
+    body.get("cover_url")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn set_cover_url(body: &mut serde_json::Value, file_name: String) {
+    if let Some(object) = body.as_object_mut() {
+        object.insert(
+            "cover_url".to_string(),
+            serde_json::Value::String(file_name),
+        );
+    }
+}
+
 pub async fn get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let raw = match parse_id(&ctx, "id") {
         Ok(value) => value,
@@ -372,8 +412,9 @@ async fn register(
             }));
         }
     }
+    let request_cover_supplied = has_cover_url(&body);
     let mut body = body;
-    let source = if manual {
+    let mut source = if manual {
         "manual"
     } else if isdn {
         "isdn"
@@ -387,7 +428,32 @@ async fn register(
             external_api::lookup_isbn(identifier.as_deref().unwrap_or_default()).await
         };
         match lookup {
-            Ok(Some(book)) => merge_ndl_book(&mut body, &book),
+            Ok(Some(book)) => {
+                merge_ndl_book(&mut body, &book);
+                if !isdn && !request_cover_supplied {
+                    match amazon_api::lookup_amazon_cover(identifier.as_deref().unwrap_or_default())
+                        .await
+                    {
+                        Ok(Some(cover)) => match persist_amazon_cover(&ctx, &cover).await {
+                            Ok(file_name) => {
+                                set_cover_url(&mut body, file_name);
+                                source = "amazon";
+                            }
+                            Err(error) => {
+                                worker::console_error!(
+                                    "Amazon cover storage failed; keeping NDL metadata: {error}"
+                                );
+                            }
+                        },
+                        Ok(None) => {}
+                        Err(error) => {
+                            worker::console_error!(
+                                "Amazon cover lookup failed; keeping NDL metadata: {error}"
+                            );
+                        }
+                    }
+                }
+            }
             Ok(None) => {
                 return error_response(AppError::NotFound);
             }

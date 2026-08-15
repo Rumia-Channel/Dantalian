@@ -1,3 +1,4 @@
+mod amazon_api;
 mod audio_api;
 mod audio_job_api;
 mod audio_job_repository;
