@@ -57,6 +57,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Install worker-build
         run: cargo install worker-build --version 0.8.4 --locked
+      - name: Install wasm-bindgen
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
       - name: Build Worker
         run: worker-build --release
       - name: Set up Node.js
@@ -182,6 +184,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install worker-build
         run: cargo install worker-build --version 0.8.4 --locked
+      - name: Install wasm-bindgen
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
       - name: Provision staging resources
         id: resources
         working-directory: worker
