@@ -5,6 +5,7 @@ pub struct AmazonInfo {
     pub description: Option<String>,
     pub publish_date: Option<String>,
     pub isbn13: Option<String>,
+    pub physical_format: bool,
 }
 
 pub fn isbn10_to_isbn13(isbn10: &str) -> Option<String> {
@@ -382,6 +383,60 @@ pub fn parse_amazon_image_url(html: &str) -> Option<String> {
     None
 }
 
+fn selected_amazon_format_is_physical(html: &str) -> bool {
+    let mut cursor = 0;
+    while let Some(relative_start) = html[cursor..].find("tmm-grid-swatch-") {
+        let marker_start = cursor + relative_start;
+        let Some(opening_start) = html[..marker_start].rfind("<div") else {
+            break;
+        };
+        let Some(opening_end) = html[opening_start..]
+            .find('>')
+            .map(|offset| opening_start + offset + 1)
+        else {
+            break;
+        };
+        let opening = &html[opening_start..opening_end];
+        let selected = extract_attribute(opening, "class")
+            .is_some_and(|classes| classes.split_whitespace().any(|class| class == "selected"));
+        if selected {
+            let format_id = extract_attribute(opening, "id").and_then(|id| {
+                id.strip_prefix("tmm-grid-swatch-")
+                    .map(str::to_ascii_uppercase)
+            });
+            let next_marker = html[opening_end..]
+                .find("tmm-grid-swatch-")
+                .map(|offset| opening_end + offset)
+                .unwrap_or(html.len());
+            let swatch = html[opening_start..next_marker].to_ascii_lowercase();
+            let physical_id = format_id.as_deref().is_some_and(|id| {
+                matches!(
+                    id,
+                    "HARDCOVER"
+                        | "PAPERBACK"
+                        | "MASS_MARKET"
+                        | "LIBRARY"
+                        | "TEXTBOOK"
+                        | "BOARD_BOOK"
+                        | "COMIC"
+                        | "TANKOBON"
+                )
+            });
+            return physical_id
+                || swatch.contains("ハードカバー")
+                || swatch.contains("ペーパーバック")
+                || swatch.contains("単行本")
+                || swatch.contains("文庫")
+                || swatch.contains("新書")
+                || swatch.contains("コミック")
+                || swatch.contains("hardcover")
+                || swatch.contains("paperback");
+        }
+        cursor = opening_end;
+    }
+    false
+}
+
 pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
     let title = ["productTitle", "title"]
         .iter()
@@ -411,6 +466,7 @@ pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
         .filter(|value| !value.is_empty());
     let isbn13 = parse_amazon_isbn13(html);
     let publish_date = parse_amazon_publish_date(html);
+    let physical_format = selected_amazon_format_is_physical(html);
 
     AmazonInfo {
         title,
@@ -418,7 +474,12 @@ pub fn parse_amazon_detail(html: &str) -> AmazonInfo {
         description,
         publish_date,
         isbn13,
+        physical_format,
     }
+}
+
+pub fn amazon_info_is_physical_format(info: &AmazonInfo) -> bool {
+    info.physical_format
 }
 
 pub fn amazon_info_matches_isbn(info: &AmazonInfo, expected_isbn13: Option<&str>) -> bool {
@@ -679,6 +740,39 @@ mod tests {
         assert_eq!(info.publish_date.as_deref(), Some("2015-01-26"));
         assert_eq!(info.isbn13.as_deref(), Some("9784569823522"));
         assert!(needs_black_curtain_eligibility(html));
+    }
+
+    #[test]
+    fn detects_selected_hardcover_format_without_isbn_metadata() {
+        let html = r#"
+            <div class="a-row formatsRow">
+                <div id="tmm-grid-swatch-KINDLE" class="swatchElement unselected">
+                    <span aria-label="Kindle版 (電子書籍) 形式:">Kindle版 (電子書籍)</span>
+                </div>
+                <div id="tmm-grid-swatch-HARDCOVER" class="swatchElement selected">
+                    <span aria-label="ハードカバー 形式:">ハードカバー</span>
+                </div>
+            </div>
+        "#;
+        let info = parse_amazon_detail(html);
+        assert!(amazon_info_is_physical_format(&info));
+        assert_eq!(info.isbn13, None);
+    }
+
+    #[test]
+    fn does_not_treat_selected_kindle_as_physical_format() {
+        let html = r#"
+            <div class="a-row formatsRow">
+                <div id="tmm-grid-swatch-KINDLE" class="swatchElement selected">
+                    <span aria-label="Kindle版 (電子書籍) 形式:">Kindle版 (電子書籍)</span>
+                </div>
+                <div id="tmm-grid-swatch-HARDCOVER" class="swatchElement unselected">
+                    <span aria-label="ハードカバー 形式:">ハードカバー</span>
+                </div>
+            </div>
+        "#;
+        let info = parse_amazon_detail(html);
+        assert!(!amazon_info_is_physical_format(&info));
     }
 
     #[test]

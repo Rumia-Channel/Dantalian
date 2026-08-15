@@ -1,9 +1,10 @@
 use dantalian::amazon::{
-    AmazonInfo, amazon_detail_url, amazon_info_has_expected_isbn, amazon_info_matches_isbn,
-    amazon_isbn_detail_url, amazon_metadata_is_verified, amazon_search_urls,
-    black_curtain_eligibility_url, image_content_type as shared_image_content_type,
-    is_allowed_amazon_url, isbn_lookup_variants, needs_black_curtain_eligibility,
-    parse_amazon_detail, parse_amazon_search_results as shared_parse_amazon_search_results,
+    AmazonInfo, amazon_detail_url, amazon_info_has_expected_isbn, amazon_info_is_physical_format,
+    amazon_info_matches_isbn, amazon_isbn_detail_url, amazon_metadata_is_verified,
+    amazon_search_urls, black_curtain_eligibility_url,
+    image_content_type as shared_image_content_type, is_allowed_amazon_url, isbn_lookup_variants,
+    needs_black_curtain_eligibility, parse_amazon_detail,
+    parse_amazon_search_results as shared_parse_amazon_search_results,
 };
 #[cfg(test)]
 use dantalian::amazon::{
@@ -105,17 +106,18 @@ async fn fetch_detail_html(detail_url: &str) -> Result<Option<String>> {
     }
     Ok(Some(retry_response.text().await?))
 }
-
 async fn lookup_amazon_info(
     search_keys: &[&str],
     fallback_isbn: Option<&str>,
 ) -> Result<Option<AmazonInfo>> {
+    const MAX_AMAZON_DETAIL_ATTEMPTS: usize = 12;
     let expected_isbn13 = fallback_isbn.and_then(|isbn| {
         isbn_lookup_variants(isbn)
             .into_iter()
             .find(|variant| variant.len() == 13)
     });
-    for search_url in amazon_search_urls(search_keys) {
+    let mut attempted_details = Vec::new();
+    'search: for search_url in amazon_search_urls(search_keys) {
         let Ok(mut search_response) = fetch_with_timeout(
             Fetch::Request(amazon_request(&search_url)?),
             "Amazon search",
@@ -134,6 +136,13 @@ async fn lookup_amazon_info(
             let Some(detail_url) = amazon_detail_url_for_request(&href) else {
                 continue;
             };
+            if attempted_details.iter().any(|url| url == &detail_url) {
+                continue;
+            }
+            if attempted_details.len() >= MAX_AMAZON_DETAIL_ATTEMPTS {
+                break 'search;
+            }
+            attempted_details.push(detail_url.clone());
             let detail_html = match fetch_detail_html(&detail_url).await {
                 Ok(Some(detail_html)) => detail_html,
                 Ok(None) => continue,
@@ -143,7 +152,9 @@ async fn lookup_amazon_info(
                 }
             };
             let info = parse_amazon_detail(&detail_html);
-            if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()) {
+            if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref())
+                || amazon_info_is_physical_format(&info)
+            {
                 return Ok(Some(info));
             }
         }
@@ -155,11 +166,20 @@ async fn lookup_amazon_info(
     let Some(detail_url) = amazon_isbn_detail_url(fallback_isbn) else {
         return Ok(None);
     };
+    if attempted_details.iter().any(|url| url == &detail_url) {
+        return Ok(None);
+    }
     let Some(detail_html) = fetch_detail_html(&detail_url).await? else {
         return Ok(None);
     };
     let info = parse_amazon_detail(&detail_html);
-    Ok(amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref()).then_some(info))
+    if amazon_info_has_expected_isbn(&info, expected_isbn13.as_deref())
+        || amazon_info_is_physical_format(&info)
+    {
+        Ok(Some(info))
+    } else {
+        Ok(None)
+    }
 }
 
 async fn fetch_cover(url: &str) -> Result<Option<AmazonCover>> {

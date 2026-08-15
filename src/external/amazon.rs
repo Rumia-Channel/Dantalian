@@ -1,5 +1,5 @@
 use crate::{
-    amazon::{self, AmazonInfo},
+    amazon::{self, AmazonInfo, amazon_info_is_physical_format},
     db::NewBook,
 };
 use base64::Engine;
@@ -138,6 +138,7 @@ fn empty_amazon_info() -> AmazonInfo {
         description: None,
         publish_date: None,
         isbn13: None,
+        physical_format: false,
     }
 }
 
@@ -187,8 +188,10 @@ async fn lookup_amazon_info(
     lookup_key: &str,
     expected_isbn13: Option<&str>,
 ) -> Result<AmazonInfo, String> {
+    const MAX_AMAZON_DETAIL_ATTEMPTS: usize = 12;
     let mut saw_product = false;
-    for search_url in amazon::amazon_search_urls(&[lookup_key]) {
+    let mut attempted_details = Vec::new();
+    'search: for search_url in amazon::amazon_search_urls(&[lookup_key]) {
         debug!(key = %lookup_key, "Amazon search: {}", search_url);
         let search_body = amazon_request(client, &search_url)
             .send()
@@ -209,6 +212,13 @@ async fn lookup_amazon_info(
             let Some(detail_url) = amazon::amazon_detail_url(&product_url) else {
                 continue;
             };
+            if attempted_details.iter().any(|url| url == &detail_url) {
+                continue;
+            }
+            if attempted_details.len() >= MAX_AMAZON_DETAIL_ATTEMPTS {
+                break 'search;
+            }
+            attempted_details.push(detail_url.clone());
             saw_product = true;
             let info = match fetch_amazon_detail_info(client, lookup_key, &detail_url).await {
                 Ok(info) => info,
@@ -217,7 +227,9 @@ async fn lookup_amazon_info(
                     continue;
                 }
             };
-            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
+            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
+                || amazon_info_is_physical_format(&info)
+            {
                 return Ok(info);
             }
             debug!(
@@ -230,10 +242,12 @@ async fn lookup_amazon_info(
     }
 
     if let Some(detail_url) = amazon::amazon_isbn_detail_url(lookup_key) {
-        if let Ok(info) = fetch_amazon_detail_info(client, lookup_key, &detail_url).await {
-            if amazon::amazon_info_has_expected_isbn(&info, expected_isbn13) {
-                return Ok(info);
-            }
+        if !attempted_details.iter().any(|url| url == &detail_url)
+            && let Ok(info) = fetch_amazon_detail_info(client, lookup_key, &detail_url).await
+            && (amazon::amazon_info_has_expected_isbn(&info, expected_isbn13)
+                || amazon_info_is_physical_format(&info))
+        {
+            return Ok(info);
         }
     }
 
