@@ -1,72 +1,11 @@
-use crate::db::NewBook;
+use crate::{
+    amazon::{self, AmazonInfo},
+    db::NewBook,
+};
 use base64::Engine;
 use reqwest::Client;
 use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
-
-fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
-    let digits: Vec<u8> = isbn13
-        .chars()
-        .filter_map(|c| c.to_digit(10).map(|d| d as u8))
-        .collect();
-    if digits.len() != 13
-        || (digits[0] != 9 || digits[1] != 7 || (digits[2] != 8 && digits[2] != 9))
-    {
-        return None;
-    }
-    let body = &digits[3..12];
-    let mut sum: u32 = 0;
-    for (i, &d) in body.iter().enumerate() {
-        sum += (d as u32) * ((i + 1) as u32);
-    }
-    let check = (11 - (sum % 11)) % 11;
-    let check_char = if check == 10 {
-        'X'
-    } else {
-        char::from_digit(check as u32, 10)?
-    };
-    let s: String = body
-        .iter()
-        .map(|d| char::from_digit(*d as u32, 10).unwrap())
-        .collect();
-    Some(format!("{}{}", s, check_char))
-}
-
-fn isbn10_to_isbn13(isbn10: &str) -> Option<String> {
-    let clean = isbn10.trim().replace(['-', ' '], "").to_uppercase();
-    if clean.len() != 10 {
-        return None;
-    }
-    let body = &clean[..9];
-    if !body.chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    let mut digits = format!("978{}", body);
-    let sum: u32 = digits
-        .chars()
-        .enumerate()
-        .map(|(i, c)| c.to_digit(10).unwrap() * if i % 2 == 0 { 1 } else { 3 })
-        .sum();
-    let check = (10 - (sum % 10)) % 10;
-    digits.push(char::from_digit(check, 10)?);
-    Some(digits)
-}
-
-fn isbn_lookup_variants(isbn: &str) -> Vec<String> {
-    let clean = isbn.trim().replace(['-', ' '], "").to_uppercase();
-    let mut variants = vec![clean.clone()];
-    let converted = match clean.len() {
-        10 => isbn10_to_isbn13(&clean),
-        13 => isbn13_to_isbn10(&clean),
-        _ => None,
-    };
-    if let Some(other) = converted {
-        if !variants.contains(&other) {
-            variants.push(other);
-        }
-    }
-    variants
-}
 
 fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
     client
@@ -75,18 +14,12 @@ fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
         .header("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
 }
 
-fn is_valid_cover_url(u: &str) -> bool {
-    !u.is_empty()
-        && (u.starts_with("http://") || u.starts_with("https://"))
-        && !u.starts_with("data:")
-}
-
 pub async fn lookup_isbn(
     client: &Client,
     isbn: &str,
     images_dir: &str,
 ) -> Result<Option<NewBook>, String> {
-    let isbn_variants = isbn_lookup_variants(isbn);
+    let isbn_variants = amazon::isbn_lookup_variants(isbn);
     let Some(mut ndl) = super::ndl::lookup_ndl(client, &isbn_variants).await? else {
         return Ok(None);
     };
@@ -199,10 +132,7 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
 }
 
 fn amazon_search_url(lookup_key: &str) -> String {
-    format!(
-        "https://www.amazon.co.jp/s?k={}&i=stripbooks",
-        urlencoding::encode(lookup_key)
-    )
+    amazon::amazon_search_url(lookup_key).unwrap_or_default()
 }
 
 async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonInfo, String> {
@@ -225,7 +155,11 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
     .ok()
     .flatten();
 
-    let Some(href) = product_url else {
+    let detail_url = product_url
+        .as_deref()
+        .and_then(amazon::amazon_detail_url)
+        .or_else(|| amazon::amazon_isbn_detail_url(lookup_key));
+    let Some(detail_url) = detail_url else {
         warn!(key = %lookup_key, "No product link found in Amazon search results");
         return Ok(AmazonInfo {
             title: None,
@@ -234,12 +168,6 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
             publish_date: None,
             isbn13: None,
         });
-    };
-
-    let detail_url = if href.starts_with("http") {
-        href
-    } else {
-        format!("https://www.amazon.co.jp{}", href)
     };
     debug!(key = %lookup_key, "Amazon detail: {}", detail_url);
 
@@ -251,23 +179,9 @@ async fn lookup_amazon_info(client: &Client, lookup_key: &str) -> Result<AmazonI
         .await
         .map_err(|e| format!("Amazon detail read failed: {}", e))?;
 
-    let has_black_curtain = tokio::task::spawn_blocking({
-        let body = detail_body.clone();
-        move || body.contains("black-curtain-verification")
-    })
-    .await
-    .map_err(|e| format!("Black curtain check panicked: {}", e))?;
-
-    let detail_body = if has_black_curtain {
+    let detail_body = if amazon::needs_black_curtain_eligibility(&detail_body) {
         debug!(key = %lookup_key, "Amazon black-curtain detected, confirming age eligibility");
-        let detail_path = detail_url
-            .find("/dp/")
-            .map(|i| &detail_url[i..])
-            .unwrap_or(&detail_url);
-        let eligibility_url = format!(
-            "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl={}",
-            urlencoding::encode(detail_path)
-        );
+        let eligibility_url = amazon::black_curtain_eligibility_url(&detail_url);
         amazon_request(client, &eligibility_url)
             .send()
             .await
@@ -401,281 +315,23 @@ pub async fn lookup_amazon_title_for_jan(client: &Client, jan: &str) -> Option<S
         .filter(|title| !title.trim().is_empty())
 }
 
-fn is_physical_product_href(href: &str) -> bool {
-    let path = href
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(href)
-        .to_ascii_lowercase();
-    let Some((product_path, _)) = path.split_once("/dp/") else {
-        return false;
-    };
-    !product_path
-        .split(|ch: char| matches!(ch, '/' | '-' | '_'))
-        .any(|segment| matches!(segment, "ebook" | "kindle" | "digital" | "audible"))
-}
-
 fn parse_amazon_search_result(html: &str) -> Result<Option<String>, String> {
-    let document = scraper::Html::parse_document(html);
-
-    let card_selector = scraper::Selector::parse(r#"[data-component-type="s-search-result"]"#)
-        .map_err(|e| format!("Amazon selector parse failed: {}", e))?;
-    let a_selector = scraper::Selector::parse("a[href]").unwrap();
-
-    if let Some(card) = document.select(&card_selector).find(|el| {
-        el.value()
-            .attr("data-asin")
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-    }) {
-        let hrefs: Vec<&str> = card
-            .select(&a_selector)
-            .filter_map(|a| a.value().attr("href"))
-            .collect();
-
-        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
-            return Ok(Some((*href).to_string()));
-        }
-    }
-
-    let main_slot = scraper::Selector::parse("div.s-result-list, div.s-main-slot")
-        .ok()
-        .and_then(|sel| document.select(&sel).next());
-
-    if let Some(slot) = main_slot {
-        let hrefs: Vec<&str> = slot
-            .select(&a_selector)
-            .filter_map(|a| a.value().attr("href"))
-            .collect();
-
-        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
-            return Ok(Some((*href).to_string()));
-        }
-    }
-
-    let old_selector = scraper::Selector::parse(r#"[cel_widget_id^="MAIN-SEARCH_RESULTS-"]"#)
-        .map_err(|e| format!("Amazon selector parse failed: {}", e))?;
-
-    if let Some(widget) = document.select(&old_selector).next() {
-        let hrefs: Vec<&str> = widget
-            .select(&a_selector)
-            .filter_map(|a| a.value().attr("href"))
-            .collect();
-        if let Some(href) = hrefs.iter().find(|href| is_physical_product_href(href)) {
-            return Ok(Some((*href).to_string()));
-        }
-    }
-
-    Ok(None)
-}
-
-struct AmazonInfo {
-    title: Option<String>,
-    cover_url: Option<String>,
-    description: Option<String>,
-    publish_date: Option<String>,
-    isbn13: Option<String>,
+    Ok(amazon::parse_amazon_search_result(html))
 }
 
 fn parse_amazon_detail(html: &str) -> AmazonInfo {
-    let document = scraper::Html::parse_document(html);
-
-    let title = ["#productTitle", "#title"]
-        .iter()
-        .filter_map(|selector| scraper::Selector::parse(selector).ok())
-        .find_map(|selector| {
-            document
-                .select(&selector)
-                .next()
-                .map(|el| el.text().collect::<String>().trim().to_string())
-                .filter(|value| !value.is_empty())
-        })
-        .or_else(|| {
-            scraper::Selector::parse(r#"meta[property="og:title"]"#)
-                .ok()
-                .and_then(|selector| {
-                    document
-                        .select(&selector)
-                        .next()
-                        .and_then(|el| el.value().attr("content"))
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string)
-                })
-        });
-
-    let cover_url = if let Ok(selector) = scraper::Selector::parse(r#"img#landingImage"#) {
-        document.select(&selector).next().and_then(|el| {
-            let hires = el
-                .value()
-                .attr("data-old-hires")
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
-
-            hires
-                .or_else(|| {
-                    el.value()
-                        .attr("data-a-dynamic-image")
-                        .and_then(|dynamic| {
-                            serde_json::from_str::<
-                                std::collections::HashMap<String, serde_json::Value>,
-                            >(dynamic)
-                            .ok()
-                        })
-                        .and_then(|map| {
-                            map.keys()
-                                .filter(|k| !k.is_empty())
-                                .max_by_key(|k| k.len())
-                                .cloned()
-                        })
-                })
-                .or_else(|| {
-                    el.value()
-                        .attr("src")
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty() && !s.starts_with("data:"))
-                        .map(|s| s.to_string())
-                })
-        })
-    } else {
-        None
-    };
-
-    let cover_url = cover_url.filter(|u| !u.is_empty()).or_else(|| {
-        scraper::Selector::parse(r#"img#imgBlkFront"#)
-            .ok()
-            .and_then(|selector| {
-                document
-                    .select(&selector)
-                    .next()
-                    .and_then(|el| el.value().attr("src").map(|s| s.to_string()))
-            })
-    });
-
-    let cover_url = cover_url.filter(|u| is_valid_cover_url(u));
-
-    let description =
-        scraper::Selector::parse(r#"div#bookDescription_feature_div div.a-expander-content span"#)
-            .ok()
-            .and_then(|selector| {
-                document
-                    .select(&selector)
-                    .next()
-                    .map(|el| {
-                        let html = el.inner_html();
-                        let text = html
-                            .replace("<br>", "\n")
-                            .replace("<br/>", "\n")
-                            .replace("<br />", "\n")
-                            .replace("<BR>", "\n")
-                            .replace("<BR/>", "\n")
-                            .replace("<BR />", "\n");
-                        let trimmed = text.trim().to_string();
-                        if trimmed.is_empty() {
-                            None
-                        } else {
-                            Some(trimmed)
-                        }
-                    })
-                    .flatten()
-            });
-
-    let publish_date = parse_amazon_publish_date(&document);
-    let isbn13 = parse_amazon_isbn13(&document);
-
-    AmazonInfo {
-        title,
-        cover_url,
-        description,
-        publish_date,
-        isbn13,
-    }
+    amazon::parse_amazon_detail(html)
 }
 
-const AMAZON_DETAIL_ROW_SELECTORS: &[&str] = &[
-    "#detailBullets_feature_div li",
-    "#detailBulletsWrapper_feature_div li",
-    "#productDetails_techSpec_section_1 tr",
-    "#productDetails_detailBullets_sections1 tr",
-    "#productDetailsTable tr",
-];
-
+#[cfg(test)]
 fn amazon_isbn13_matches(info: &AmazonInfo, expected: &str) -> bool {
     info.isbn13.as_deref() == Some(expected)
 }
+
 fn amazon_cover_matches_expected_isbn(info: &AmazonInfo, expected: &str) -> bool {
     info.isbn13
         .as_deref()
         .is_none_or(|actual| actual == expected)
-}
-fn parse_amazon_isbn13(document: &scraper::Html) -> Option<String> {
-    for selector in AMAZON_DETAIL_ROW_SELECTORS {
-        let Ok(selector) = scraper::Selector::parse(selector) else {
-            continue;
-        };
-        for element in document.select(&selector) {
-            let text = element.text().collect::<String>();
-            for (label, is_isbn10) in [("ISBN-13", false), ("ISBN-10", true)] {
-                let Some((_, value)) = text.split_once(label) else {
-                    continue;
-                };
-                for part in value.split_whitespace() {
-                    let candidate: String = part
-                        .chars()
-                        .filter(|ch| ch.is_ascii_digit() || *ch == 'X' || *ch == 'x')
-                        .map(|ch| ch.to_ascii_uppercase())
-                        .collect();
-                    if is_isbn10 {
-                        if let Some(isbn13) = isbn10_to_isbn13(&candidate) {
-                            return Some(isbn13);
-                        }
-                    } else if candidate.len() == 13
-                        && candidate.chars().all(|ch| ch.is_ascii_digit())
-                    {
-                        return Some(candidate);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn parse_amazon_publish_date(document: &scraper::Html) -> Option<String> {
-    for selector in AMAZON_DETAIL_ROW_SELECTORS {
-        let Ok(selector) = scraper::Selector::parse(selector) else {
-            continue;
-        };
-        for element in document.select(&selector) {
-            let text = element.text().collect::<String>();
-            if !text.contains("発売日") && !text.contains("出版日") {
-                continue;
-            }
-
-            for label in ["発売日", "出版日"] {
-                let Some((_, value)) = text.split_once(label) else {
-                    continue;
-                };
-                if let Some(date) = value
-                    .split_whitespace()
-                    .filter_map(|part| {
-                        let trimmed = part.trim_matches(|ch: char| {
-                            matches!(
-                                ch,
-                                ':' | '：' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}'
-                            )
-                        });
-                        crate::external::normalize_publish_date(Some(trimmed))
-                    })
-                    .next()
-                {
-                    return Some(date);
-                }
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]

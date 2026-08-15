@@ -1,3 +1,5 @@
+pub mod amazon;
+
 #[cfg(feature = "native")]
 pub mod adapters;
 #[cfg(feature = "native")]
