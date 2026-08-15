@@ -248,8 +248,11 @@ async fn musicbrainz_search(query: &str, limit: usize) -> Result<Vec<MbRelease>>
         .append_pair("limit", &limit.clamp(1, 100).to_string())
         .append_pair("fmt", "json");
     let mut response = fetch_musicbrainz(url, "MusicBrainz release search").await?;
-    if !response.status_code().to_string().starts_with('2') {
-        return Ok(Vec::new());
+    let status = response.status_code();
+    if !(200..300).contains(&status) {
+        return Err(worker::Error::RustError(format!(
+            "MusicBrainz search returned HTTP {status}"
+        )));
     }
     let json = response.text().await.map_err(|error| {
         worker::Error::RustError(format!("MusicBrainz search response read failed: {error}"))
@@ -278,8 +281,14 @@ async fn musicbrainz_release(release_id: &str) -> Result<Option<MbRelease>> {
         .append_pair("inc", "recordings+artist-credits+labels+media")
         .append_pair("fmt", "json");
     let mut response = fetch_musicbrainz(url, "MusicBrainz release").await?;
-    if !response.status_code().to_string().starts_with('2') {
+    let status = response.status_code();
+    if status == 404 {
         return Ok(None);
+    }
+    if !(200..300).contains(&status) {
+        return Err(worker::Error::RustError(format!(
+            "MusicBrainz release returned HTTP {status}"
+        )));
     }
     let json = response.text().await.map_err(|error| {
         worker::Error::RustError(format!("MusicBrainz release response read failed: {error}"))
