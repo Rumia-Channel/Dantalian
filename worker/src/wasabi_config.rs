@@ -1,4 +1,6 @@
-use worker::{Env, Result};
+use std::time::Duration;
+
+use worker::{Delay, Env, Result};
 
 #[derive(Clone)]
 pub struct WasabiConfig {
@@ -60,8 +62,12 @@ async fn required_secret(
     direct_bindings: &[&str],
 ) -> Result<String> {
     if let Ok(store) = env.secret_store(store_binding) {
-        if let Some(value) = store.get().await? {
-            return non_empty_secret(store_binding, value);
+        match get_secret_with_retry(&store).await {
+            Ok(Some(value)) => return non_empty_secret(store_binding, value),
+            Ok(None) => {}
+            Err(_) => {
+                worker::console_error!("Wasabi secret store binding unavailable: {store_binding}");
+            }
         }
     }
     for binding in direct_bindings {
@@ -73,6 +79,22 @@ async fn required_secret(
         "{} is not configured",
         direct_bindings[0]
     )))
+}
+
+async fn get_secret_with_retry(store: &worker::SecretStore) -> Result<Option<String>> {
+    let mut last_error = None;
+    for attempt in 0..3 {
+        match store.get().await {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < 2 {
+                    Delay::from(Duration::from_millis(50 * (attempt + 1))).await;
+                }
+            }
+        }
+    }
+    Err(last_error.expect("secret store retry must record an error"))
 }
 
 fn non_empty_secret(binding: &str, value: String) -> Result<String> {

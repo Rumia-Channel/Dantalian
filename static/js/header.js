@@ -45,15 +45,26 @@
         }
     }
 
+    function setAuthCookie(token) {
+        if (!token) return;
+        try {
+            var cookie = "dantalian_api_token=" + encodeURIComponent(token) +
+                "; Max-Age=28800; Path=/; SameSite=Strict";
+            if (window.location.protocol === "https:") cookie += "; Secure";
+            document.cookie = cookie;
+        } catch {}
+    }
+
     function setAuthToken(token) {
         try {
             sessionStorage.setItem(AUTH_STORAGE_KEY, token);
         } catch {}
-        try {
-            document.cookie = "dantalian_api_token=" + encodeURIComponent(token) +
-                "; Max-Age=28800; Path=/; SameSite=Strict; Secure";
-        } catch {}
+        setAuthCookie(token);
         updateAuthButton();
+    }
+
+    function syncAuthCookie() {
+        setAuthCookie(getAuthToken());
     }
 
     function clearAuthToken() {
@@ -61,10 +72,13 @@
             sessionStorage.removeItem(AUTH_STORAGE_KEY);
         } catch {}
         try {
-            document.cookie = "dantalian_api_token=; Max-Age=0; Path=/; SameSite=Strict; Secure";
+            var cookie = "dantalian_api_token=; Max-Age=0; Path=/; SameSite=Strict";
+            if (window.location.protocol === "https:") cookie += "; Secure";
+            document.cookie = cookie;
         } catch {}
         updateAuthButton();
     }
+
 
     function updateAuthButton() {
         if (!authButton) return;
@@ -227,5 +241,6 @@
                 : "staging Worker APIを利用するにはAPIトークンが必要です。");
         });
     }
+    syncAuthCookie();
     updateAuthButton();
 })();
