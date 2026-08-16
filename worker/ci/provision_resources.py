@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, NoReturn
 
-TARGETS = {"staging", "production"}
+TARGETS = {"develop", "staging", "production"}
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 UUID_PATTERN = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
@@ -144,14 +144,14 @@ def main() -> None:
     base_database = os.environ.get("DANTALIAN_D1_DATABASE_NAME", "")
     base_queue = os.environ.get("DANTALIAN_AUDIO_JOB_QUEUE", "")
     if target not in TARGETS:
-        fail("DANTALIAN_DEPLOY_TARGET must be staging or production")
+        fail("DANTALIAN_DEPLOY_TARGET must be develop, staging, or production")
     if not NAME_PATTERN.fullmatch(base_database):
         fail("DANTALIAN_D1_DATABASE_NAME must be a lowercase base name without an environment suffix")
     if not NAME_PATTERN.fullmatch(base_queue):
         fail("DANTALIAN_AUDIO_JOB_QUEUE must be a lowercase base name without an environment suffix")
-    if base_database.endswith(("-staging", "-production")):
+    if any(base_database.endswith(f"-{target_name}") for target_name in TARGETS):
         fail("DANTALIAN_D1_DATABASE_NAME must not include a target suffix")
-    if base_queue.endswith(("-staging", "-production")):
+    if any(base_queue.endswith(f"-{target_name}") for target_name in TARGETS):
         fail("DANTALIAN_AUDIO_JOB_QUEUE must not include a target suffix")
 
     database_name = f"{base_database}-{target}"

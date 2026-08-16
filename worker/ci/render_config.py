@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import NoReturn
 from uuid import UUID
 
-TARGETS = {"staging", "production"}
+TARGETS = {"develop", "staging", "production"}
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 SECRET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -24,7 +24,7 @@ def required(name: str) -> str:
 def main() -> None:
     target = required("DANTALIAN_DEPLOY_TARGET")
     if target not in TARGETS:
-        fail("DANTALIAN_DEPLOY_TARGET must be staging or production")
+        fail("DANTALIAN_DEPLOY_TARGET must be develop, staging, or production")
 
     database_name = required("DANTALIAN_D1_DATABASE_NAME")
     database_id = required("DANTALIAN_D1_DATABASE_ID")
@@ -70,9 +70,7 @@ def main() -> None:
         if not re.fullmatch(r"[A-Za-z0-9.-]+", service_domain):
             fail("SERVICE_DOMAIN must be a hostname without a scheme or path")
         replacements["SERVICE_DOMAIN"] = service_domain
-        template_path = Path("wrangler.production.toml")
-    else:
-        template_path = Path("wrangler.staging.toml")
+    template_path = Path(f"wrangler.{target}.toml")
 
     template = template_path.read_text(encoding="utf-8")
     for name, value in replacements.items():
