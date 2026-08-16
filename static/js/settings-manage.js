@@ -40,6 +40,28 @@ const SECRET_SETTING_KEYS = new Set([
     "media_sync.s3_access_key",
     "media_sync.s3_secret_key",
 ]);
+const WORKER_UNSUPPORTED_SETTING_KEYS = new Set([
+    "upload.cover_max_mb",
+    "upload.audio_max_mb",
+    "upload.file_max_mb",
+]);
+let workerSettingsRuntime = false;
+
+async function detectWorkerSettingsRuntime() {
+    try {
+        const response = await fetch("/api/health", { cache: "no-store" });
+        if (!response.ok) return false;
+        const body = await response.json();
+        return body?.runtime === "cloudflare-worker";
+    } catch {
+        return false;
+    }
+}
+function isWorkerUnsupportedSettingKey(key) {
+    return WORKER_UNSUPPORTED_SETTING_KEYS.has(key)
+        || key.startsWith("backup.")
+        || key.startsWith("media_sync.");
+}
 
 const TZ_OPTIONS = [
     { value: "Asia/Tokyo", label: "Asia/Tokyo (UTC+9)" },
@@ -59,6 +81,7 @@ const TZ_OPTIONS = [
 
 async function loadSettings() {
     const res = await fetch("/api/settings", { cache: "no-store" });
+
     if (!res.ok) {
         throw new Error(`設定の読み込みに失敗しました (HTTP ${res.status})`);
     }
@@ -68,6 +91,7 @@ async function loadSettings() {
 async function saveSettings(settings) {
     const body = {};
     for (const key of SETTINGS_KEYS) {
+        if (workerSettingsRuntime && isWorkerUnsupportedSettingKey(key)) continue;
         if (settings[key] !== undefined) {
             body[key] = String(settings[key]);
         }
@@ -105,11 +129,11 @@ function isSettingConfigured(settings, key) {
     return settings[`${key}.__configured`] === "true";
 }
 
-function secretInput(settings, key, id, type = "password") {
+function secretInput(settings, key, id, type = "password", disabledAttr = "") {
     const configured = isSettingConfigured(settings, key);
     const current = settings[key] || "";
     const placeholder = current ? "" : (configured ? "設定済み（変更時のみ入力）" : "未設定");
-    return `<input type="${type}" id="${id}" value="${escapeAttr(current)}" class="form-input" placeholder="${placeholder}" autocomplete="new-password">`;
+    return `<input type="${type}" id="${id}" value="${escapeAttr(current)}" class="form-input" placeholder="${placeholder}" autocomplete="new-password"${disabledAttr}>`;
 }
 
 function addSecretSetting(settings, key, id) {
@@ -132,7 +156,14 @@ async function renderSettingsForm() {
             </div>`;
         return;
     }
-
+    workerSettingsRuntime = await detectWorkerSettingsRuntime();
+    const workerDisabledAttr = workerSettingsRuntime ? ' disabled aria-disabled="true"' : "";
+    const workerSectionClass = workerSettingsRuntime
+        ? " settings-form-section-disabled"
+        : "";
+    const workerRuntimeNote = workerSettingsRuntime
+        ? '<p class="settings-runtime-note">Workerではこの設定は利用できません。Cloudflare管理下の実行環境を使用します。</p>'
+        : "";
     const enabled = getValue(settings, "backup.enabled", "false");
     const scheduleTime = getValue(settings, "backup.schedule_time", "");
     const scheduleTz = getValue(settings, "backup.schedule_tz", "Asia/Tokyo");
@@ -181,19 +212,20 @@ async function renderSettingsForm() {
             </div>
         </div>
 
-        <div class="settings-form-section">
+        <div class="settings-form-section${workerSectionClass}">
             <h3>アップロード上限</h3>
+            ${workerRuntimeNote}
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-upload-cover-mb">カバー画像 (MB)</label>
-                <input type="number" id="s-upload-cover-mb" value="${escapeAttr(uploadCoverMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+                <input type="number" id="s-upload-cover-mb" value="${escapeAttr(uploadCoverMb)}" min="1" max="4096" class="form-input" style="width:6rem"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-upload-audio-mb">音声ファイル (MB)</label>
-                <input type="number" id="s-upload-audio-mb" value="${escapeAttr(uploadAudioMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+                <input type="number" id="s-upload-audio-mb" value="${escapeAttr(uploadAudioMb)}" min="1" max="4096" class="form-input" style="width:6rem"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-upload-file-mb">書籍ファイル epub/pdf/zip (MB)</label>
-                <input type="number" id="s-upload-file-mb" value="${escapeAttr(uploadFileMb)}" min="1" max="4096" class="form-input" style="width:6rem">
+                <input type="number" id="s-upload-file-mb" value="${escapeAttr(uploadFileMb)}" min="1" max="4096" class="form-input" style="width:6rem"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</span>
@@ -213,16 +245,17 @@ async function renderSettingsForm() {
                 <input type="text" id="s-data-saver-extensions" value="${escapeAttr(dataSaverExtensions)}" class="form-input" placeholder="wav,flac,aiff,alac">
             </div>
             <div class="settings-form-row">
-                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">カンマ区切り。設定を有効にするとバックグラウンドで順番に Opus と AAC を生成し、生成中の曲は原音を再生します。</span>
+                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">${workerSettingsRuntime ? "Workerでは保存時と定期スキャン時に対象音声のエンコードjobを自動登録し、ContainerでOpus/AACを生成します。生成中の曲は原音を再生します。" : "カンマ区切り。設定を有効にするとバックグラウンドで順番に Opus と AAC を生成し、生成中の曲は原音を再生します。"}</span>
             </div>
         </div>
 
-        <div class="settings-form-section">
+        <div class="settings-form-section${workerSectionClass}">
             <h3>バックアップ</h3>
+            ${workerRuntimeNote}
 
             <div class="settings-form-row">
                 <label class="settings-form-label">
-                    <input type="checkbox" id="s-backup-enabled" ${enabled === "true" ? "checked" : ""}>
+                    <input type="checkbox" id="s-backup-enabled" ${enabled === "true" ? "checked" : ""}${workerDisabledAttr}>
                     バックアップを有効にする
                 </label>
             </div>
@@ -230,31 +263,32 @@ async function renderSettingsForm() {
             <div class="settings-form-row">
                 <label class="settings-form-label-inline">定時バックアップ時刻</label>
                 <div class="settings-form-group">
-                    <input type="time" id="s-schedule-time" value="${escapeAttr(scheduleTime)}" class="form-input" style="width:auto">
+                    <input type="time" id="s-schedule-time" value="${escapeAttr(scheduleTime)}" class="form-input" style="width:auto"${workerDisabledAttr}>
                     <span class="settings-label">at</span>
-                    <select id="s-schedule-tz" class="form-input" style="width:auto">${tzOptionsHtml}</select>
+                    <select id="s-schedule-tz" class="form-input" style="width:auto"${workerDisabledAttr}>${tzOptionsHtml}</select>
                 </div>
             </div>
 
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-retention">保持世代数</label>
-                <input type="number" id="s-retention" value="${escapeAttr(retention)}" min="1" max="365" class="form-input" style="width:5rem">
+                <input type="number" id="s-retention" value="${escapeAttr(retention)}" min="1" max="365" class="form-input" style="width:5rem"${workerDisabledAttr}>
             </div>
 
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-dest-type">バックアップ先</label>
-                <select id="s-dest-type" class="form-input" style="width:auto">${destOptionsHtml}</select>
+                <select id="s-dest-type" class="form-input" style="width:auto"${workerDisabledAttr}>${destOptionsHtml}</select>
             </div>
 
-            <div id="dest-fields">${renderDestFields(destType, settings)}</div>
+            <div id="dest-fields">${renderDestFields(destType, settings, workerDisabledAttr)}</div>
         </div>
 
-        <div class="settings-form-section">
+        <div class="settings-form-section${workerSectionClass}">
             <h3>メディア同期 (S3 upload-only)</h3>
+            ${workerRuntimeNote}
 
             <div class="settings-form-row">
                 <label class="settings-form-label">
-                    <input type="checkbox" id="s-media-sync-enabled" ${msEnabled === "true" ? "checked" : ""}>
+                    <input type="checkbox" id="s-media-sync-enabled" ${msEnabled === "true" ? "checked" : ""}${workerDisabledAttr}>
                     メディア同期を有効にする
                 </label>
             </div>
@@ -262,18 +296,18 @@ async function renderSettingsForm() {
             <div class="settings-form-row">
                 <label class="settings-form-label-inline">対象メディア</label>
                 <div class="settings-form-group">
-                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-images" ${msTypesSet.has("images") ? "checked" : ""}> 画像 (cover)</label>
-                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-audio" ${msTypesSet.has("audio") ? "checked" : ""}> 音声 (audio)</label>
-                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-epubs" ${msTypesSet.has("epubs") ? "checked" : ""}> 書籍ファイル (epub/pdf/zip)</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-images" ${msTypesSet.has("images") ? "checked" : ""}${workerDisabledAttr}> 画像 (cover)</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-audio" ${msTypesSet.has("audio") ? "checked" : ""}${workerDisabledAttr}> 音声 (audio)</label>
+                    <label class="settings-form-label"><input type="checkbox" id="s-media-sync-type-epubs" ${msTypesSet.has("epubs") ? "checked" : ""}${workerDisabledAttr}> 書籍ファイル (epub/pdf/zip)</label>
                 </div>
             </div>
 
             <div class="settings-form-row">
                 <label class="settings-form-label-inline">定時同期時刻</label>
                 <div class="settings-form-group">
-                    <input type="time" id="s-media-sync-schedule-time" value="${escapeAttr(msScheduleTime)}" class="form-input" style="width:auto">
+                    <input type="time" id="s-media-sync-schedule-time" value="${escapeAttr(msScheduleTime)}" class="form-input" style="width:auto"${workerDisabledAttr}>
                     <span class="settings-label">at</span>
-                    <select id="s-media-sync-schedule-tz" class="form-input" style="width:auto">${msTzOptionsHtml}</select>
+                    <select id="s-media-sync-schedule-tz" class="form-input" style="width:auto"${workerDisabledAttr}>${msTzOptionsHtml}</select>
                 </div>
             </div>
 
@@ -285,31 +319,31 @@ async function renderSettingsForm() {
 
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-endpoint">エンドポイント</label>
-                <input type="url" id="s-media-sync-s3-endpoint" value="${escapeAttr(getValue(settings, "media_sync.s3_endpoint", ""))}" class="form-input" placeholder="https://s3.example.com (未入力ならバックアップの S3 設定を使用)">
+                <input type="url" id="s-media-sync-s3-endpoint" value="${escapeAttr(getValue(settings, "media_sync.s3_endpoint", ""))}" class="form-input" placeholder="https://s3.example.com (未入力ならバックアップの S3 設定を使用)"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-region">リージョン</label>
-                <input type="text" id="s-media-sync-s3-region" value="${escapeAttr(getValue(settings, "media_sync.s3_region", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定 / us-east-1">
+                <input type="text" id="s-media-sync-s3-region" value="${escapeAttr(getValue(settings, "media_sync.s3_region", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定 / us-east-1"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-bucket">バケット</label>
-                <input type="text" id="s-media-sync-s3-bucket" value="${escapeAttr(getValue(settings, "media_sync.s3_bucket", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定を使用">
+                <input type="text" id="s-media-sync-s3-bucket" value="${escapeAttr(getValue(settings, "media_sync.s3_bucket", ""))}" class="form-input" placeholder="未入力ならバックアップの S3 設定を使用"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-access-key">アクセスキー</label>
-                ${secretInput(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key", "text")}
+                ${secretInput(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key", "text", workerDisabledAttr)}
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-secret-key">シークレットキー</label>
-                ${secretInput(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key")}
+                ${secretInput(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key", "password", workerDisabledAttr)}
             </div>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-media-sync-s3-prefix">プレフィックス</label>
-                <input type="text" id="s-media-sync-s3-prefix" value="${escapeAttr(getValue(settings, "media_sync.s3_prefix", ""))}" class="form-input" placeholder="dantalian (未入力ならバックアップの S3 設定を使用)">
+                <input type="text" id="s-media-sync-s3-prefix" value="${escapeAttr(getValue(settings, "media_sync.s3_prefix", ""))}" class="form-input" placeholder="dantalian (未入力ならバックアップの S3 設定を使用)"${workerDisabledAttr}>
             </div>
 
             <div class="settings-form-row">
-                <button class="btn btn-secondary" type="button" onclick="runMediaSyncNow()">今すぐ同期</button>
+                <button class="btn btn-secondary" type="button" onclick="runMediaSyncNow()"${workerDisabledAttr}>今すぐ同期</button>
                 <span class="settings-label" style="font-size:0.75rem;color:var(--color-text-dim)">※ upload-only。S3 側の削除は行いません。</span>
             </div>
 
@@ -320,12 +354,12 @@ async function renderSettingsForm() {
             <button class="btn btn-primary" type="button" onclick="submitSettings()">保存</button>
         </div>
     `;
+    const fields = document.getElementById("dest-fields");
 
     document.getElementById("s-dest-type").addEventListener("change", function () {
         captureDestinationFields(settings);
         settings["backup.dest_type"] = this.value;
-        const fields = document.getElementById("dest-fields");
-        fields.innerHTML = renderDestFields(this.value, settings);
+        fields.innerHTML = renderDestFields(this.value, settings, workerDisabledAttr);
     });
 }
 
@@ -346,53 +380,53 @@ function captureDestinationFields(settings) {
     read("s-s3-prefix", "backup.s3_prefix");
 }
 
-function renderDestFields(destType, settings) {
+function renderDestFields(destType, settings, disabledAttr = "") {
     switch (destType) {
         case "local":
             return `
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-local-path">保存ディレクトリ</label>
-                    <input type="text" id="s-local-path" value="${escapeAttr(getValue(settings, "backup.local_path", ""))}" class="form-input" placeholder="/path/to/backups">
+                    <input type="text" id="s-local-path" value="${escapeAttr(getValue(settings, "backup.local_path", ""))}" class="form-input" placeholder="/path/to/backups"${disabledAttr}>
                 </div>`;
         case "webdav":
             return `
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-webdav-url">URL</label>
-                    <input type="url" id="s-webdav-url" value="${escapeAttr(getValue(settings, "backup.webdav_url", ""))}" class="form-input" placeholder="https://webdav.example.com/backups/">
+                    <input type="url" id="s-webdav-url" value="${escapeAttr(getValue(settings, "backup.webdav_url", ""))}" class="form-input" placeholder="https://webdav.example.com/backups/"${disabledAttr}>
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-webdav-user">ユーザー名</label>
-                    <input type="text" id="s-webdav-user" value="${escapeAttr(getValue(settings, "backup.webdav_user", ""))}" class="form-input">
+                    <input type="text" id="s-webdav-user" value="${escapeAttr(getValue(settings, "backup.webdav_user", ""))}" class="form-input"${disabledAttr}>
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-webdav-pass">パスワード</label>
-                    ${secretInput(settings, "backup.webdav_pass", "s-webdav-pass")}
+                    ${secretInput(settings, "backup.webdav_pass", "s-webdav-pass", "password", disabledAttr)}
                 </div>`;
         case "s3":
             return `
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-endpoint">エンドポイント</label>
-                    <input type="url" id="s-s3-endpoint" value="${escapeAttr(getValue(settings, "backup.s3_endpoint", ""))}" class="form-input" placeholder="https://s3.example.com">
+                    <input type="url" id="s-s3-endpoint" value="${escapeAttr(getValue(settings, "backup.s3_endpoint", ""))}" class="form-input" placeholder="https://s3.example.com"${disabledAttr}>
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-region">リージョン</label>
-                    <input type="text" id="s-s3-region" value="${escapeAttr(getValue(settings, "backup.s3_region", "us-east-1"))}" class="form-input">
+                    <input type="text" id="s-s3-region" value="${escapeAttr(getValue(settings, "backup.s3_region", "us-east-1"))}" class="form-input"${disabledAttr}>
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-bucket">バケット</label>
-                    <input type="text" id="s-s3-bucket" value="${escapeAttr(getValue(settings, "backup.s3_bucket", ""))}" class="form-input">
+                    <input type="text" id="s-s3-bucket" value="${escapeAttr(getValue(settings, "backup.s3_bucket", ""))}" class="form-input"${disabledAttr}>
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-access-key">アクセスキー</label>
-                    ${secretInput(settings, "backup.s3_access_key", "s-s3-access-key", "text")}
+                    ${secretInput(settings, "backup.s3_access_key", "s-s3-access-key", "text", disabledAttr)}
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-secret-key">シークレットキー</label>
-                    ${secretInput(settings, "backup.s3_secret_key", "s-s3-secret-key")}
+                    ${secretInput(settings, "backup.s3_secret_key", "s-s3-secret-key", "password", disabledAttr)}
                 </div>
                 <div class="settings-form-row">
                     <label class="settings-form-label-inline" for="s-s3-prefix">プレフィックス</label>
-                    <input type="text" id="s-s3-prefix" value="${escapeAttr(getValue(settings, "backup.s3_prefix", ""))}" class="form-input" placeholder="dantalian/">
+                    <input type="text" id="s-s3-prefix" value="${escapeAttr(getValue(settings, "backup.s3_prefix", ""))}" class="form-input" placeholder="dantalian/"${disabledAttr}>
                 </div>`;
         default:
             return "";
@@ -402,55 +436,58 @@ function renderDestFields(destType, settings) {
 async function submitSettings() {
     const settings = {};
     addSecretSetting(settings, "discogs_token", "s-discogs-token");
-    settings["upload.cover_max_mb"] = document.getElementById("s-upload-cover-mb").value;
-    settings["upload.audio_max_mb"] = document.getElementById("s-upload-audio-mb").value;
-    settings["upload.file_max_mb"] = document.getElementById("s-upload-file-mb").value;
     settings["audio.data_saver.enabled"] = document.getElementById("s-data-saver-enabled").checked ? "true" : "false";
     settings["audio.data_saver.extensions"] = document.getElementById("s-data-saver-extensions").value;
-    settings["backup.enabled"] = document.getElementById("s-backup-enabled").checked ? "true" : "false";
-    settings["backup.schedule_time"] = document.getElementById("s-schedule-time").value;
-    settings["backup.schedule_tz"] = document.getElementById("s-schedule-tz").value;
-    settings["backup.retention"] = document.getElementById("s-retention").value;
-    const destType = document.getElementById("s-dest-type").value;
-    settings["backup.dest_type"] = destType;
 
-    switch (destType) {
-        case "local":
-            settings["backup.local_path"] = document.getElementById("s-local-path").value;
-            break;
-        case "webdav":
-            settings["backup.webdav_url"] = document.getElementById("s-webdav-url").value;
-            settings["backup.webdav_user"] = document.getElementById("s-webdav-user").value;
-            addSecretSetting(settings, "backup.webdav_pass", "s-webdav-pass");
-            break;
-        case "s3":
-            settings["backup.s3_endpoint"] = document.getElementById("s-s3-endpoint").value;
-            settings["backup.s3_region"] = document.getElementById("s-s3-region").value;
-            settings["backup.s3_bucket"] = document.getElementById("s-s3-bucket").value;
-            addSecretSetting(settings, "backup.s3_access_key", "s-s3-access-key");
-            addSecretSetting(settings, "backup.s3_secret_key", "s-s3-secret-key");
-            settings["backup.s3_prefix"] = document.getElementById("s-s3-prefix").value;
-            break;
-    }
+    if (!workerSettingsRuntime) {
+        settings["upload.cover_max_mb"] = document.getElementById("s-upload-cover-mb").value;
+        settings["upload.audio_max_mb"] = document.getElementById("s-upload-audio-mb").value;
+        settings["upload.file_max_mb"] = document.getElementById("s-upload-file-mb").value;
+        settings["backup.enabled"] = document.getElementById("s-backup-enabled").checked ? "true" : "false";
+        settings["backup.schedule_time"] = document.getElementById("s-schedule-time").value;
+        settings["backup.schedule_tz"] = document.getElementById("s-schedule-tz").value;
+        settings["backup.retention"] = document.getElementById("s-retention").value;
+        const destType = document.getElementById("s-dest-type").value;
+        settings["backup.dest_type"] = destType;
 
-    settings["media_sync.enabled"] = document.getElementById("s-media-sync-enabled").checked ? "true" : "false";
-    const msTypes = [];
-    if (document.getElementById("s-media-sync-type-images").checked) msTypes.push("images");
-    if (document.getElementById("s-media-sync-type-audio").checked) msTypes.push("audio");
-    if (document.getElementById("s-media-sync-type-epubs").checked) msTypes.push("epubs");
-    if (document.getElementById("s-media-sync-enabled").checked && msTypes.length === 0) {
-        alert("メディア同期の「対象メディア」が1つも選択されていません。最低1つをチェックしてください。");
-        return;
+        switch (destType) {
+            case "local":
+                settings["backup.local_path"] = document.getElementById("s-local-path").value;
+                break;
+            case "webdav":
+                settings["backup.webdav_url"] = document.getElementById("s-webdav-url").value;
+                settings["backup.webdav_user"] = document.getElementById("s-webdav-user").value;
+                addSecretSetting(settings, "backup.webdav_pass", "s-webdav-pass");
+                break;
+            case "s3":
+                settings["backup.s3_endpoint"] = document.getElementById("s-s3-endpoint").value;
+                settings["backup.s3_region"] = document.getElementById("s-s3-region").value;
+                settings["backup.s3_bucket"] = document.getElementById("s-s3-bucket").value;
+                addSecretSetting(settings, "backup.s3_access_key", "s-s3-access-key");
+                addSecretSetting(settings, "backup.s3_secret_key", "s-s3-secret-key");
+                settings["backup.s3_prefix"] = document.getElementById("s-s3-prefix").value;
+                break;
+        }
+
+        settings["media_sync.enabled"] = document.getElementById("s-media-sync-enabled").checked ? "true" : "false";
+        const msTypes = [];
+        if (document.getElementById("s-media-sync-type-images").checked) msTypes.push("images");
+        if (document.getElementById("s-media-sync-type-audio").checked) msTypes.push("audio");
+        if (document.getElementById("s-media-sync-type-epubs").checked) msTypes.push("epubs");
+        if (document.getElementById("s-media-sync-enabled").checked && msTypes.length === 0) {
+            alert("メディア同期の「対象メディア」が1つも選択されていません。最低1つをチェックしてください。");
+            return;
+        }
+        settings["media_sync.types"] = msTypes.join(",");
+        settings["media_sync.schedule_time"] = document.getElementById("s-media-sync-schedule-time").value;
+        settings["media_sync.schedule_tz"] = document.getElementById("s-media-sync-schedule-tz").value;
+        settings["media_sync.s3_endpoint"] = document.getElementById("s-media-sync-s3-endpoint").value;
+        settings["media_sync.s3_region"] = document.getElementById("s-media-sync-s3-region").value;
+        settings["media_sync.s3_bucket"] = document.getElementById("s-media-sync-s3-bucket").value;
+        addSecretSetting(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key");
+        addSecretSetting(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key");
+        settings["media_sync.s3_prefix"] = document.getElementById("s-media-sync-s3-prefix").value;
     }
-    settings["media_sync.types"] = msTypes.join(",");
-    settings["media_sync.schedule_time"] = document.getElementById("s-media-sync-schedule-time").value;
-    settings["media_sync.schedule_tz"] = document.getElementById("s-media-sync-schedule-tz").value;
-    settings["media_sync.s3_endpoint"] = document.getElementById("s-media-sync-s3-endpoint").value;
-    settings["media_sync.s3_region"] = document.getElementById("s-media-sync-s3-region").value;
-    settings["media_sync.s3_bucket"] = document.getElementById("s-media-sync-s3-bucket").value;
-    addSecretSetting(settings, "media_sync.s3_access_key", "s-media-sync-s3-access-key");
-    addSecretSetting(settings, "media_sync.s3_secret_key", "s-media-sync-s3-secret-key");
-    settings["media_sync.s3_prefix"] = document.getElementById("s-media-sync-s3-prefix").value;
 
     await saveSettings(settings);
 }

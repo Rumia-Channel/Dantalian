@@ -217,6 +217,9 @@ pub async fn scheduled(event: ScheduledEvent, env: Env, ctx: ScheduleContext) {
     if let Err(error) = audio_job_api::recover_and_dispatch(&env).await {
         worker::console_error!("scheduled audio dispatch recovery failed: {error}");
     }
+    if let Err(error) = audio_job_api::enqueue_data_saver_jobs(&env).await {
+        worker::console_error!("scheduled data saver job registration failed: {error}");
+    }
     if let Err(error) = media_sync_api::run_scheduled(event, env, ctx).await {
         worker::console_error!("scheduled media sync failed: {error}");
     }

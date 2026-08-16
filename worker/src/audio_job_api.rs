@@ -1,15 +1,17 @@
+use std::collections::HashSet;
+
 use dantalian::{
     application::{
-        audio_jobs::{AudioJobService, prepare_request},
+        audio_jobs::{AudioJobService, DEFAULT_AUDIO_BITRATE_KBPS, prepare_request},
         error::AppError,
     },
     ports::{
         audio_jobs::{AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobStatus},
-        object_storage::AudioCodec,
+        object_storage::{AudioCodec, ObjectKind, object_key},
     },
 };
 use serde::Deserialize;
-use worker::{Env, Request, Response, Result, RouteContext};
+use worker::{D1Type, Env, Request, Response, Result, RouteContext};
 
 use crate::{
     audio_job_repository::D1AudioJobRepository,
@@ -19,6 +21,8 @@ use crate::{
 
 const QUEUE_MESSAGE_VERSION: u8 = 1;
 const RECOVERY_BATCH_SIZE: u32 = 100;
+const DATA_SAVER_DEFAULT_EXTENSIONS: &str = "wav,flac,aiff,alac";
+const DATA_SAVER_OWNER: &str = "api-token";
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAudioJobRequest {
@@ -231,6 +235,192 @@ pub async fn fail(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         }
         Err(error) => error_response(error),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct SettingRow {
+    key: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AudioSourceRow {
+    file_hash: String,
+    file_name: String,
+}
+
+/// Creates and dispatches missing Opus/AAC jobs for every eligible Worker
+/// audio source. The idempotency key makes settings saves and cron scans safe
+/// to repeat without starting duplicate containers.
+pub async fn enqueue_data_saver_jobs(env: &Env) -> Result<(), AppError> {
+    let db = env
+        .d1("DB")
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let (enabled, extensions) = load_data_saver_config(&db).await?;
+    if !enabled || extensions.is_empty() {
+        return Ok(());
+    }
+
+    let sources = db
+        .prepare(
+            "SELECT file_hash, file_name
+             FROM tracks
+             WHERE file_hash IS NOT NULL AND file_name IS NOT NULL",
+        )
+        .all()
+        .await
+        .map_err(|error| AppError::Database(error.to_string()))?
+        .results::<AudioSourceRow>()
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    if sources.is_empty() {
+        return Ok(());
+    }
+
+    let config = WasabiConfig::from_env(env)
+        .await
+        .map_err(|error| AppError::Storage(error.to_string()))?;
+    let prefix = config.prefix.clone();
+    let storage = WasabiStorage::new(config);
+    let repository = D1AudioJobRepository::new(&db);
+    let service = AudioJobService::new(repository);
+    let mut first_error = None;
+
+    for source in sources {
+        let Some(extension) = source_extension(&source.file_name, &source.file_hash) else {
+            continue;
+        };
+        if !extensions.contains(&extension) {
+            continue;
+        }
+        let input_key = match object_key(
+            prefix.as_deref(),
+            ObjectKind::OriginalAudio,
+            &source.file_hash,
+            &extension,
+        ) {
+            Ok(key) => key,
+            Err(_) => continue,
+        };
+
+        for codec in [AudioCodec::Opus, AudioCodec::Aac] {
+            let output_key = match object_key(
+                prefix.as_deref(),
+                ObjectKind::EncodedAudio { codec },
+                &source.file_hash,
+                codec.as_str(),
+            ) {
+                Ok(key) => key,
+                Err(_) => continue,
+            };
+            let idempotency_key = format!("data-saver:{}:{}", source.file_hash, codec.as_str());
+            if audio_job_exists(&db, &idempotency_key).await? {
+                continue;
+            }
+            let request = match prepare_request(
+                input_key.clone(),
+                output_key,
+                codec,
+                Some(DEFAULT_AUDIO_BITRATE_KBPS),
+                Some(idempotency_key),
+            ) {
+                Ok(request) => request,
+                Err(_) => continue,
+            };
+            match service.submit(&storage, request).await {
+                Ok(job) => {
+                    if let Err(error) = dispatch(env, &job.id).await {
+                        first_error.get_or_insert(error);
+                    }
+                }
+                Err(AppError::NotFound | AppError::Conflict(_)) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
+            }
+        }
+    }
+
+    first_error.map_or(Ok(()), Err)
+}
+
+async fn load_data_saver_config(
+    db: &worker::D1Database,
+) -> Result<(bool, HashSet<String>), AppError> {
+    let rows = db
+        .prepare(
+            "SELECT key, value FROM settings
+             WHERE key = 'audio.data_saver.enabled'
+                OR key = 'audio.data_saver.extensions'",
+        )
+        .all()
+        .await
+        .map_err(|error| AppError::Database(error.to_string()))?
+        .results::<SettingRow>()
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let mut enabled = false;
+    let mut extensions = DATA_SAVER_DEFAULT_EXTENSIONS
+        .split(',')
+        .filter_map(normalize_extension)
+        .collect::<HashSet<_>>();
+    for row in rows {
+        match row.key.as_str() {
+            "audio.data_saver.enabled" => {
+                enabled = matches!(row.value.trim(), "true" | "1" | "on");
+            }
+            "audio.data_saver.extensions" => {
+                extensions = row
+                    .value
+                    .split(',')
+                    .filter_map(normalize_extension)
+                    .collect();
+            }
+            _ => {}
+        }
+    }
+    Ok((enabled, extensions))
+}
+
+async fn audio_job_exists(
+    db: &worker::D1Database,
+    idempotency_key: &str,
+) -> Result<bool, AppError> {
+    let owner = D1Type::Text(DATA_SAVER_OWNER);
+    let idempotency_key = D1Type::Text(idempotency_key);
+    db.prepare(
+        "SELECT id FROM audio_jobs
+         WHERE owner = ? AND idempotency_key = ?
+         LIMIT 1",
+    )
+    .bind_refs([&owner, &idempotency_key])
+    .map_err(|error| AppError::Database(error.to_string()))?
+    .first::<serde_json::Value>(None)
+    .await
+    .map(|row| row.is_some())
+    .map_err(|error| AppError::Database(error.to_string()))
+}
+
+fn source_extension(file_name: &str, file_hash: &str) -> Option<String> {
+    file_name
+        .rsplit_once('.')
+        .and_then(|(_, extension)| normalize_extension(extension))
+        .or_else(|| {
+            file_hash
+                .rsplit_once('.')
+                .and_then(|(_, extension)| normalize_extension(extension))
+        })
+}
+
+fn normalize_extension(value: &str) -> Option<String> {
+    let value = value.trim().trim_start_matches('.').to_ascii_lowercase();
+    if value.is_empty()
+        || value.len() > 10
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    Some(value)
 }
 
 async fn storage(ctx: &RouteContext<()>) -> Result<WasabiStorage, AppError> {

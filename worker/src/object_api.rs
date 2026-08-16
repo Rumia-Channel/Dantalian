@@ -366,9 +366,14 @@ async fn upload(
         &D1Type::Text(&created_at),
     ])
     .map_err(db_error)?
-    .run()
-    .await
-    .map_err(db_error)?;
+        .run()
+        .await
+        .map_err(db_error)?;
+    if matches!(kind, ObjectKind::OriginalAudio) {
+        if let Err(error) = crate::audio_job_api::enqueue_data_saver_jobs(&ctx.env).await {
+            worker::console_error!("data saver job scheduling deferred after upload: {error}");
+        }
+    }
     let download_url = storage
         .presigned_get_url(&key)
         .map_err(|error| worker::Error::from(error.to_string()))?;

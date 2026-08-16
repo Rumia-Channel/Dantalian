@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use dantalian::application::error::AppError;
 use serde::Deserialize;
@@ -64,6 +64,14 @@ fn is_allowed(key: &str) -> bool {
     ALLOWED_SETTING_KEYS.contains(&key)
 }
 
+fn is_worker_unsupported(key: &str) -> bool {
+    matches!(
+        key,
+        "upload.cover_max_mb" | "upload.audio_max_mb" | "upload.file_max_mb"
+    ) || key.starts_with("backup.")
+        || key.starts_with("media_sync.")
+}
+
 fn is_secret(key: &str) -> bool {
     SECRET_SETTING_KEYS.contains(&key)
 }
@@ -72,57 +80,37 @@ fn validate(key: &str, value: &str) -> std::result::Result<(), AppError> {
     if !is_allowed(key) {
         return Err(AppError::Validation(format!("unknown setting key: {key}")));
     }
+    if is_worker_unsupported(key) {
+        return Err(AppError::Validation(format!(
+            "{key} is not configurable in Worker runtime"
+        )));
+    }
     if value.len() > 4096 || value.chars().any(char::is_control) {
         return Err(AppError::Validation(format!(
             "invalid value for setting: {key}"
         )));
     }
     match key {
-        "upload.cover_max_mb" | "upload.audio_max_mb" | "upload.file_max_mb" => {
-            let value = value
-                .trim()
-                .parse::<u64>()
-                .map_err(|_| AppError::Validation(format!("{key} must be an integer")))?;
-            if !(1..=4096).contains(&value) {
-                return Err(AppError::Validation(format!(
-                    "{key} must be between 1 and 4096"
-                )));
-            }
-        }
-        "backup.retention" => {
-            let value = value
-                .trim()
-                .parse::<u64>()
-                .map_err(|_| AppError::Validation("backup.retention must be an integer".into()))?;
-            if !(1..=365).contains(&value) {
-                return Err(AppError::Validation(
-                    "backup.retention must be between 1 and 365".into(),
-                ));
-            }
-        }
-        "audio.data_saver.enabled" | "backup.enabled" | "media_sync.enabled" => {
+        "audio.data_saver.enabled" => {
             if !matches!(value.trim(), "true" | "false") {
                 return Err(AppError::Validation(format!("{key} must be true or false")));
             }
         }
-        "backup.dest_type" => {
-            if !matches!(value.trim(), "local" | "webdav" | "s3") {
-                return Err(AppError::Validation(
-                    "backup.dest_type must be local, webdav, or s3".into(),
-                ));
-            }
-        }
-        "media_sync.types" => {
-            let allowed = ["images", "audio", "epubs"];
-            let mut seen = HashSet::new();
-            for value in value
+        "audio.data_saver.extensions" => {
+            for extension in value
                 .split(',')
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
             {
-                if !allowed.contains(&value) || !seen.insert(value) {
+                let extension = extension.trim_start_matches('.');
+                if extension.is_empty()
+                    || extension.len() > 10
+                    || !extension
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric())
+                {
                     return Err(AppError::Validation(format!(
-                        "invalid media sync type: {value}"
+                        "invalid audio data saver extension: {extension}"
                     )));
                 }
             }
@@ -142,7 +130,7 @@ async fn public_settings(db: &worker::D1Database) -> Result<HashMap<String, Stri
         .map_err(db_error)?;
     let mut settings = HashMap::new();
     for row in rows {
-        if !is_allowed(&row.key) {
+        if !is_allowed(&row.key) || is_worker_unsupported(&row.key) {
             continue;
         }
         if is_secret(&row.key) {
@@ -169,6 +157,12 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         Ok(settings) => settings,
         Err(response) => return Ok(response),
     };
+    let data_saver_changed = settings.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            "audio.data_saver.enabled" | "audio.data_saver.extensions"
+        )
+    });
     for (key, value) in &settings {
         if let Err(error) = validate(key, value) {
             return error_response(error);
@@ -189,5 +183,10 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         .map_err(db_error)?;
     }
     let settings = public_settings(&db).await?;
+    if data_saver_changed {
+        if let Err(error) = crate::audio_job_api::enqueue_data_saver_jobs(&ctx.env).await {
+            worker::console_error!("data saver job scheduling deferred: {error}");
+        }
+    }
     Response::from_json(&settings)
 }
