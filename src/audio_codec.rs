@@ -19,6 +19,23 @@ use symphonia::core::meta::MetadataOptions;
 const DEFAULT_BITRATE_KBPS: u32 = 192;
 const TARGET_BITRATE: u32 = DEFAULT_BITRATE_KBPS * 1_000;
 const OPUS_LOOKAHEAD_48K: u64 = 312;
+/// Keep the pure-Rust CBR encoder below the long-run reservoir edge case.
+///
+/// At high stereo CBR rates, the codec's automatic bandwidth can occasionally
+/// request a frame larger than its available reservoir. Capping the
+/// psychoacoustic bandwidth preserves the requested bitrate and keeps the
+/// streaming path recoverable instead of leaving a partial AAC file.
+fn aac_bandwidth_hz(bitrate_bps: u32, channels: u8) -> u32 {
+    let per_channel = bitrate_bps / u32::from(channels.max(1));
+    match per_channel {
+        0..=24_000 => 2_000,
+        24_001..=32_000 => 5_700,
+        32_001..=40_000 => 8_800,
+        40_001..=56_000 => 12_800,
+        56_001..=64_000 => 15_000,
+        _ => 15_000,
+    }
+}
 
 fn bitrate_bps(bitrate_kbps: u32) -> Result<u32, String> {
     if !(8..=512).contains(&bitrate_kbps) {
@@ -27,6 +44,23 @@ fn bitrate_bps(bitrate_kbps: u32) -> Result<u32, String> {
     bitrate_kbps
         .checked_mul(1_000)
         .ok_or_else(|| "audio bitrate overflows".to_string())
+}
+/// The codec libraries use large transient stack frames during construction and
+/// encoding. Keep those frames off Tokio/test threads with a dedicated stack.
+const CODEC_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+fn run_on_codec_stack<T, F>(job: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("dantalian-audio-codec".to_string())
+        .stack_size(CODEC_STACK_SIZE)
+        .spawn(job)
+        .map_err(|error| format!("audio codec thread spawn failed: {error}"))?
+        .join()
+        .map_err(|_| "audio codec thread panicked".to_string())?
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,7 +103,8 @@ pub fn encode_opus(
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let decoded = decode_audio(source, &source_extension)?;
-    encode_opus_decoded(decoded, source_id, Vec::new())
+    let source_id = source_id.to_string();
+    run_on_codec_stack(move || encode_opus_decoded(decoded, &source_id, Vec::new()))
 }
 
 pub fn encode_opus_file(
@@ -97,29 +132,34 @@ pub fn encode_opus_file_with_bitrate(
     let bitrate_bps = bitrate_bps(bitrate_kbps)?;
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
-    let mut output =
-        Some(BufWriter::new(File::create(output).map_err(|error| {
-            format!("Opus output create failed: {error}")
-        })?));
-    let mut encoder = None;
-    stream_audio_file(input, &source_extension, |profile, samples| {
-        if encoder.is_none() {
-            encoder = Some(OpusStreamEncoder::new(
-                profile,
-                source_id,
-                bitrate_bps,
-                output.take().expect("Opus output initialized"),
-            )?);
-        }
+    let input = input.as_ref().to_path_buf();
+    let output_path = output.as_ref().to_path_buf();
+    let source_id = source_id.to_string();
+    run_on_codec_stack(move || {
+        let mut output = Some(BufWriter::new(
+            File::create(&output_path)
+                .map_err(|error| format!("Opus output create failed: {error}"))?,
+        ));
+        let mut encoder = None;
+        stream_audio_file(&input, &source_extension, |profile, samples| {
+            if encoder.is_none() {
+                encoder = Some(OpusStreamEncoder::new(
+                    profile,
+                    &source_id,
+                    bitrate_bps,
+                    output.take().expect("Opus output initialized"),
+                )?);
+            }
+            encoder
+                .as_mut()
+                .expect("Opus encoder initialized")
+                .accept(samples)
+        })?;
         encoder
-            .as_mut()
-            .expect("Opus encoder initialized")
-            .accept(samples)
-    })?;
-    encoder
-        .ok_or_else(|| "audio contains no decodable samples".to_string())?
-        .finish()?;
-    Ok(())
+            .ok_or_else(|| "audio contains no decodable samples".to_string())?
+            .finish()?;
+        Ok(())
+    })
 }
 
 fn encode_opus_decoded<W: Write>(
@@ -129,12 +169,14 @@ fn encode_opus_decoded<W: Write>(
 ) -> Result<W, String> {
     let profile = profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
-    let mut encoder = OpusEncoder::new(
-        profile.target_rate as i32,
-        usize::from(profile.channels),
-        Application::Audio,
-    )
-    .map_err(|error| format!("Opus encoder creation failed: {error}"))?;
+    let mut encoder = Box::new(
+        OpusEncoder::new(
+            profile.target_rate as i32,
+            usize::from(profile.channels),
+            Application::Audio,
+        )
+        .map_err(|error| format!("Opus encoder creation failed: {error}"))?,
+    );
     encoder.bitrate_bps = TARGET_BITRATE as i32;
     encoder.use_cbr = false;
 
@@ -203,7 +245,7 @@ pub fn encode_aac(source: &[u8], source_extension: &str) -> Result<Vec<u8>, Stri
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
     let decoded = decode_audio(source, &source_extension)?;
-    encode_aac_decoded(decoded, Vec::new())
+    run_on_codec_stack(move || encode_aac_decoded(decoded, Vec::new()))
 }
 
 pub fn encode_aac_file(
@@ -223,28 +265,32 @@ pub fn encode_aac_file_with_bitrate(
     let bitrate_bps = bitrate_bps(bitrate_kbps)?;
     let source_extension = normalize_extension(source_extension)
         .ok_or_else(|| "Invalid audio source extension".to_string())?;
-    let mut output =
-        Some(BufWriter::new(File::create(output).map_err(|error| {
-            format!("AAC output create failed: {error}")
-        })?));
-    let mut encoder = None;
-    stream_audio_file(input, &source_extension, |profile, samples| {
-        if encoder.is_none() {
-            encoder = Some(AacStreamEncoder::new(
-                profile,
-                bitrate_bps,
-                output.take().expect("AAC output initialized"),
-            )?);
-        }
+    let input = input.as_ref().to_path_buf();
+    let output_path = output.as_ref().to_path_buf();
+    run_on_codec_stack(move || {
+        let mut output = Some(BufWriter::new(
+            File::create(&output_path)
+                .map_err(|error| format!("AAC output create failed: {error}"))?,
+        ));
+        let mut encoder = None;
+        stream_audio_file(&input, &source_extension, |profile, samples| {
+            if encoder.is_none() {
+                encoder = Some(AacStreamEncoder::new(
+                    profile,
+                    bitrate_bps,
+                    output.take().expect("AAC output initialized"),
+                )?);
+            }
+            encoder
+                .as_mut()
+                .expect("AAC encoder initialized")
+                .accept(samples)
+        })?;
         encoder
-            .as_mut()
-            .expect("AAC encoder initialized")
-            .accept(samples)
-    })?;
-    encoder
-        .ok_or_else(|| "audio contains no decodable samples".to_string())?
-        .finish()?;
-    Ok(())
+            .ok_or_else(|| "audio contains no decodable samples".to_string())?
+            .finish()?;
+        Ok(())
+    })
 }
 
 fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, String> {
@@ -264,10 +310,18 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
         .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
         .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
     parameters
+        .set_parameter(
+            EncoderParameter::Bandwidth,
+            aac_bandwidth_hz(TARGET_BITRATE, profile.channels),
+        )
+        .map_err(|error| format!("invalid AAC bandwidth: {error:?}"))?;
+    parameters
         .set_parameter(EncoderParameter::TransportMux, 2)
         .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
-    let mut encoder = ConfiguredPureRustEncoder::from_parameters(&parameters)
-        .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
+    let mut encoder = Box::new(
+        ConfiguredPureRustEncoder::from_parameters(&parameters)
+            .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?,
+    );
     let frame_len = encoder.input_samples_per_channel() * usize::from(profile.channels);
     let mut output = output;
     let mut encoded_frames = 0;
@@ -436,7 +490,7 @@ where
 
 struct OpusStreamEncoder<W: Write> {
     writer: PacketWriter<'static, W>,
-    encoder: OpusEncoder,
+    encoder: Box<OpusEncoder>,
     serial: u32,
     target_rate: u32,
     channels: usize,
@@ -455,12 +509,14 @@ impl<W: Write> OpusStreamEncoder<W> {
         bitrate_bps: u32,
         output: W,
     ) -> Result<Self, String> {
-        let mut encoder = OpusEncoder::new(
-            profile.target_rate as i32,
-            usize::from(profile.channels),
-            Application::Audio,
-        )
-        .map_err(|error| format!("Opus encoder creation failed: {error}"))?;
+        let mut encoder = Box::new(
+            OpusEncoder::new(
+                profile.target_rate as i32,
+                usize::from(profile.channels),
+                Application::Audio,
+            )
+            .map_err(|error| format!("Opus encoder creation failed: {error}"))?,
+        );
         encoder.bitrate_bps =
             i32::try_from(bitrate_bps).map_err(|_| "Opus bitrate is too large".to_string())?;
         encoder.use_cbr = false;
@@ -570,7 +626,7 @@ impl<W: Write> OpusStreamEncoder<W> {
 
 struct AacStreamEncoder<W: Write> {
     output: W,
-    encoder: ConfiguredPureRustEncoder,
+    encoder: Box<ConfiguredPureRustEncoder>,
     frame_len: usize,
     pending_pcm: Vec<i16>,
     encoded_frames: u32,
@@ -591,10 +647,18 @@ impl<W: Write> AacStreamEncoder<W> {
             .set_parameter(EncoderParameter::Bitrate, bitrate_bps)
             .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
         parameters
+            .set_parameter(
+                EncoderParameter::Bandwidth,
+                aac_bandwidth_hz(bitrate_bps, profile.channels),
+            )
+            .map_err(|error| format!("invalid AAC bandwidth: {error:?}"))?;
+        parameters
             .set_parameter(EncoderParameter::TransportMux, 2)
             .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
-        let encoder = ConfiguredPureRustEncoder::from_parameters(&parameters)
-            .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
+        let encoder = Box::new(
+            ConfiguredPureRustEncoder::from_parameters(&parameters)
+                .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?,
+        );
         let channels = usize::from(profile.channels);
         let frame_len = encoder.input_samples_per_channel() * channels;
         Ok(Self {
@@ -799,8 +863,8 @@ fn opus_tags() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_aac, encode_aac_file, encode_aac_file_with_bitrate, encode_opus, encode_opus_file,
-        encode_opus_file_with_bitrate, opus_sample_rate,
+        aac_bandwidth_hz, bitrate_bps, encode_aac, encode_aac_file, encode_aac_file_with_bitrate,
+        encode_opus, encode_opus_file, encode_opus_file_with_bitrate, opus_sample_rate,
     };
 
     #[test]
@@ -808,6 +872,14 @@ mod tests {
         assert_eq!(opus_sample_rate(22_050), 24_000);
         assert_eq!(opus_sample_rate(44_100), 48_000);
         assert_eq!(opus_sample_rate(96_000), 48_000);
+    }
+    #[test]
+    fn keeps_bitrate_parameters_in_explicit_units() {
+        assert_eq!(bitrate_bps(8), Ok(8_000));
+        assert_eq!(bitrate_bps(512), Ok(512_000));
+        assert!(bitrate_bps(7).is_err());
+        assert!(bitrate_bps(513).is_err());
+        assert_eq!(aac_bandwidth_hz(192_000, 2), 15_000);
     }
 
     #[test]
