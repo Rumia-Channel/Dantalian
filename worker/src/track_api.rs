@@ -305,6 +305,49 @@ fn real_value(body: &serde_json::Value, key: &str) -> D1Type<'static> {
         .map(D1Type::Real)
         .unwrap_or(D1Type::Null)
 }
+const MAX_CUSTOM_METADATA_BYTES: usize = 256 * 1024;
+
+fn custom_metadata_value(body: &serde_json::Value) -> Result<String, AppError> {
+    let mut custom = serde_json::Map::new();
+    for key in [
+        "duration_seconds",
+        "sample_rate",
+        "channels",
+        "bitrate_kbps",
+        "tags",
+    ] {
+        if let Some(value) = body.get(key) {
+            custom.insert(key.to_string(), value.clone());
+        }
+    }
+    let serialized = serde_json::to_string(&serde_json::Value::Object(custom))
+        .map_err(|error| AppError::Validation(format!("invalid custom metadata: {error}")))?;
+    if serialized.len() > MAX_CUSTOM_METADATA_BYTES {
+        return Err(AppError::Validation(
+            "custom audio metadata is too large".to_string(),
+        ));
+    }
+    Ok(serialized)
+}
+fn merge_custom_metadata(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let custom_json = object
+        .remove("custom_json")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let Some(custom_json) = custom_json else {
+        return;
+    };
+    let Ok(serde_json::Value::Object(custom)) =
+        serde_json::from_str::<serde_json::Value>(&custom_json)
+    else {
+        return;
+    };
+    for (key, value) in custom {
+        object.entry(key).or_insert(value);
+    }
+}
 
 async fn get_metadata_for(ctx: &RouteContext<()>, parent_column: &str) -> Result<Response> {
     let parent_raw = match parse_id(ctx, "id") {
@@ -344,6 +387,7 @@ async fn get_metadata_for(ctx: &RouteContext<()>, parent_column: &str) -> Result
         .await
         .map_err(db_error)?
         .unwrap_or_else(|| serde_json::json!({ "track_id": track_raw }));
+    merge_custom_metadata(&mut value);
     if let Some(cd_id) = track.get("cd_id").and_then(|value| value.as_i64()) {
         let cd_id =
             id_type(cd_id, "cd id").map_err(|error| worker::Error::from(error.to_string()))?;
@@ -451,6 +495,10 @@ async fn put_metadata_for(
     if !exists {
         return error_response(AppError::NotFound);
     }
+    let custom_json = match custom_metadata_value(&body) {
+        Ok(value) => value,
+        Err(error) => return error_response(error),
+    };
     let values = [
         track_id,
         text_value(&body, "title"),
@@ -475,13 +523,14 @@ async fn put_metadata_for(
         real_value(&body, "replay_gain_album_peak"),
         text_value(&body, "file_type"),
         int_value(&body, "raw_size_bytes"),
+        D1Type::Text(&custom_json),
     ];
     db.prepare(
         "INSERT INTO track_metadata
          (track_id,title,artist,album,album_artist,track_number,track_total,disc_number,disc_total,
           year,genre,composer,publisher,label,encoder,comment,lyrics,replay_gain_track_gain_db,
-          replay_gain_track_peak,replay_gain_album_gain_db,replay_gain_album_peak,file_type,raw_size_bytes)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          replay_gain_track_peak,replay_gain_album_gain_db,replay_gain_album_peak,file_type,raw_size_bytes,custom_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(track_id) DO UPDATE SET
           title=COALESCE(excluded.title,track_metadata.title),
           artist=COALESCE(excluded.artist,track_metadata.artist),
@@ -505,6 +554,7 @@ async fn put_metadata_for(
           replay_gain_album_peak=COALESCE(excluded.replay_gain_album_peak,track_metadata.replay_gain_album_peak),
           file_type=COALESCE(excluded.file_type,track_metadata.file_type),
           raw_size_bytes=COALESCE(excluded.raw_size_bytes,track_metadata.raw_size_bytes),
+          custom_json=CASE WHEN excluded.custom_json <> '{}' THEN excluded.custom_json ELSE track_metadata.custom_json END,
           updated_at=CURRENT_TIMESTAMP",
     )
     .bind_refs(values.iter())
@@ -666,4 +716,37 @@ pub async fn album_tags(_req: Request, ctx: RouteContext<()>) -> Result<Response
 
 pub async fn search(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     Response::from_json(&Vec::<serde_json::Value>::new())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{custom_metadata_value, merge_custom_metadata};
+    use serde_json::json;
+
+    #[test]
+    fn custom_metadata_round_trips_technical_fields() {
+        let body = json!({
+            "title": "Track",
+            "duration_seconds": 856.96,
+            "sample_rate": 44_100,
+            "channels": 2,
+            "bitrate_kbps": 699,
+            "tags": {"tracknumber": "02"}
+        });
+        let custom = custom_metadata_value(&body).expect("custom metadata");
+        let mut stored = json!({"custom_json": custom});
+        merge_custom_metadata(&mut stored);
+        assert_eq!(stored["duration_seconds"], 856.96);
+        assert!(stored.get("custom_json").is_none());
+        assert_eq!(stored["sample_rate"], 44_100);
+        assert_eq!(stored["channels"], 2);
+        assert_eq!(stored["bitrate_kbps"], 699);
+        assert_eq!(stored["tags"]["tracknumber"], "02");
+    }
+
+    #[test]
+    fn custom_metadata_rejects_oversized_tags() {
+        let body = json!({"tags": {"large": "x".repeat(256 * 1024)}});
+        assert!(custom_metadata_value(&body).is_err());
+    }
 }

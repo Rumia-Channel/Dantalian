@@ -297,6 +297,16 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                     browserMetadata?.duration_seconds,
                 );
             }
+            let metadataSaved = Boolean(body.metadata);
+            if (browserMetadata && !body.metadata) {
+                try {
+                    await saveExtractedTrackMetadata(editType, parentId, trackId, browserMetadata);
+                    metadataSaved = true;
+                } catch (error) {
+                    console.error("Worker audio metadata save failed:", error);
+                    alert("音声メタデータのD1保存に失敗しました。解析結果は表示します。");
+                }
+            }
             if (body.metadata) {
                 await showExtractedMetadataModal(editType, parentId, trackId, body.metadata, reloadFn);
             } else if (browserMetadata) {
@@ -306,7 +316,7 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                     trackId,
                     browserMetadata,
                     reloadFn,
-                    false,
+                    metadataSaved,
                 );
             }
             // CD とオーディオブックは同じ cds レコードを更新するため、
@@ -327,6 +337,20 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
     } catch (err) {
         console.error("uploadTrackAudio error:", err);
         alert("音声のアップロード中に通信エラーが発生しました");
+    }
+}
+async function saveExtractedTrackMetadata(editType, parentId, trackId, metadata) {
+    const url = editType === "cd"
+        ? `/api/cds/${parentId}/tracks/${trackId}/metadata`
+        : `/api/books/${parentId}/tracks/${trackId}/metadata`;
+    const response = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(metadata),
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `HTTP ${response.status}`);
     }
 }
 
