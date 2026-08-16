@@ -262,7 +262,7 @@ jobs:
           for attempt in {1..30}; do
             root_status="$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$WORKER_BASE_URL/" || true)"
             health_payload="$(curl --silent --show-error "$WORKER_BASE_URL/api/health" || true)"
-            if [ "$root_status" = 200 ] && printf '%s' "$health_payload" | python -c 'import json, sys; body = json.load(sys.stdin); raise SystemExit(0 if body.get("authentication_required") is True else 1)"; then
+            if [ "$root_status" = 200 ] && printf '%s' "$health_payload" | python -c 'import json, sys; body = json.load(sys.stdin); raise SystemExit(0 if body.get("authentication_required") is True else 1)'; then
               exit 0
             fi
             sleep 2
@@ -392,7 +392,7 @@ jobs:
           for attempt in {1..30}; do
             root_status="$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$WORKER_BASE_URL/" || true)"
             health_payload="$(curl --silent --show-error "$WORKER_BASE_URL/api/health" || true)"
-            if [ "$root_status" = 200 ] && printf '%s' "$health_payload" | python -c 'import json, sys; body = json.load(sys.stdin); raise SystemExit(0 if body.get("authentication_required") is True else 1)"; then
+            if [ "$root_status" = 200 ] && printf '%s' "$health_payload" | python -c 'import json, sys; body = json.load(sys.stdin); raise SystemExit(0 if body.get("authentication_required") is True else 1)'; then
               exit 0
             fi
             sleep 2
