@@ -125,6 +125,11 @@ jobs:
           WORKER_API_TOKEN: dantalian-ci-test-token
           WORKER_EXPECT_AUTH_REQUIRED: "true"
         run: node --test tests/auth_contract.mjs
+      - name: Test Worker settings runtime contract
+        env:
+          WORKER_BASE_URL: http://127.0.0.1:8793
+          WORKER_API_TOKEN: dantalian-ci-test-token
+        run: node --test tests/settings_contract.mjs
       - name: Test missing authentication configuration
         run: |
           trap 'kill "$(cat auth.pid)"' EXIT
