@@ -36,6 +36,7 @@ type Env = {
   WASABI_ACCESS_KEY_ID_STORE?: SecretStoreBinding;
   WASABI_SECRET_ACCESS_KEY_STORE?: SecretStoreBinding;
   WASABI_REGION_STORE?: SecretStoreBinding;
+  WASABI_ENDPOINT_STORE?: SecretStoreBinding;
   WASABI_BUCKET_STORE?: SecretStoreBinding;
 };
 
@@ -74,7 +75,7 @@ export default {
       if (!processorBaseUrl) {
         throw new Error("PROCESSOR_API_BASE_URL is not configured");
       }
-      const [accessKeyId, secretAccessKey, region, bucket] = await Promise.all([
+      const [accessKeyId, secretAccessKey, endpoint, region, bucket] = await Promise.all([
         requiredSecret(
           env.WASABI_ACCESS_KEY_ID_STORE,
           env.WASABI_ACCESS_KEY_ID,
@@ -85,6 +86,11 @@ export default {
           env.WASABI_SECRET_ACCESS_KEY,
           "WASABI_SECRET_ACCESS_KEY",
         ),
+        requiredSecret(
+          env.WASABI_ENDPOINT_STORE,
+          env.WASABI_ENDPOINT,
+          "WASABI_ENDPOINT",
+        ),
         requiredSecret(env.WASABI_REGION_STORE, env.WASABI_REGION, "WASABI_REGION"),
         requiredSecret(
           env.WASABI_BUCKET_STORE,
@@ -92,10 +98,6 @@ export default {
           "DANTALIAN_BUCKET",
         ),
       ]);
-      const endpoint = env.WASABI_ENDPOINT?.trim();
-      if (!endpoint) {
-        throw new Error("WASABI_ENDPOINT is not configured");
-      }
       const container = env.AUDIO_PROCESSOR.getByName(`audio-${jobId}`);
       console.log(JSON.stringify({ event: "audio_job.container_start_requested", job_id: jobId }));
       try {

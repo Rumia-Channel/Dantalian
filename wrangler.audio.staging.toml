@@ -1,0 +1,63 @@
+name = "__AUDIO_CONTROLLER_NAME__"
+main = "container/controller.ts"
+compatibility_date = "2026-08-14"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = "npm run typecheck:container"
+
+[vars]
+PROCESSOR_API_BASE_URL = "__PROCESSOR_API_BASE_URL__"
+
+[[containers]]
+class_name = "AudioProcessorContainer"
+image = "container/Dockerfile"
+instance_type = "standard-1"
+max_instances = 4
+
+[durable_objects]
+[[durable_objects.bindings]]
+name = "AUDIO_PROCESSOR"
+class_name = "AudioProcessorContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AudioProcessorContainer"]
+
+[[services]]
+binding = "DANTALIAN_API"
+service = "__DANTALIAN_API_SERVICE__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_ACCESS_KEY_ID_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_ACCESS_KEY_ID_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_SECRET_ACCESS_KEY_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_SECRET_ACCESS_KEY_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_ENDPOINT_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_ENDPOINT_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_REGION_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_REGION_SECRET_NAME__"
+
+[[secrets_store_secrets]]
+binding = "WASABI_BUCKET_STORE"
+store_id = "43d42dc0bfa3472b96aba47e46d3dca1"
+secret_name = "__WASABI_BUCKET_SECRET_NAME__"
+
+[[queues.consumers]]
+queue = "__DANTALIAN_AUDIO_JOB_QUEUE__"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "__DANTALIAN_AUDIO_JOB_DLQ__"
+max_concurrency = 2
