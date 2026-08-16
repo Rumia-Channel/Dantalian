@@ -53,6 +53,8 @@ jobs:
           rustup default 1.96.0
           rustup component add rustfmt
           rustup target add wasm32-unknown-unknown
+      - name: Fetch locked Worker dependencies
+        run: cargo fetch --locked
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Install worker-build
@@ -188,6 +190,9 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add wasm32-unknown-unknown
+      - name: Fetch locked Worker dependencies
+        working-directory: worker
+        run: cargo fetch --locked
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -318,6 +323,9 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add wasm32-unknown-unknown
+      - name: Fetch locked Worker dependencies
+        working-directory: worker
+        run: cargo fetch --locked
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
