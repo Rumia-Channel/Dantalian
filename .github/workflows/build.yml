@@ -59,6 +59,10 @@ jobs:
         run: cargo install worker-build --version 0.8.4 --locked
       - name: Install wasm-bindgen
         run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.8.4 --locked
+      - name: Build Worker assets
+        run: node build_assets.mjs
       - name: Build Worker
         run: worker-build --release
       - name: Set up Node.js
@@ -119,6 +123,10 @@ jobs:
           WORKER_BASE_URL: http://127.0.0.1:8793
           WORKER_API_TOKEN: dantalian-ci-test-token
         run: node --test tests/books_pagination_contract.mjs
+      - name: Test Worker licenses contract
+        env:
+          WORKER_BASE_URL: http://127.0.0.1:8793
+        run: node --test tests/licenses_contract.mjs
       - name: Test Worker authentication contract
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
@@ -191,6 +199,8 @@ jobs:
         run: cargo install worker-build --version 0.8.4 --locked
       - name: Install wasm-bindgen
         run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.8.4 --locked
       - name: Provision staging resources
         id: resources
         working-directory: worker
@@ -317,6 +327,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install worker-build
         run: cargo install worker-build --version 0.8.4 --locked
+      - name: Install wasm-bindgen
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.8.4 --locked
       - name: Provision production resources
         id: resources
         working-directory: worker

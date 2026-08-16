@@ -6,18 +6,42 @@
     <title>Dantalian - ライセンス</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/auth.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/licenses.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/responsive.css?v=ASSET_VERSION">
 </head>
 <body data-active-nav="licenses">
-    <main class="licenses-page">
-        <h1>ライセンス</h1>
-        <p>Worker 配布では依存ライセンスの一覧を静的ページとして提供しています。</p>
-        <p>
-            <a href="/LICENSE">Dantalian の LICENSE</a>
-            <a href="/NOTICE">FDK AAC の NOTICE</a>
-        </p>
-    </main>
+    <div id="app">
+        <main class="licenses-page">
+            <header class="licenses-intro">
+                <p class="licenses-eyebrow">Dantalian Worker</p>
+                <h2>ライセンス</h2>
+                <p>
+                    Dantalian と、Worker配布に含まれる依存ライブラリの
+                    ライセンス情報です。依存ライセンス一覧はビルド時に生成されます。
+                </p>
+                <p>
+                    <a href="/LICENSE" target="_blank" rel="noreferrer">Dantalian の LICENSE</a>
+                    <a href="/NOTICE" target="_blank" rel="noreferrer">FDK AAC の NOTICE</a>
+                </p>
+            </header>
+            <section class="license-summary">
+                <h3>収録内容</h3>
+                <div class="license-summary-grid">
+                    <div>
+                        <strong>依存クレート</strong>
+                        <span>Workerの依存グラフ全体</span>
+                    </div>
+                    <div>
+                        <strong>ライセンス本文</strong>
+                        <span>検出されたライセンスごとに全文を掲載</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings.js?v=ASSET_VERSION"></script>
 </body>
 </html>

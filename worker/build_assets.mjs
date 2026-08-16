@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,14 @@ const projectDir = resolve(workerDir, "..");
 const sourceDir = join(projectDir, "static");
 const outputDir = join(workerDir, "public");
 const assetVersionPath = join(workerDir, ".asset-version");
+const licenseInputFiles = [
+    join(projectDir, "about.hbs"),
+    join(projectDir, "about.toml"),
+    join(projectDir, "LICENSE"),
+    join(projectDir, "NOTICE"),
+    join(workerDir, "Cargo.toml"),
+    join(workerDir, "Cargo.lock"),
+];
 
 function run(command, args) {
     return new Promise((resolvePromise, reject) => {
@@ -42,8 +50,8 @@ async function filesUnder(directory) {
 
 const sourceFiles = await filesUnder(sourceDir);
 const hash = createHash("sha256");
-for (const sourceFile of sourceFiles) {
-    hash.update(relative(sourceDir, sourceFile).replaceAll("\\", "/"));
+for (const sourceFile of [...sourceFiles, ...licenseInputFiles]) {
+    hash.update(relative(projectDir, sourceFile).replaceAll("\\", "/"));
     hash.update(await readFile(sourceFile));
 }
 const assetVersion = hash.digest("hex").slice(0, 16);
@@ -60,6 +68,31 @@ await mkdir(outputDir, { recursive: true });
 await cp(sourceDir, outputDir, { recursive: true });
 await cp(join(projectDir, "LICENSE"), join(outputDir, "LICENSE"));
 await cp(join(projectDir, "NOTICE"), join(outputDir, "NOTICE"));
+
+const generatedLicensePath = join(workerDir, ".worker-license.html");
+await rm(generatedLicensePath, { force: true });
+await run("cargo", [
+    "about",
+    "generate",
+    "--manifest-path",
+    join(workerDir, "Cargo.toml"),
+    "--config",
+    join(projectDir, "about.toml"),
+    "--locked",
+    "--offline",
+    "--output-file",
+    generatedLicensePath,
+    join(projectDir, "about.hbs"),
+]);
+const generatedLicense = await readFile(generatedLicensePath, "utf8");
+const dantalianLicense = await readFile(join(projectDir, "LICENSE"), "utf8");
+await writeFile(
+    join(outputDir, "licenses", "index.html"),
+    generatedLicense
+        .replace("__DANTALIAN_LICENSE__", dantalianLicense)
+        .replaceAll("ASSET_VERSION", assetVersion),
+);
+await rm(generatedLicensePath, { force: true });
 
 for (const sourceFile of sourceFiles.filter((file) => file.endsWith(".html"))) {
     const outputFile = join(outputDir, relative(sourceDir, sourceFile));
