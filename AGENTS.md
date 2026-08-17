@@ -6,6 +6,8 @@
 - 必ず `cargo add <crate-name>` コマンドを使用して追加すること。
 - バージョン指定が必要な場合は `cargo add <crate-name>@<version>` を使用すること。
 - features を指定する場合は `cargo add <crate-name> --features <feature>` を使用すること。
+- `Cargo.toml` の依存クレートのバージョンは、最上位のメジャーバージョンだけを指定すること。`0.1.26` は `"0"`、`1.2.3` は `"1"` とし、minor/patch 番号や exact pin（`=...`）は指定しないこと。
+- 依存クレートのバージョンを更新した場合は、更新後の全依存バージョンで Native / Worker のビルドと関連テストを実行し、API 変更を互換修正すること。
 
 ## ファイル分割ルール
 
