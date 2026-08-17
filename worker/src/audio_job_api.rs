@@ -7,14 +7,14 @@ use dantalian::{
     },
     ports::{
         audio_jobs::{AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobStatus},
-        object_storage::{AudioCodec, ObjectKind, object_key},
+        object_storage::{AudioCodec, ObjectKind, ObjectStorage, object_key},
     },
 };
 use serde::Deserialize;
 use worker::{D1Type, Env, Request, Response, Result, RouteContext};
 
 use crate::{
-    audio_job_repository::D1AudioJobRepository,
+    audio_job_repository::{D1AudioJobRepository, OWNER_SCOPE},
     error::{bad_request, error_response, parse_json},
     wasabi::{WasabiConfig, WasabiStorage},
 };
@@ -22,7 +22,6 @@ use crate::{
 const QUEUE_MESSAGE_VERSION: u8 = 1;
 const RECOVERY_BATCH_SIZE: u32 = 100;
 const DATA_SAVER_DEFAULT_EXTENSIONS: &str = "wav,flac,aiff,alac";
-const DATA_SAVER_OWNER: &str = "api-token";
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAudioJobRequest {
@@ -249,6 +248,18 @@ struct AudioSourceRow {
     file_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct DataSaverJobRow {
+    id: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DataSaverJobAction {
+    Retry,
+    Dispatch,
+    Skip,
+}
 /// Creates and dispatches missing Opus/AAC jobs for every eligible Worker
 /// audio source. The idempotency key makes settings saves and cron scans safe
 /// to repeat without starting duplicate containers.
@@ -313,7 +324,27 @@ pub async fn enqueue_data_saver_jobs(env: &Env) -> Result<(), AppError> {
                 Err(_) => continue,
             };
             let idempotency_key = format!("data-saver:{}:{}", source.file_hash, codec.as_str());
-            if audio_job_exists(&db, &idempotency_key).await? {
+            if storage.exists(&output_key).await? {
+                continue;
+            }
+            if let Some(existing) = audio_job_state(&db, &idempotency_key).await? {
+                let job_id = match data_saver_job_action(&existing.status) {
+                    DataSaverJobAction::Retry => match service.retry(&existing.id).await {
+                        Ok(job) => Some(job.id),
+                        Err(AppError::Conflict(_)) => None,
+                        Err(error) => {
+                            first_error.get_or_insert(error);
+                            None
+                        }
+                    },
+                    DataSaverJobAction::Dispatch => Some(existing.id),
+                    DataSaverJobAction::Skip => None,
+                };
+                if let Some(job_id) = job_id {
+                    if let Err(error) = dispatch(env, &job_id).await {
+                        first_error.get_or_insert(error);
+                    }
+                }
                 continue;
             }
             let request = match prepare_request(
@@ -380,25 +411,32 @@ async fn load_data_saver_config(
     Ok((enabled, extensions))
 }
 
-async fn audio_job_exists(
+async fn audio_job_state(
     db: &worker::D1Database,
     idempotency_key: &str,
-) -> Result<bool, AppError> {
-    let owner = D1Type::Text(DATA_SAVER_OWNER);
+) -> Result<Option<DataSaverJobRow>, AppError> {
+    let owner = D1Type::Text(OWNER_SCOPE);
     let idempotency_key = D1Type::Text(idempotency_key);
     db.prepare(
-        "SELECT id FROM audio_jobs
+        "SELECT id, status FROM audio_jobs
          WHERE owner = ? AND idempotency_key = ?
          LIMIT 1",
     )
     .bind_refs([&owner, &idempotency_key])
     .map_err(|error| AppError::Database(error.to_string()))?
-    .first::<serde_json::Value>(None)
+    .first::<DataSaverJobRow>(None)
     .await
-    .map(|row| row.is_some())
     .map_err(|error| AppError::Database(error.to_string()))
 }
 
+fn data_saver_job_action(status: &str) -> DataSaverJobAction {
+    match status {
+        "failed" => DataSaverJobAction::Retry,
+        "queued" => DataSaverJobAction::Dispatch,
+        "running" | "completed" => DataSaverJobAction::Skip,
+        _ => DataSaverJobAction::Skip,
+    }
+}
 fn source_extension(file_name: &str, file_hash: &str) -> Option<String> {
     file_name
         .rsplit_once('.')
@@ -472,4 +510,20 @@ pub async fn recover_and_dispatch(env: &Env) -> Result<(), AppError> {
         dispatch(env, &job_id).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DataSaverJobAction, data_saver_job_action};
+
+    #[test]
+    fn data_saver_retries_failed_jobs_and_does_not_duplicate_active_jobs() {
+        assert_eq!(data_saver_job_action("failed"), DataSaverJobAction::Retry);
+        assert_eq!(
+            data_saver_job_action("queued"),
+            DataSaverJobAction::Dispatch
+        );
+        assert_eq!(data_saver_job_action("running"), DataSaverJobAction::Skip);
+        assert_eq!(data_saver_job_action("completed"), DataSaverJobAction::Skip);
+    }
 }

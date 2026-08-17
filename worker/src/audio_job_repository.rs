@@ -13,7 +13,7 @@ use dantalian::{
 use uuid::Uuid;
 use worker::{D1Database, D1Type, Date};
 
-const OWNER_SCOPE: &str = "api-token";
+pub(crate) const OWNER_SCOPE: &str = "api-token";
 const MIN_LEASE_SECONDS: u64 = 30;
 const MAX_LEASE_SECONDS: u64 = 3_600;
 const MAX_BACKOFF_SECONDS: u64 = 86_400;
