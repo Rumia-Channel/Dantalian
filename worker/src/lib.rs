@@ -87,6 +87,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/books/:id/epub", object_api::book_epub)
         .delete_async("/api/books/:id/epub", object_api::delete_book_epub)
         .get_async("/api/audio/stream/:file_hash", object_api::stream)
+        .get_async("/api/audio/playability/:file_hash", audio_api::playability)
         .get_async("/audio/:file_hash", object_api::stream)
         .get_async("/images/:file_hash", object_api::image)
         .get_async("/epubs/:file_hash", object_api::epub)

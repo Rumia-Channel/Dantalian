@@ -13,6 +13,7 @@ class PlayerEngine {
         this.listeners = {};
         this._sourceCandidates = [];
         this._sourceIndex = 0;
+        this._sourceSizes = [];
         this._playRequested = false;
         this._cacheObjectUrl = null;
         this._cacheFormat = null;
@@ -25,6 +26,7 @@ class PlayerEngine {
             this._emit("sourcechange", {
                 track: this.current(),
                 format: this._sourceFormat(),
+                sizeBytes: this._sourceSize(),
                 url: this.audio.currentSrc || this._sourceCandidates[this._sourceIndex] || "",
             });
         });
@@ -89,6 +91,7 @@ class PlayerEngine {
             this._loading = false;
             this._releaseCachedObjectUrl();
             this._sourceCandidates = [];
+            this._sourceSizes = [];
             this.audio.removeAttribute("src");
             this._emit("empty", true);
         }
@@ -128,8 +131,16 @@ class PlayerEngine {
     }
 
     _url(track) {
-        if (typeof audioSourceCandidates === "function") return audioSourceCandidates(track);
-        return [`/audio/${encodeURIComponent(track.file_hash)}`];
+        if (typeof audioSourceSelection === "function") return audioSourceSelection(track);
+        if (typeof audioSourceCandidates === "function") {
+            return { urls: audioSourceCandidates(track), sizes: [] };
+        }
+        return { urls: [`/audio/${encodeURIComponent(track.file_hash)}`], sizes: [] };
+    }
+
+    _sourceSize() {
+        const size = this._sourceSizes[this._sourceIndex];
+        return Number.isFinite(Number(size)) && Number(size) > 0 ? Number(size) : null;
     }
 
     _sourceFormat() {
@@ -180,6 +191,7 @@ class PlayerEngine {
         this._releaseCachedObjectUrl();
         this._sourceCandidates = [];
         this._sourceIndex = 0;
+        this._sourceSizes = [];
         if (!entry) {
             this.audio.removeAttribute("src");
             this._loading = false;
@@ -187,7 +199,9 @@ class PlayerEngine {
             return;
         }
 
-        const networkCandidates = this._url(entry.track);
+        const selection = await Promise.resolve(this._url(entry.track));
+        const networkCandidates = Array.isArray(selection) ? selection : (selection?.urls || []);
+        const networkSizes = Array.isArray(selection) ? [] : (selection?.sizes || []);
         let cachedSource = null;
         if (typeof getCachedAudioSource === "function") {
             cachedSource = await getCachedAudioSource(entry.track);
@@ -199,12 +213,19 @@ class PlayerEngine {
             return;
         }
 
-        this._cacheObjectUrl = cachedSource?.url || null;
-        this._cacheFormat = cachedSource?.format || null;
         this._sourceCandidates = cachedSource
             ? [cachedSource.url, ...networkCandidates]
             : networkCandidates;
+        this._sourceSizes = cachedSource
+            ? [cachedSource.size || null, ...networkSizes]
+            : networkSizes;
         this._sourceIndex = 0;
+        if (this._sourceCandidates.length === 0) {
+            this._loading = false;
+            this._emit("trackchange", entry.track);
+            this._emit("error", entry.track);
+            return;
+        }
         this.audio.src = this._sourceCandidates[0] || "";
         this.audio.load();
         this._loading = false;

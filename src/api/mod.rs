@@ -54,6 +54,7 @@ pub fn cleanup_stale_uploads(uploads_dir: &str) {
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
         .route("/audio/stream/{file_hash}", get(audio::stream))
+        .route("/audio/playability/{file_hash}", get(audio::playability))
         .route("/books", post(books::register))
         .route("/books/isdn", post(books::isdn_register))
         .route("/books/manual", post(books::manual_register))

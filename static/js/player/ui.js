@@ -187,6 +187,7 @@ function createPlayerUI(rootEl) {
     const metadataCache = new Map();
     let technicalTrackId = null;
     let currentSourceFormat = null;
+    let currentSourceSize = null;
     const AUDIOBOOK_PROGRESS_KEY = "dantalian_audiobook_progress_v1";
     const PLAYLIST_AUDIOBOOK_PROGRESS_KEY = "dantalian_playlist_audiobook_progress_v1";
     const PLAYER_AUDIO_SETTINGS_KEY = "dantalian_player_audio_settings_v1";
@@ -335,20 +336,26 @@ function createPlayerUI(rootEl) {
             : metadata && metadata.file_type
             ? String(metadata.file_type).toUpperCase()
             : fallbackFileType(track);
+        const metadataSize = metadata && metadata.raw_size_bytes;
+        const size = Number.isFinite(Number(currentSourceSize)) && Number(currentSourceSize) > 0
+            ? currentSourceSize
+            : metadataSize;
         el["tech-format"].textContent = fileType;
-        el["tech-size"].textContent = formatBytes(metadata && metadata.raw_size_bytes);
+        el["tech-size"].textContent = formatBytes(size);
     }
     async function loadTrackTechnicalInfo(cd, track) {
         const requestId = ++metadataRequestId;
         if (!track) {
             technicalTrackId = null;
             currentSourceFormat = null;
+            currentSourceSize = null;
             el.tech.hidden = true;
             return;
         }
         if (technicalTrackId !== track.id) {
             technicalTrackId = track.id;
             currentSourceFormat = null;
+            currentSourceSize = null;
         }
         el.tech.hidden = false;
         paintTrackTechnicalInfo(track, metadataCache.get(track.id));
@@ -954,6 +961,7 @@ function createPlayerUI(rootEl) {
         const entry = engine.currentEntry();
         if (entry && entry.album) currentCd = entry.album;
         currentSourceFormat = null;
+        currentSourceSize = null;
         const pending = pendingAudiobookResume;
         const isPendingResume = pending && entry && entry.album
             && pending.cdId === entry.album.id && pending.trackId === entry.track.id;
@@ -991,6 +999,7 @@ function createPlayerUI(rootEl) {
         const entry = engine.currentEntry();
         if (!source || !entry || source.track?.id !== entry.track.id) return;
         currentSourceFormat = source.format === "original" ? null : source.format;
+        currentSourceSize = source.sizeBytes;
         paintTrackTechnicalInfo(entry.track, metadataCache.get(entry.track.id));
     });
     engine.on("shuffle", (enabled) => {

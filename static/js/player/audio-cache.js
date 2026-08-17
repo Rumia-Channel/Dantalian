@@ -322,6 +322,7 @@ async function getCachedAudioSource(track) {
     return {
         url: URL.createObjectURL(record.blob),
         format: record.format,
+        size: Number(record.size) || record.blob.size,
     };
 }
 

@@ -34,6 +34,19 @@ test("audio encode endpoint keeps invalid formats out of the external boundary",
   assert.equal(response.status, 501);
 });
 
+test("audio playability endpoint validates the source extension", async () => {
+  const response = await fetch(
+    `${baseUrl}/api/audio/playability/audio-contract-hash`,
+    {
+      headers: authHeaders,
+    },
+  );
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "missing or invalid audio extension",
+  });
+});
+
 async function jsonRequest(method, path, body) {
   const headers = { ...authHeaders, "content-type": "application/json" };
   const response = await fetch(`${baseUrl}${path}`, {
