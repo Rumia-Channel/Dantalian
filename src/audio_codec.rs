@@ -862,11 +862,15 @@ fn opus_tags() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
+    use ogg::PacketReader;
+    use opus_rs::OpusDecoder;
+
     use super::{
         aac_bandwidth_hz, bitrate_bps, encode_aac, encode_aac_file, encode_aac_file_with_bitrate,
         encode_opus, encode_opus_file, encode_opus_file_with_bitrate, opus_sample_rate,
     };
-
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
         assert_eq!(opus_sample_rate(22_050), 24_000);
@@ -889,6 +893,44 @@ mod tests {
         let aac = encode_aac(&source, "wav").expect("AAC encoding");
         assert!(opus.starts_with(b"OggS"));
         assert!(aac.starts_with(&[0xff, 0xf1]));
+    }
+
+    #[test]
+    fn writes_ogg_opus_that_decodes_as_audio_packets() {
+        let source = pcm_wav(48_000, 1, 4_800);
+        let opus = encode_opus(&source, "wav", "decode-check").expect("Opus encoding");
+        let mut reader = PacketReader::new(Cursor::new(opus));
+
+        let head = reader
+            .read_packet()
+            .expect("OpusHead packet")
+            .expect("OpusHead packet exists");
+        assert_eq!(&head.data[..8], b"OpusHead");
+        let channels = usize::from(head.data[9]);
+        let sample_rate = i32::try_from(u32::from_le_bytes(head.data[12..16].try_into().unwrap()))
+            .expect("sample rate fits i32");
+        let mut decoder = OpusDecoder::new(sample_rate, channels).expect("Opus decoder");
+
+        let tags = reader
+            .read_packet()
+            .expect("OpusTags packet")
+            .expect("OpusTags packet exists");
+        assert_eq!(&tags.data[..8], b"OpusTags");
+
+        let mut packet_count = 0;
+        let mut decoded_samples = 0;
+        while let Some(packet) = reader.read_packet().expect("audio packet") {
+            let mut output = vec![0.0_f32; 5_760 * channels];
+            let samples = decoder
+                .decode(&packet.data, 5_760, &mut output)
+                .expect("Opus audio packet decodes");
+            assert!(samples > 0);
+            packet_count += 1;
+            decoded_samples += samples;
+        }
+
+        assert!(packet_count > 0);
+        assert!(decoded_samples > 0);
     }
 
     #[test]

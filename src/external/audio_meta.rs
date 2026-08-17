@@ -134,7 +134,7 @@ impl TrackMetadata {
     }
 }
 
-pub fn extract(path: &std::path::Path) -> Result<TrackMetadata, lofty::error::LoftyError> {
+pub fn extract(path: &std::path::Path) -> Result<TrackMetadata, lofty::error::FileParseError> {
     let raw_size_bytes = std::fs::metadata(path).ok().map(|m| m.len() as i64);
 
     let tagged = lofty::read_from_path(path)?;
