@@ -6,7 +6,10 @@ use dantalian::{
         error::AppError,
     },
     ports::{
-        audio_jobs::{AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobStatus},
+        audio_jobs::{
+            AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobRepository,
+            AudioJobStatus,
+        },
         object_storage::{AudioCodec, ObjectKind, ObjectStorage, object_key},
     },
 };
@@ -257,6 +260,7 @@ struct DataSaverJobRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DataSaverJobAction {
     Retry,
+    RequeueMissingOutput,
     Dispatch,
     Skip,
 }
@@ -300,73 +304,146 @@ pub async fn enqueue_data_saver_jobs(env: &Env) -> Result<(), AppError> {
         let Some(extension) = source_extension(&source.file_name, &source.file_hash) else {
             continue;
         };
-        if !extensions.contains(&extension) {
+        if !extensions.contains(&extension)
+            || object_key(
+                prefix.as_deref(),
+                ObjectKind::OriginalAudio,
+                &source.file_hash,
+                &extension,
+            )
+            .is_err()
+        {
             continue;
         }
-        let input_key = match object_key(
+        if let Err(error) = enqueue_source_jobs(
+            env,
+            &db,
+            &storage,
+            &service,
             prefix.as_deref(),
-            ObjectKind::OriginalAudio,
             &source.file_hash,
             &extension,
-        ) {
-            Ok(key) => key,
-            Err(_) => continue,
-        };
+        )
+        .await
+        {
+            first_error.get_or_insert(error);
+        }
+    }
 
-        for codec in [AudioCodec::Opus, AudioCodec::Aac] {
-            let output_key = match object_key(
-                prefix.as_deref(),
-                ObjectKind::EncodedAudio { codec },
-                &source.file_hash,
-                codec.as_str(),
-            ) {
-                Ok(key) => key,
-                Err(_) => continue,
-            };
-            let idempotency_key = format!("data-saver:{}:{}", source.file_hash, codec.as_str());
-            if storage.exists(&output_key).await? {
-                continue;
-            }
-            if let Some(existing) = audio_job_state(&db, &idempotency_key).await? {
-                let job_id = match data_saver_job_action(&existing.status) {
-                    DataSaverJobAction::Retry => match service.retry(&existing.id).await {
+    first_error.map_or(Ok(()), Err)
+}
+
+pub async fn enqueue_data_saver_job_for_source(
+    env: &Env,
+    file_hash: &str,
+    extension: &str,
+) -> Result<(), AppError> {
+    let extension = normalize_extension(extension)
+        .ok_or_else(|| AppError::Validation("invalid audio extension".to_string()))?;
+    let db = env
+        .d1("DB")
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let (enabled, extensions) = load_data_saver_config(&db).await?;
+    if !enabled || !extensions.contains(&extension) {
+        return Ok(());
+    }
+
+    let config = WasabiConfig::from_env(env)
+        .await
+        .map_err(|error| AppError::Storage(error.to_string()))?;
+    let prefix = config.prefix.clone();
+    let storage = WasabiStorage::new(config);
+    let repository = D1AudioJobRepository::new(&db);
+    let service = AudioJobService::new(repository);
+    enqueue_source_jobs(
+        env,
+        &db,
+        &storage,
+        &service,
+        prefix.as_deref(),
+        file_hash,
+        &extension,
+    )
+    .await
+}
+
+async fn enqueue_source_jobs<Q>(
+    env: &Env,
+    db: &worker::D1Database,
+    storage: &WasabiStorage,
+    service: &AudioJobService<Q>,
+    prefix: Option<&str>,
+    file_hash: &str,
+    extension: &str,
+) -> Result<(), AppError>
+where
+    Q: AudioJobRepository,
+{
+    let input_key = object_key(prefix, ObjectKind::OriginalAudio, file_hash, extension)?;
+    let mut first_error = None;
+
+    for codec in [AudioCodec::Opus, AudioCodec::Aac] {
+        let output_key = object_key(
+            prefix,
+            ObjectKind::EncodedAudio { codec },
+            file_hash,
+            codec.as_str(),
+        )?;
+        let idempotency_key = format!("data-saver:{file_hash}:{}", codec.as_str());
+        if storage.exists(&output_key).await? {
+            continue;
+        }
+
+        if let Some(existing) = audio_job_state(db, &idempotency_key).await? {
+            let job_id = match data_saver_job_action(&existing.status) {
+                DataSaverJobAction::Retry => match service.retry(&existing.id).await {
+                    Ok(job) => Some(job.id),
+                    Err(AppError::Conflict(_)) => None,
+                    Err(error) => {
+                        first_error.get_or_insert(error);
+                        None
+                    }
+                },
+                DataSaverJobAction::RequeueMissingOutput => {
+                    match service.requeue_missing_output(storage, &existing.id).await {
                         Ok(job) => Some(job.id),
                         Err(AppError::Conflict(_)) => None,
                         Err(error) => {
                             first_error.get_or_insert(error);
                             None
                         }
-                    },
-                    DataSaverJobAction::Dispatch => Some(existing.id),
-                    DataSaverJobAction::Skip => None,
-                };
-                if let Some(job_id) = job_id {
-                    if let Err(error) = dispatch(env, &job_id).await {
-                        first_error.get_or_insert(error);
                     }
                 }
-                continue;
-            }
-            let request = match prepare_request(
-                input_key.clone(),
-                output_key,
-                codec,
-                Some(DEFAULT_AUDIO_BITRATE_KBPS),
-                Some(idempotency_key),
-            ) {
-                Ok(request) => request,
-                Err(_) => continue,
+                DataSaverJobAction::Dispatch => Some(existing.id),
+                DataSaverJobAction::Skip => None,
             };
-            match service.submit(&storage, request).await {
-                Ok(job) => {
-                    if let Err(error) = dispatch(env, &job.id).await {
-                        first_error.get_or_insert(error);
-                    }
-                }
-                Err(AppError::NotFound | AppError::Conflict(_)) => {}
-                Err(error) => {
+            if let Some(job_id) = job_id {
+                if let Err(error) = dispatch(env, &job_id).await {
                     first_error.get_or_insert(error);
                 }
+            }
+            continue;
+        }
+
+        let request = match prepare_request(
+            input_key.clone(),
+            output_key,
+            codec,
+            Some(DEFAULT_AUDIO_BITRATE_KBPS),
+            Some(idempotency_key),
+        ) {
+            Ok(request) => request,
+            Err(_) => continue,
+        };
+        match service.submit(storage, request).await {
+            Ok(job) => {
+                if let Err(error) = dispatch(env, &job.id).await {
+                    first_error.get_or_insert(error);
+                }
+            }
+            Err(AppError::NotFound | AppError::Conflict(_)) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
             }
         }
     }
@@ -432,8 +509,9 @@ async fn audio_job_state(
 fn data_saver_job_action(status: &str) -> DataSaverJobAction {
     match status {
         "failed" => DataSaverJobAction::Retry,
+        "completed" => DataSaverJobAction::RequeueMissingOutput,
         "queued" => DataSaverJobAction::Dispatch,
-        "running" | "completed" => DataSaverJobAction::Skip,
+        "running" => DataSaverJobAction::Skip,
         _ => DataSaverJobAction::Skip,
     }
 }
@@ -517,13 +595,16 @@ mod tests {
     use super::{DataSaverJobAction, data_saver_job_action};
 
     #[test]
-    fn data_saver_retries_failed_jobs_and_does_not_duplicate_active_jobs() {
+    fn data_saver_retries_failed_jobs_and_requeues_missing_completed_outputs() {
         assert_eq!(data_saver_job_action("failed"), DataSaverJobAction::Retry);
+        assert_eq!(
+            data_saver_job_action("completed"),
+            DataSaverJobAction::RequeueMissingOutput
+        );
         assert_eq!(
             data_saver_job_action("queued"),
             DataSaverJobAction::Dispatch
         );
         assert_eq!(data_saver_job_action("running"), DataSaverJobAction::Skip);
-        assert_eq!(data_saver_job_action("completed"), DataSaverJobAction::Skip);
     }
 }

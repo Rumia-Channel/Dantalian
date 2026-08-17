@@ -146,6 +146,14 @@ pub async fn playability(req: Request, ctx: RouteContext<()>) -> Result<Response
     } else {
         None
     };
+    if original.available && (!opus.available || !aac.available) {
+        if let Err(error) =
+            crate::audio_job_api::enqueue_data_saver_job_for_source(&ctx.env, file_hash, &extension)
+                .await
+        {
+            worker::console_error!("data saver job scheduling failed: {error}");
+        }
+    }
 
     Response::from_json(&AudioPlayabilityResponse {
         original,

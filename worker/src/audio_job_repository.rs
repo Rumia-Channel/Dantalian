@@ -451,6 +451,48 @@ impl AudioJobRepository for D1AudioJobRepository<'_> {
             self.load(job_id).await
         }
     }
+    fn requeue_missing_output(
+        &self,
+        job_id: &str,
+    ) -> impl Future<Output = Result<AudioJob, AppError>> {
+        async move {
+            let now = now_millis();
+            let result = self
+                .db
+                .prepare(
+                    "UPDATE audio_jobs
+                     SET status = 'queued', attempt_count = 0,
+                         error_summary = 'audio output object missing; requeued',
+                         lease_until = NULL, started_at = NULL, finished_at = NULL,
+                         next_attempt_at = NULL, processor_id = NULL, lease_token = NULL,
+                         output_size_bytes = NULL, updated_at = ?
+                     WHERE id = ? AND owner = ? AND status = 'completed'",
+                )
+                .bind_refs([
+                    &D1Type::Text(&now),
+                    &D1Type::Text(job_id),
+                    &D1Type::Text(OWNER_SCOPE),
+                ])
+                .map_err(db_error)?
+                .run()
+                .await
+                .map_err(db_error)?;
+            if result
+                .meta()
+                .map_err(db_error)?
+                .and_then(|meta| meta.changes)
+                .unwrap_or_default()
+                == 0
+            {
+                let job = self.load(job_id).await?;
+                return Err(AppError::Conflict(format!(
+                    "audio job cannot requeue missing output from {}",
+                    job.status.as_str()
+                )));
+            }
+            self.load(job_id).await
+        }
+    }
 
     fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>> {
         async move {

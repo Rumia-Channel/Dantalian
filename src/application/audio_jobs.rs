@@ -101,6 +101,20 @@ where
         self.repository.retry(job_id).await
     }
 
+    pub async fn requeue_missing_output<S: ObjectStorage>(
+        &self,
+        storage: &S,
+        job_id: &str,
+    ) -> Result<AudioJob, AppError> {
+        let job = self.repository.get(job_id).await?;
+        if storage.exists(&job.output_object_key).await? {
+            return Err(AppError::Conflict(
+                "audio job output object still exists".to_string(),
+            ));
+        }
+        self.repository.requeue_missing_output(job_id).await
+    }
+
     pub async fn recover_expired(&self) -> Result<u32, AppError> {
         self.repository.recover_expired().await
     }
@@ -321,6 +335,12 @@ mod tests {
         }
 
         fn retry(&self, _job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>> {
+            async { Ok(job(AudioJobStatus::Queued)) }
+        }
+        fn requeue_missing_output(
+            &self,
+            _job_id: &str,
+        ) -> impl Future<Output = Result<AudioJob, AppError>> {
             async { Ok(job(AudioJobStatus::Queued)) }
         }
 

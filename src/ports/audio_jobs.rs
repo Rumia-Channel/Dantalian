@@ -118,6 +118,10 @@ pub trait AudioJobRepository {
         failure: AudioJobFailure,
     ) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn retry(&self, job_id: &str) -> impl Future<Output = Result<AudioJob, AppError>>;
+    fn requeue_missing_output(
+        &self,
+        job_id: &str,
+    ) -> impl Future<Output = Result<AudioJob, AppError>>;
     fn recover_expired(&self) -> impl Future<Output = Result<u32, AppError>>;
     fn dispatchable_ids(&self, limit: u32) -> impl Future<Output = Result<Vec<String>, AppError>>;
 }
