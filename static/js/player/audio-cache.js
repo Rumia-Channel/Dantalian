@@ -113,6 +113,18 @@ function audioCacheExtension(track) {
     const dot = fileName.lastIndexOf(".");
     return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : "";
 }
+function audioCacheUsesCompressedVariant(track) {
+    return typeof audioDataSaverPolicy !== "undefined"
+        && audioDataSaverPolicy.enabled
+        && audioDataSaverPolicy.extensions.has(audioCacheExtension(track));
+}
+
+function audioCacheRecordIsUsable(track, record) {
+    if (!isAudioCacheBlob(record?.blob)) return false;
+    if (!audioCacheUsesCompressedVariant(track)) return true;
+    return record.format === "opus" || record.format === "aac";
+}
+
 
 function audioCacheOriginalUrl(fileHash) {
     return `/audio/${encodeURIComponent(fileHash)}`;
@@ -123,7 +135,7 @@ function audioCacheEncodedUrl(fileHash, extension, format) {
         ext: extension,
         format,
         cache: "true",
-        wait: "false",
+        wait: "true",
     });
     return `/api/audio/stream/${encodeURIComponent(fileHash)}?${query.toString()}`;
 }
@@ -151,7 +163,9 @@ function audioCacheIsEncodedResponse(response, fileHash, format) {
     try {
         const path = new URL(response.url, window.location.href).pathname;
         const expected = `/audio/encoded/${format}/${audioCacheHashStem(fileHash)}.${format}`;
-        return path === expected;
+        // Native は Worker の内部リダイレクト先を返し、Worker は Wasabi の
+        // 署名URLを返すため、後者はオブジェクトキーの末尾で検証する。
+        return path === expected || path.endsWith(expected);
     } catch {
         return false;
     }
@@ -178,27 +192,26 @@ async function fetchAudioCacheCandidate(url) {
     }
 }
 
-function audioCacheCandidates(track) {
+function audioCacheCandidates(track, playability = null) {
     const fileHash = String(track?.file_hash || "");
     if (!fileHash) return [];
     const extension = audioCacheExtension(track);
-    return [
-        {
-            format: "opus",
-            mime: "audio/ogg; codecs=opus",
-            url: audioCacheEncodedUrl(fileHash, extension, "opus"),
-        },
-        {
-            format: "aac",
-            mime: "audio/aac",
-            url: audioCacheEncodedUrl(fileHash, extension, "aac"),
-        },
-        {
+    const formats = playability?.preferred_format === "aac"
+        ? ["aac", "opus"]
+        : ["opus", "aac"];
+    const candidates = formats.map((format) => ({
+        format,
+        mime: format === "opus" ? "audio/ogg; codecs=opus" : "audio/aac",
+        url: audioCacheEncodedUrl(fileHash, extension, format),
+    }));
+    if (!audioCacheUsesCompressedVariant(track)) {
+        candidates.push({
             format: "original",
             mime: "application/octet-stream",
             url: audioCacheOriginalUrl(fileHash),
-        },
-    ];
+        });
+    }
+    return candidates;
 }
 
 async function cacheAudioTrack(track, context = {}) {
@@ -206,12 +219,19 @@ async function cacheAudioTrack(track, context = {}) {
     if (!fileHash) return { ok: false, error: "音声ファイルがありません" };
 
     const existing = await readAudioCacheRecord(fileHash).catch(() => null);
-    if (isAudioCacheBlob(existing?.blob)) {
+    if (audioCacheRecordIsUsable(track, existing)) {
         return { ok: true, format: existing.format, size: existing.size, reused: true };
     }
+    if (existing?.format === "original" && audioCacheUsesCompressedVariant(track)) {
+        await deleteAudioCacheRecord(fileHash).catch(() => {});
+    }
 
+    let playability = null;
+    if (audioCacheUsesCompressedVariant(track) && typeof fetchAudioPlayability === "function") {
+        playability = await fetchAudioPlayability(track, audioCacheExtension(track));
+    }
     let lastError = null;
-    for (const candidate of audioCacheCandidates(track)) {
+    for (const candidate of audioCacheCandidates(track, playability)) {
         if (candidate.format !== "original" && !audioCacheCanPlayFormat(candidate.format)) {
             continue;
         }
@@ -289,7 +309,9 @@ async function getAudioCacheStatus(tracks) {
     const records = await Promise.all(uniqueTracks.map((track) =>
         readAudioCacheRecord(String(track.file_hash)).catch(() => null)
     ));
-    const cached = records.filter((record) => isAudioCacheBlob(record?.blob));
+    const cached = records.filter((record, index) =>
+        audioCacheRecordIsUsable(uniqueTracks[index], record)
+    );
     return {
         total: uniqueTracks.length,
         cached: cached.length,
@@ -318,7 +340,7 @@ async function getCachedAudioSource(track) {
     const fileHash = String(track?.file_hash || "");
     if (!fileHash || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
     const record = await readAudioCacheRecord(fileHash).catch(() => null);
-    if (!record?.blob || record.blob.size === 0) return null;
+    if (!audioCacheRecordIsUsable(track, record)) return null;
     return {
         url: URL.createObjectURL(record.blob),
         format: record.format,

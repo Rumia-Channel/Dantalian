@@ -103,6 +103,7 @@ fn main() {
     for file in html_files
         .iter()
         .chain(css_files.iter())
+        .chain(js_files.iter())
         .chain(wasm_files.iter())
         .chain(font_files.iter())
         .chain(image_files.iter())
