@@ -6,7 +6,6 @@ const AUDIO_CACHE_DB_VERSION = 1;
 const AUDIO_CACHE_STORE = "tracks";
 const AUDIO_CACHE_MANIFEST_KEY = "dantalian_audio_cache_manifest_v1";
 const AUDIO_CACHE_FETCH_TIMEOUT_MS = 120_000;
-const AUDIO_OPUS_CODEC_VERSION = "v2";
 
 let audioCacheDbPromise = null;
 
@@ -122,7 +121,6 @@ function audioCacheUsesCompressedVariant(track) {
 
 function audioCacheRecordIsUsable(track, record) {
     if (!isAudioCacheBlob(record?.blob)) return false;
-    if (record.format === "opus" && record.codecVersion !== AUDIO_OPUS_CODEC_VERSION) return false;
     if (!audioCacheUsesCompressedVariant(track)) return true;
     return record.format === "opus" || record.format === "aac";
 }
@@ -165,15 +163,8 @@ function audioCacheIsEncodedResponse(response, fileHash, format) {
     try {
         const path = new URL(response.url, window.location.href).pathname;
         const fileName = `${audioCacheHashStem(fileHash)}.${format}`;
-        const expected = format === "opus"
-            ? `/audio/encoded/opus/${AUDIO_OPUS_CODEC_VERSION}/${fileName}`
-            : `/audio/encoded/${format}/${fileName}`;
-        const legacy = `/audio/encoded/${format}/${fileName}`;
-        // Native は旧パス、Worker は Opus framing version付きパスを返す。
-        return path === expected
-            || path.endsWith(expected)
-            || path === legacy
-            || path.endsWith(legacy);
+        const expected = `/audio/encoded/${format}/${fileName}`;
+        return path === expected || path.endsWith(expected);
     } catch {
         return false;
     }
@@ -265,7 +256,6 @@ async function cacheAudioTrack(track, context = {}) {
                 fileHash,
                 blob,
                 format: candidate.format,
-                codecVersion: candidate.format === "opus" ? AUDIO_OPUS_CODEC_VERSION : null,
                 mime: blob.type || candidate.mime,
                 size: blob.size,
                 cachedAt: new Date().toISOString(),

@@ -10,9 +10,7 @@ use dantalian::{
             AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobRepository,
             AudioJobStatus,
         },
-        object_storage::{
-            AudioCodec, OPUS_ENCODED_OBJECT_VERSION, ObjectKind, ObjectStorage, object_key,
-        },
+        object_storage::{AudioCodec, ObjectKind, ObjectStorage, object_key},
     },
 };
 use serde::Deserialize;
@@ -392,9 +390,7 @@ where
             codec.as_str(),
         )?;
         let idempotency_key = match codec {
-            AudioCodec::Opus => {
-                format!("data-saver:{file_hash}:opus:{OPUS_ENCODED_OBJECT_VERSION}")
-            }
+            AudioCodec::Opus => format!("data-saver:{file_hash}:opus"),
             AudioCodec::Aac => format!("data-saver:{file_hash}:aac"),
         };
         if storage.exists(&output_key).await? {
