@@ -27,6 +27,8 @@ impl AudioCodec {
         }
     }
 }
+/// Version of the native Opus/Ogg framing contract used by Worker objects.
+pub const OPUS_ENCODED_OBJECT_VERSION: &str = "v2";
 /// Maximum request body that the Worker handles directly before the client
 /// must switch to a Wasabi multipart upload.
 pub const WORKER_DIRECT_UPLOAD_MAX_BYTES: u64 = 95 * 1024 * 1024;
@@ -105,7 +107,7 @@ pub fn object_key(
         ObjectKind::EncodedAudio {
             codec: AudioCodec::Opus,
         } => {
-            format!("audio/encoded/opus/{object_id}.opus")
+            format!("audio/encoded/opus/{OPUS_ENCODED_OBJECT_VERSION}/{object_id}.opus")
         }
         ObjectKind::EncodedAudio {
             codec: AudioCodec::Aac,
@@ -182,7 +184,7 @@ mod tests {
                 "ignored"
             )
             .unwrap(),
-            "audio/encoded/opus/abc123.opus"
+            "audio/encoded/opus/v2/abc123.opus"
         );
     }
 

@@ -65,7 +65,6 @@ where
 
 #[derive(Debug, Clone, Copy)]
 struct AudioProfile {
-    source_rate: u32,
     target_rate: u32,
     channels: u8,
 }
@@ -189,7 +188,7 @@ fn encode_opus_decoded<W: Write>(
     let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
     writer
         .write_packet(
-            opus_head(profile.source_rate, profile.channels, pre_skip),
+            opus_head(profile.target_rate, profile.channels, pre_skip),
             serial,
             PacketWriteEndInfo::EndPage,
             0,
@@ -204,9 +203,12 @@ fn encode_opus_decoded<W: Write>(
         + (pcm_frames * 48_000 + u64::from(profile.target_rate) - 1)
             / u64::from(profile.target_rate);
     let frame_samples_u64 = frame_samples as u64;
-    let mut granule_position = OPUS_LOOKAHEAD_48K;
+    let mut granule_position = 0;
     let mut chunks = pcm.chunks(frame_len).peekable();
+    let mut wrote_packet = false;
     while let Some(chunk) = chunks.next() {
+        let is_last = chunks.peek().is_none();
+        let is_partial = chunk.len() < frame_len;
         let mut frame = vec![0.0_f32; frame_len];
         for (destination, sample) in frame.iter_mut().zip(chunk) {
             *destination = f32::from(*sample) / 32_768.0;
@@ -216,26 +218,45 @@ fn encode_opus_decoded<W: Write>(
             .encode(&frame, frame_samples, &mut packet)
             .map_err(|error| format!("Opus encode failed: {error}"))?;
         packet.truncate(packet_len);
-        let is_last = chunks.peek().is_none();
-        granule_position = if is_last {
-            final_granule_position
-        } else {
-            granule_position + frame_samples_u64 * 48_000 / u64::from(profile.target_rate)
-        };
+        let next_granule_position =
+            granule_position + frame_samples_u64 * 48_000 / u64::from(profile.target_rate);
         writer
             .write_packet(
                 packet,
                 serial,
-                if is_last {
+                if is_last && is_partial {
                     PacketWriteEndInfo::EndStream
                 } else {
                     PacketWriteEndInfo::NormalPacket
                 },
-                granule_position,
+                if is_last && is_partial {
+                    final_granule_position
+                } else {
+                    next_granule_position
+                },
             )
             .map_err(|error| format!("Ogg Opus packet write failed: {error}"))?;
+        wrote_packet = true;
+        granule_position = next_granule_position;
+
+        if is_last && !is_partial {
+            let padding = vec![0.0_f32; frame_len];
+            let mut packet = vec![0_u8; 4096];
+            let packet_len = encoder
+                .encode(&padding, frame_samples, &mut packet)
+                .map_err(|error| format!("Opus padding encode failed: {error}"))?;
+            packet.truncate(packet_len);
+            writer
+                .write_packet(
+                    packet,
+                    serial,
+                    PacketWriteEndInfo::EndStream,
+                    final_granule_position,
+                )
+                .map_err(|error| format!("Ogg Opus final packet write failed: {error}"))?;
+        }
     }
-    if granule_position == OPUS_LOOKAHEAD_48K {
+    if !wrote_packet {
         return Err("Opus encoder produced no packets".to_string());
     }
     Ok(writer.into_inner())
@@ -348,7 +369,6 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
 
 fn profile_for(decoded: &DecodedAudio) -> AudioProfile {
     AudioProfile {
-        source_rate: decoded.sample_rate,
         target_rate: opus_sample_rate(decoded.sample_rate),
         channels: decoded.channels,
     }
@@ -450,7 +470,6 @@ where
         .map(|value| value.count().clamp(1, 2))
         .unwrap_or(2);
     let profile = AudioProfile {
-        source_rate,
         target_rate: opus_sample_rate(source_rate),
         channels: source_channels as u8,
     };
@@ -527,7 +546,7 @@ impl<W: Write> OpusStreamEncoder<W> {
         let mut writer = PacketWriter::new(output);
         writer
             .write_packet(
-                opus_head(profile.source_rate, profile.channels, pre_skip),
+                opus_head(profile.target_rate, profile.channels, pre_skip),
                 serial,
                 PacketWriteEndInfo::EndPage,
                 0,
@@ -579,9 +598,8 @@ impl<W: Write> OpusStreamEncoder<W> {
             .map_err(|error| format!("Opus encode failed: {error}"))?;
         packet.truncate(packet_len);
         self.encoded_pcm_frames += self.frame_samples as u64;
-        let granule_position = OPUS_LOOKAHEAD_48K
-            + (self.encoded_pcm_frames * 48_000 + u64::from(self.target_rate) - 1)
-                / u64::from(self.target_rate);
+        let granule_position = (self.encoded_pcm_frames * 48_000 + u64::from(self.target_rate) - 1)
+            / u64::from(self.target_rate);
         if let Some((previous, previous_granule)) = self.pending_packet.take() {
             self.writer
                 .write_packet(
@@ -601,13 +619,15 @@ impl<W: Write> OpusStreamEncoder<W> {
             let mut frame = vec![0_i16; self.frame_len];
             frame[..self.pending_pcm.len()].copy_from_slice(&self.pending_pcm);
             self.encode_frame(&frame)?;
+        } else {
+            self.encode_frame(&vec![0_i16; self.frame_len])?;
         }
-        let Some((packet, _)) = self.pending_packet.take() else {
-            return Err("Opus encoder produced no packets".to_string());
-        };
         let final_granule_position = OPUS_LOOKAHEAD_48K
             + (self.total_pcm_frames * 48_000 + u64::from(self.target_rate) - 1)
                 / u64::from(self.target_rate);
+        let Some((packet, _)) = self.pending_packet.take() else {
+            return Err("Opus encoder produced no packets".to_string());
+        };
         self.writer
             .write_packet(
                 packet,
@@ -929,8 +949,8 @@ mod tests {
             decoded_samples += samples;
         }
 
-        assert!(packet_count > 0);
-        assert!(decoded_samples > 0);
+        assert_eq!(packet_count, 6);
+        assert_eq!(decoded_samples, 6 * 960);
     }
 
     #[test]
@@ -949,6 +969,20 @@ mod tests {
         let aac = std::fs::read(&aac_output).expect("read AAC output");
         assert!(opus.starts_with(b"OggS"));
         assert!(aac.starts_with(&[0xff, 0xf1]));
+        let mut reader = PacketReader::new(Cursor::new(opus));
+        reader
+            .read_packet()
+            .expect("OpusHead packet")
+            .expect("OpusHead packet exists");
+        reader
+            .read_packet()
+            .expect("OpusTags packet")
+            .expect("OpusTags packet exists");
+        let mut packet_count = 0;
+        while let Some(_) = reader.read_packet().expect("audio packet") {
+            packet_count += 1;
+        }
+        assert_eq!(packet_count, 6);
 
         std::fs::remove_dir_all(root).expect("remove test directory");
     }
