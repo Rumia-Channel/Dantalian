@@ -1,3 +1,7 @@
+const AUDIO_PREBUFFER_SECONDS = 3;
+const AUDIO_PREBUFFER_TIMEOUT_MS = 15_000;
+const AUDIO_PREBUFFER_POLL_MS = 200;
+
 
 // 音声再生エンジン。
 // キュー要素は { track, album } として保持し、複数CDの曲を混在させる。
@@ -21,6 +25,8 @@ class PlayerEngine {
         this._cacheFormat = null;
         this._loadToken = 0;
         this._loading = false;
+        this._playActivationPending = false;
+        this._playbackWarmup = null;
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
         this.audio.addEventListener("loadedmetadata", () => {
@@ -80,6 +86,8 @@ class PlayerEngine {
     }
 
     loadQueue(entries, startIndex = 0) {
+        this._restorePlaybackWarmup(this._playRequestId);
+        this._playActivationPending = false;
         this.audio.pause();
         this.queue = (entries || []).map((entry) => this._normalizeEntry(entry)).filter(Boolean);
         this.index = this.queue.length > 0
@@ -170,11 +178,52 @@ class PlayerEngine {
         this._cacheObjectUrl = null;
         this._cacheFormat = null;
     }
-
     _preparePlaybackBuffer() {
         if (this.audio.preload === "auto") return;
         this.audio.preload = "auto";
         if (this.audio.src) this.audio.load();
+    }
+
+
+    _bufferedAhead() {
+        const position = Number(this.audio.currentTime) || 0;
+        const ranges = this.audio.buffered;
+        for (let index = 0; index < ranges.length; index += 1) {
+            const start = ranges.start(index);
+            const end = ranges.end(index);
+            if (position + 0.25 >= start && position <= end + 0.25) {
+                return Math.max(0, end - position);
+            }
+        }
+        return 0;
+    }
+
+    _hasPlaybackBuffer() {
+        if (this.audio.readyState < 3) return false;
+        const duration = Number(this.audio.duration);
+        if (!Number.isFinite(duration) || duration <= 0) {
+            return this.audio.readyState >= 4 || this._bufferedAhead() >= AUDIO_PREBUFFER_SECONDS;
+        }
+        const remaining = Math.max(0, duration - (Number(this.audio.currentTime) || 0));
+        const target = Math.min(AUDIO_PREBUFFER_SECONDS, remaining);
+        return target <= 0.25 || this._bufferedAhead() >= target;
+    }
+
+    _isCachedSource() {
+        return Boolean(this._cacheObjectUrl && this._sourceIndex === 0);
+    }
+
+    _hasUserActivation() {
+        return typeof navigator !== "undefined"
+            && navigator.userActivation
+            && navigator.userActivation.isActive === true;
+    }
+
+    _restorePlaybackWarmup(playRequestId) {
+        if (!this._playbackWarmup || this._playbackWarmup.playRequestId !== playRequestId) return;
+        const muted = this._playbackWarmup.muted;
+        this._playbackWarmup = null;
+        this.audio.muted = muted;
     }
 
     _playImmediately(loadToken, playRequestId) {
@@ -186,25 +235,98 @@ class PlayerEngine {
         ) {
             return;
         }
+        const playPromise = this.audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+                if (playRequestId === this._playRequestId) this._emit("playstate", false);
+            });
+        }
+    }
+
+    async _playWhenBuffered(loadToken, playRequestId, allowActivationWarmup = false) {
         this._preparePlaybackBuffer();
-        this.audio.play().catch(() => {
-            if (playRequestId === this._playRequestId) this._emit("playstate", false);
-        });
+        if (
+            loadToken !== this._loadToken
+            || playRequestId !== this._playRequestId
+            || !this._playRequested
+            || !this.audio.src
+        ) {
+            return;
+        }
+
+        if (this._isCachedSource() || this._hasPlaybackBuffer()) {
+            this._playImmediately(loadToken, playRequestId);
+            return;
+        }
+
+        let warmup = false;
+        let playRejected = false;
+        if (allowActivationWarmup) {
+            this._playbackWarmup = {
+                muted: this.audio.muted,
+                playRequestId,
+            };
+            this.audio.muted = true;
+            warmup = true;
+            const playPromise = this.audio.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => {
+                    playRejected = true;
+                });
+            }
+        }
+
+        const deadline = Date.now() + AUDIO_PREBUFFER_TIMEOUT_MS;
+        while (
+            loadToken === this._loadToken
+            && playRequestId === this._playRequestId
+            && this._playRequested
+            && !this.audio.error
+            && !playRejected
+            && !this._hasPlaybackBuffer()
+            && Date.now() < deadline
+        ) {
+            await new Promise((resolve) => setTimeout(resolve, AUDIO_PREBUFFER_POLL_MS));
+        }
+
+        const valid = loadToken === this._loadToken
+            && playRequestId === this._playRequestId
+            && this._playRequested
+            && Boolean(this.audio.src);
+        if (!valid) {
+            this._restorePlaybackWarmup(playRequestId);
+            return;
+        }
+        if (playRejected) {
+            this._restorePlaybackWarmup(playRequestId);
+            this._emit("playstate", false);
+            return;
+        }
+        if (warmup) {
+            this._restorePlaybackWarmup(playRequestId);
+            if (this.audio.paused) this._playImmediately(loadToken, playRequestId);
+            return;
+        }
+        this._playImmediately(loadToken, playRequestId);
     }
 
     _handleSourceError() {
         if (this._loading || this._sourceCandidates.length === 0) return;
         if (this._sourceIndex + 1 < this._sourceCandidates.length) {
             const shouldPlay = this._playRequested || this.isPlaying;
+            this._restorePlaybackWarmup(this._playRequestId);
+            const playRequestId = ++this._playRequestId;
             this._sourceIndex += 1;
             this.audio.src = this._sourceCandidates[this._sourceIndex];
             this.audio.load();
-            if (shouldPlay) this._playImmediately(this._loadToken, this._playRequestId);
+            if (shouldPlay) this._playWhenBuffered(this._loadToken, playRequestId);
+            return;
         }
         if (this.index >= 0) this._emit("error", this.current());
     }
 
     async _loadCurrent(autoplay) {
+        this._restorePlaybackWarmup(this._playRequestId);
         const token = ++this._loadToken;
         this._playRequestId += 1;
         const entry = this.currentEntry();
@@ -235,7 +357,8 @@ class PlayerEngine {
             }
             return;
         }
-
+        this._cacheObjectUrl = cachedSource?.url || null;
+        this._cacheFormat = cachedSource?.format || null;
         this._sourceCandidates = cachedSource
             ? [cachedSource.url, ...networkCandidates]
             : networkCandidates;
@@ -250,15 +373,20 @@ class PlayerEngine {
             return;
         }
         const shouldPlay = this._playRequested || autoplay;
+        const playRequestId = this._playRequestId;
+        const allowActivationWarmup = this._playActivationPending;
+        this._playActivationPending = false;
         this.audio.preload = shouldPlay ? "auto" : "metadata";
         this.audio.src = this._sourceCandidates[0] || "";
         this.audio.load();
         this._loading = false;
         this._emit("trackchange", entry.track);
-        if (shouldPlay) this._playImmediately(token, this._playRequestId);
+        if (shouldPlay) this._playWhenBuffered(token, playRequestId, allowActivationWarmup);
     }
 
     play() {
+        const allowActivationWarmup = this._hasUserActivation();
+        if (allowActivationWarmup) this._playActivationPending = true;
         this._playRequested = true;
         const playRequestId = ++this._playRequestId;
         if (this.index < 0 && this.queue.length > 0) {
@@ -270,14 +398,18 @@ class PlayerEngine {
             this._loadCurrent(true);
             return;
         }
-        this._playImmediately(this._loadToken, playRequestId);
+        this._playActivationPending = false;
+        this._playWhenBuffered(this._loadToken, playRequestId, allowActivationWarmup);
     }
 
     pause() {
+        this._restorePlaybackWarmup(this._playRequestId);
         this._playRequested = false;
+        this._playActivationPending = false;
         this._playRequestId += 1;
         this.audio.pause();
     }
+
 
     toggle() {
         if (this.audio.paused) this.play();
@@ -311,6 +443,7 @@ class PlayerEngine {
             }
         }
         this.index = this.playOrder[nextPosition];
+        if (this._hasUserActivation()) this._playActivationPending = true;
         this._loadCurrent(true);
         return true;
     }
@@ -361,6 +494,7 @@ class PlayerEngine {
             else previousPosition = 0;
         }
         this.index = this.playOrder[previousPosition];
+        if (this._hasUserActivation()) this._playActivationPending = true;
         this._loadCurrent(true);
         return true;
     }
@@ -370,6 +504,7 @@ class PlayerEngine {
         if (!Number.isInteger(numericIndex) || numericIndex < 0 || numericIndex >= this.queue.length) return false;
         this.index = numericIndex;
         this._rebuildPlayOrder(this.index);
+        if (this._hasUserActivation()) this._playActivationPending = true;
         this._loadCurrent(true);
         return true;
     }
@@ -403,6 +538,8 @@ class PlayerEngine {
 
     clearQueue() {
         this._loadToken += 1;
+        this._restorePlaybackWarmup(this._playRequestId);
+        this._playActivationPending = false;
         this._loading = false;
         this.audio.pause();
         this._releaseCachedObjectUrl();
