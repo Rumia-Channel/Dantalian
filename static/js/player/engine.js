@@ -1,6 +1,3 @@
-const AUDIO_PREBUFFER_SECONDS = 3;
-const AUDIO_PREBUFFER_TIMEOUT_MS = 15_000;
-const AUDIO_PREBUFFER_POLL_MS = 200;
 
 // 音声再生エンジン。
 // キュー要素は { track, album } として保持し、複数CDの曲を混在させる。
@@ -174,49 +171,13 @@ class PlayerEngine {
         this._cacheFormat = null;
     }
 
-    _bufferedAhead() {
-        const position = Number(this.audio.currentTime) || 0;
-        const ranges = this.audio.buffered;
-        for (let index = 0; index < ranges.length; index += 1) {
-            const start = ranges.start(index);
-            const end = ranges.end(index);
-            if (position + 0.25 >= start && position <= end + 0.25) {
-                return Math.max(0, end - position);
-            }
-        }
-        return 0;
-    }
-
-    _hasPlaybackBuffer() {
-        if (this.audio.readyState < 3) return false;
-        const duration = Number(this.audio.duration);
-        if (!Number.isFinite(duration) || duration <= 0) {
-            return this._bufferedAhead() > 0;
-        }
-        const remaining = Math.max(0, duration - (Number(this.audio.currentTime) || 0));
-        const target = Math.min(AUDIO_PREBUFFER_SECONDS, remaining);
-        return target <= 0.25 || this._bufferedAhead() >= target;
-    }
-
     _preparePlaybackBuffer() {
         if (this.audio.preload === "auto") return;
         this.audio.preload = "auto";
         if (this.audio.src) this.audio.load();
     }
 
-    async _playWhenBuffered(loadToken, playRequestId) {
-        this._preparePlaybackBuffer();
-        const deadline = Date.now() + AUDIO_PREBUFFER_TIMEOUT_MS;
-        while (
-            loadToken === this._loadToken
-            && playRequestId === this._playRequestId
-            && this._playRequested
-            && !this.audio.error
-            && !this._hasPlaybackBuffer()
-            && Date.now() < deadline
-        ) {
-            await new Promise((resolve) => setTimeout(resolve, AUDIO_PREBUFFER_POLL_MS));
-        }
+    _playImmediately(loadToken, playRequestId) {
         if (
             loadToken !== this._loadToken
             || playRequestId !== this._playRequestId
@@ -225,6 +186,7 @@ class PlayerEngine {
         ) {
             return;
         }
+        this._preparePlaybackBuffer();
         this.audio.play().catch(() => {
             if (playRequestId === this._playRequestId) this._emit("playstate", false);
         });
@@ -237,8 +199,7 @@ class PlayerEngine {
             this._sourceIndex += 1;
             this.audio.src = this._sourceCandidates[this._sourceIndex];
             this.audio.load();
-            if (shouldPlay) this._playWhenBuffered(this._loadToken, this._playRequestId);
-            return;
+            if (shouldPlay) this._playImmediately(this._loadToken, this._playRequestId);
         }
         if (this.index >= 0) this._emit("error", this.current());
     }
@@ -294,7 +255,7 @@ class PlayerEngine {
         this.audio.load();
         this._loading = false;
         this._emit("trackchange", entry.track);
-        if (shouldPlay) this._playWhenBuffered(token, this._playRequestId);
+        if (shouldPlay) this._playImmediately(token, this._playRequestId);
     }
 
     play() {
@@ -309,7 +270,7 @@ class PlayerEngine {
             this._loadCurrent(true);
             return;
         }
-        this._playWhenBuffered(this._loadToken, playRequestId);
+        this._playImmediately(this._loadToken, playRequestId);
     }
 
     pause() {
