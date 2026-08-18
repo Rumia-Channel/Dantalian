@@ -309,6 +309,18 @@ async function getAudioCacheStatus(tracks) {
     const records = await Promise.all(uniqueTracks.map((track) =>
         readAudioCacheRecord(String(track.file_hash)).catch(() => null)
     ));
+    const staleHashes = records
+        .map((record, index) => (
+            !audioCacheRecordIsUsable(uniqueTracks[index], record)
+                && isAudioCacheBlob(record?.blob)
+                ? String(uniqueTracks[index].file_hash)
+                : null
+        ))
+        .filter(Boolean);
+    // データセーバー有効化前に保存された原音キャッシュを、状態確認時に移行する。
+    for (const hash of staleHashes) {
+        await deleteAudioCacheRecord(hash).catch(() => {});
+    }
     const cached = records.filter((record, index) =>
         audioCacheRecordIsUsable(uniqueTracks[index], record)
     );
