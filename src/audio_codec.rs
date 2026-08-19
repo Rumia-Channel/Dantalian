@@ -185,7 +185,7 @@ fn encode_opus_decoded<W: Write>(
     let mut hasher = DefaultHasher::new();
     source_id.hash(&mut hasher);
     let serial = hasher.finish() as u32;
-    let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
+    let pre_skip = OPUS_LOOKAHEAD_48K as u16;
     writer
         .write_packet(
             opus_head(profile.target_rate, profile.channels, pre_skip),
@@ -542,7 +542,7 @@ impl<W: Write> OpusStreamEncoder<W> {
         let mut hasher = DefaultHasher::new();
         source_id.hash(&mut hasher);
         let serial = hasher.finish() as u32;
-        let pre_skip = (OPUS_LOOKAHEAD_48K * u64::from(profile.target_rate) / 48_000) as u16;
+        let pre_skip = OPUS_LOOKAHEAD_48K as u16;
         let mut writer = PacketWriter::new(output);
         writer
             .write_packet(
@@ -888,8 +888,9 @@ mod tests {
     use opus_rs::OpusDecoder;
 
     use super::{
-        aac_bandwidth_hz, bitrate_bps, encode_aac, encode_aac_file, encode_aac_file_with_bitrate,
-        encode_opus, encode_opus_file, encode_opus_file_with_bitrate, opus_sample_rate,
+        OPUS_LOOKAHEAD_48K, aac_bandwidth_hz, bitrate_bps, encode_aac, encode_aac_file,
+        encode_aac_file_with_bitrate, encode_opus, encode_opus_file, encode_opus_file_with_bitrate,
+        opus_sample_rate,
     };
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
@@ -913,6 +914,21 @@ mod tests {
         let aac = encode_aac(&source, "wav").expect("AAC encoding");
         assert!(opus.starts_with(b"OggS"));
         assert!(aac.starts_with(&[0xff, 0xf1]));
+    }
+    #[test]
+    fn stores_opus_pre_skip_in_fixed_48khz_units() {
+        let source = pcm_wav(24_000, 1, 2_400);
+        let opus = encode_opus(&source, "wav", "pre-skip-check").expect("Opus encoding");
+        let mut reader = PacketReader::new(Cursor::new(opus));
+        let head = reader
+            .read_packet()
+            .expect("OpusHead packet")
+            .expect("OpusHead packet exists");
+
+        assert_eq!(
+            u16::from_le_bytes(head.data[10..12].try_into().unwrap()),
+            OPUS_LOOKAHEAD_48K as u16
+        );
     }
 
     #[test]

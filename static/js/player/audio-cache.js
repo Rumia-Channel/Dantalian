@@ -1,10 +1,10 @@
 // 音声のオフラインキャッシュ。
 // 大きな音声本体は IndexedDB、一覧・容量確認用の軽い管理情報は localStorage に保存する。
 
-const AUDIO_CACHE_DB_NAME = "dantalian-audio-cache-v1";
+const AUDIO_CACHE_DB_NAME = "dantalian-audio-cache-v2";
 const AUDIO_CACHE_DB_VERSION = 1;
 const AUDIO_CACHE_STORE = "tracks";
-const AUDIO_CACHE_MANIFEST_KEY = "dantalian_audio_cache_manifest_v1";
+const AUDIO_CACHE_MANIFEST_KEY = "dantalian_audio_cache_manifest_v2";
 const AUDIO_CACHE_FETCH_TIMEOUT_MS = 120_000;
 
 let audioCacheDbPromise = null;
