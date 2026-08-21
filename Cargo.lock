@@ -595,9 +595,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.3"
+version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
+checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -859,7 +859,7 @@ dependencies = [
  "chrono-tz",
  "dirs",
  "dotenvy",
- "fdk-aac-rust",
+ "fdk-aac",
  "fs2",
  "lofty",
  "ogg",
@@ -1066,10 +1066,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
-name = "fdk-aac-rust"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
+name = "fdk-aac"
+version = "0.9.0"
+source = "git+https://github.com/Rumia-Channel/fdk-aac-rs.git#fead732aee8c6c4893f1a133e1ad43be390456c5"
+dependencies = [
+ "fdk-aac-sys",
+]
+
+[[package]]
+name = "fdk-aac-sys"
+version = "0.5.1"
+source = "git+https://github.com/Rumia-Channel/fdk-aac-rs.git#fead732aee8c6c4893f1a133e1ad43be390456c5"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -2217,9 +2227,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "opus-rs"
-version = "0.1.30"
+version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "338d35e2fb118b99f27533721d4d500d320108c4612f6777015c4f04c27f902b"
+checksum = "7206a32855c6007342b16e37fc3e8a57cab5a02ffc2f764a56556ba97582bce1"
 
 [[package]]
 name = "outref"

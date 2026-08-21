@@ -34,7 +34,7 @@ chrono = { version = "0", features = ["serde"] }
 chrono-tz = "0"
 dirs = { version = "6", optional = true }
 dotenvy = { version = "0", optional = true }
-fdk-aac-rust = { version = "0", default-features = false, optional = true }
+fdk-aac = { git = "https://github.com/Rumia-Channel/fdk-aac-rs.git", optional = true }
 fs2 = { version = "0", optional = true }
 lofty = { version = "0", optional = true }
 ogg = { version = "0", optional = true }
@@ -58,7 +58,7 @@ wasm-bindgen = { version = "0", optional = true }
 [features]
 default = ["native"]
 audio-codec = [
-    "dep:fdk-aac-rust",
+    "dep:fdk-aac",
     "dep:ogg",
     "dep:opus-rs",
     "dep:symphonia",

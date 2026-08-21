@@ -2,7 +2,7 @@
 
 ## FDK AAC ライセンス・特許告知
 
-**2026-08-12:** 本プロジェクトは、`fdk-aac-rust` を通じて
+**2026-08-12:** 本プロジェクトは、`fdk-aac` を通じて
 **Third-Party Modified Version of the Fraunhofer FDK AAC Codec Library for Android**
 を含みます。これは Fraunhofer の公式プロジェクトではなく、Fraunhofer の承認・推奨を受けていません。
 Rust ポートへの変更とこの告知の日付を明示しています。

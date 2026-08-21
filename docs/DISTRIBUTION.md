@@ -1,6 +1,6 @@
 # Distribution compliance
 
-Dantalian includes `fdk-aac-rust`, a **Third-Party Modified Version of the
+Dantalian includes `fdk-aac`, a **Third-Party Modified Version of the
 Fraunhofer FDK AAC Codec Library for Android**. This project is not an official
 Fraunhofer project and is not endorsed by Fraunhofer. Every distributor is
 responsible for reading and complying with the complete license in
@@ -23,13 +23,13 @@ represent the modified codec as an official Fraunhofer release.
 
 ## Build and source availability
 
-`fdk-aac-rust` is used without its optional FFI feature, so a C/C++ compiler is
+`fdk-aac` is used without its optional FFI feature, so a C/C++ compiler is
 not required for this project's pure Rust codec path. Its build still reads
 reference tables from a pinned upstream source tree. The first build therefore
 requires GitHub/network access, or a compatible local source tree supplied with
 `FDK_AAC_SOURCE_DIR`.
 
-For reproducible releases, retain the resolved `fdk-aac-rust` version in
+For reproducible releases, retain the resolved `fdk-aac` version in
 `Cargo.lock` and record the exact corresponding upstream revision used by the
 crate build.
 
@@ -41,14 +41,14 @@ recipient where applicable:
 
 1. the complete `NOTICE` text in the accompanying documentation or materials;
 2. a free-of-charge copy of the complete corresponding source code for
-   `fdk-aac-rust` and all distributed modifications, using an offer and delivery
+   `fdk-aac` and all distributed modifications, using an offer and delivery
    method that recipients can actually access;
 3. the prominent modified-version name and dated change notice;
 4. no use of the Fraunhofer name to endorse or promote the modified version;
 5. no copyright license fee charged for use, copying, or distribution of the
    codec or its modifications.
 
-Record the exact `fdk-aac-rust` version and the corresponding source revision
+Record the exact `fdk-aac` version and the corresponding source revision
 for each binary release. A link to a moving branch is not an adequate record of
 corresponding source.
 

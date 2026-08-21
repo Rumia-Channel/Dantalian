@@ -4,9 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{BufWriter, Cursor, Write};
 use std::path::Path;
 
-use fdk_aac_rust::encoder::{
-    ConfiguredPureRustEncoder, EncoderParameter, PureRustEncoderParameters,
-};
+use fdk_aac::enc::{AudioObjectType, BitRate, ChannelMode, Encoder, EncoderParams, Transport};
 use ogg::{PacketWriteEndInfo, PacketWriter};
 use opus_rs::{Application, OpusEncoder};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
@@ -322,51 +320,56 @@ pub fn encode_aac_file_with_bitrate(
     })
 }
 
-#[allow(unused_assignments)]
+fn channel_mode_for(channels: u8) -> Result<ChannelMode, String> {
+    match channels {
+        1 => Ok(ChannelMode::Mono),
+        2 => Ok(ChannelMode::Stereo),
+        3 => Ok(ChannelMode::Mode1_2),
+        4 => Ok(ChannelMode::Mode1_2_1),
+        5 => Ok(ChannelMode::Mode1_2_2),
+        6 => Ok(ChannelMode::Mode1_2_2_1),
+        7 => Ok(ChannelMode::Mode6_1),
+        8 => Ok(ChannelMode::Mode1_2_2_2_1),
+        _ => Err(format!("unsupported AAC channel count {channels}")),
+    }
+}
+
 fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, String> {
     let profile = aac_profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
-    let mut parameters = PureRustEncoderParameters::new(2);
-    parameters
-        .set_parameter(EncoderParameter::AudioObjectType, 2)
-        .map_err(|error| format!("invalid AAC audio object type: {error:?}"))?;
-    parameters
-        .set_parameter(EncoderParameter::ChannelMode, u32::from(profile.channels))
-        .map_err(|error| format!("invalid AAC channel mode: {error:?}"))?;
-    parameters
-        .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
-        .map_err(|error| format!("invalid AAC sample rate: {error:?}"))?;
-    parameters
-        .set_parameter(EncoderParameter::Bitrate, TARGET_BITRATE)
-        .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
-    parameters
-        .set_parameter(
-            EncoderParameter::Bandwidth,
-            aac_bandwidth_hz(TARGET_BITRATE, profile.channels),
-        )
-        .map_err(|error| format!("invalid AAC bandwidth: {error:?}"))?;
-    parameters
-        .set_parameter(EncoderParameter::TransportMux, 2)
-        .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
-    let mut encoder = Box::new(
-        ConfiguredPureRustEncoder::from_parameters(&parameters)
-            .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?,
+    let channel_mode = channel_mode_for(profile.channels)?;
+    let mut params = EncoderParams::new(
+        BitRate::Cbr(TARGET_BITRATE),
+        profile.target_rate,
+        Transport::Adts,
+        channel_mode,
+        AudioObjectType::Mpeg4LowComplexity,
     );
-    let frame_len = encoder.input_samples_per_channel() * usize::from(profile.channels);
-    let per_channel = encoder.input_samples_per_channel();
+    params.bandwidth = Some(aac_bandwidth_hz(TARGET_BITRATE, profile.channels));
+    let encoder = Encoder::new(params)
+        .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
+    let info = encoder
+        .info()
+        .map_err(|error| format!("AAC encoder info failed: {error:?}"))?;
+    let per_channel = info.frameLength as usize;
+    if per_channel == 0 {
+        return Err("AAC encoder reported zero frame length".to_string());
+    }
+    let frame_len = per_channel * usize::from(profile.channels);
+    let max_out = info.maxOutBufBytes as usize;
+    let delay = info.nDelay as usize;
     let mut output = output;
-    let mut encoded_frames = 0;
+    let mut encoded_frames = 0u32;
+    let mut out_buf = vec![0u8; max_out.max(8192)];
     for chunk in pcm.chunks(frame_len) {
-        let mut frame = vec![0.0_f32; frame_len];
-        for (destination, sample) in frame.iter_mut().zip(chunk) {
-            *destination = f32::from(*sample) / 32_768.0;
-        }
-        let encoded = encoder
-            .encode_transport_f32(&frame)
+        let mut frame = vec![0i16; frame_len];
+        frame[..chunk.len()].copy_from_slice(chunk);
+        let enc_info = encoder
+            .encode(&frame, &mut out_buf)
             .map_err(|error| format!("AAC encode failed: {error:?}"))?;
-        if !encoded.is_empty() {
+        if enc_info.output_size > 0 {
             output
-                .write_all(&encoded)
+                .write_all(&out_buf[..enc_info.output_size])
                 .map_err(|error| error.to_string())?;
             encoded_frames += 1;
         }
@@ -375,19 +378,37 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
         return Err("AAC encoder produced no frames".to_string());
     }
     // Flush the encoder pipeline so the tail is not truncated and the
-    // decoder can drain the full `encoder_delay()` priming.
-    let delay = encoder.encoder_delay() as usize;
+    // decoder can drain the full `nDelay` priming. Real FDK reports
+    // nDelay 2048 for LC 1024-frame, matching pure-Rust `encoder_delay()`.
+    // We encode ceil(nDelay / frameLength) silent frames then drain via
+    // `flush()` to satisfy both the delay contract and the FDK EOF contract.
     let flush_frames = delay.div_ceil(per_channel);
-    let silence = vec![0.0_f32; frame_len];
+    let silence = vec![0i16; frame_len];
     for _ in 0..flush_frames {
-        let encoded = encoder
-            .encode_transport_f32(&silence)
+        let enc_info = encoder
+            .encode(&silence, &mut out_buf)
             .map_err(|error| format!("AAC flush failed: {error:?}"))?;
-        if !encoded.is_empty() {
+        if enc_info.output_size > 0 {
             output
-                .write_all(&encoded)
+                .write_all(&out_buf[..enc_info.output_size])
                 .map_err(|error| error.to_string())?;
             encoded_frames += 1;
+        }
+    }
+    loop {
+        match encoder.flush(&mut out_buf) {
+            Ok(Some(info)) => {
+                if info.output_size > 0 {
+                    output
+                        .write_all(&out_buf[..info.output_size])
+                        .map_err(|error| error.to_string())?;
+                    encoded_frames += 1;
+                } else {
+                    break;
+                }
+            }
+            Ok(None) => break,
+            Err(error) => return Err(format!("AAC flush failed: {error:?}")),
         }
     }
     Ok(output)
@@ -707,47 +728,47 @@ impl<W: Write> OpusStreamEncoder<W> {
 
 struct AacStreamEncoder<W: Write> {
     output: W,
-    encoder: Box<ConfiguredPureRustEncoder>,
+    encoder: Encoder,
     frame_len: usize,
+    per_channel: usize,
+    n_delay: usize,
     pending_pcm: Vec<i16>,
     encoded_frames: u32,
+    out_buf: Vec<u8>,
 }
 impl<W: Write> AacStreamEncoder<W> {
     fn new(profile: AudioProfile, bitrate_bps: u32, output: W) -> Result<Self, String> {
-        let mut parameters = PureRustEncoderParameters::new(2);
-        parameters
-            .set_parameter(EncoderParameter::AudioObjectType, 2)
-            .map_err(|error| format!("invalid AAC audio object type: {error:?}"))?;
-        parameters
-            .set_parameter(EncoderParameter::ChannelMode, u32::from(profile.channels))
-            .map_err(|error| format!("invalid AAC channel mode: {error:?}"))?;
-        parameters
-            .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
-            .map_err(|error| format!("invalid AAC sample rate: {error:?}"))?;
-        parameters
-            .set_parameter(EncoderParameter::Bitrate, bitrate_bps)
-            .map_err(|error| format!("invalid AAC bitrate: {error:?}"))?;
-        parameters
-            .set_parameter(
-                EncoderParameter::Bandwidth,
-                aac_bandwidth_hz(bitrate_bps, profile.channels),
-            )
-            .map_err(|error| format!("invalid AAC bandwidth: {error:?}"))?;
-        parameters
-            .set_parameter(EncoderParameter::TransportMux, 2)
-            .map_err(|error| format!("invalid AAC transport: {error:?}"))?;
-        let encoder = Box::new(
-            ConfiguredPureRustEncoder::from_parameters(&parameters)
-                .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?,
+        let channel_mode = channel_mode_for(profile.channels)?;
+        let mut params = EncoderParams::new(
+            BitRate::Cbr(bitrate_bps),
+            profile.target_rate,
+            Transport::Adts,
+            channel_mode,
+            AudioObjectType::Mpeg4LowComplexity,
         );
+        params.bandwidth = Some(aac_bandwidth_hz(bitrate_bps, profile.channels));
+        let encoder = Encoder::new(params)
+            .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
+        let info = encoder
+            .info()
+            .map_err(|error| format!("AAC encoder info failed: {error:?}"))?;
+        let per_channel = info.frameLength as usize;
+        if per_channel == 0 {
+            return Err("AAC encoder reported zero frame length".to_string());
+        }
         let channels = usize::from(profile.channels);
-        let frame_len = encoder.input_samples_per_channel() * channels;
+        let frame_len = per_channel * channels;
+        let max_out = info.maxOutBufBytes as usize;
+        let n_delay = info.nDelay as usize;
         Ok(Self {
             output,
             encoder,
             frame_len,
+            per_channel,
+            n_delay,
             pending_pcm: Vec::new(),
             encoded_frames: 0,
+            out_buf: vec![0u8; max_out.max(8192)],
         })
     }
 
@@ -766,17 +787,13 @@ impl<W: Write> AacStreamEncoder<W> {
     }
 
     fn encode_frame(&mut self, samples: &[i16]) -> Result<(), String> {
-        let mut frame = vec![0.0_f32; self.frame_len];
-        for (destination, sample) in frame.iter_mut().zip(samples) {
-            *destination = f32::from(*sample) / 32_768.0;
-        }
-        let encoded = self
+        let enc_info = self
             .encoder
-            .encode_transport_f32(&frame)
+            .encode(samples, &mut self.out_buf)
             .map_err(|error| format!("AAC encode failed: {error:?}"))?;
-        if !encoded.is_empty() {
+        if enc_info.output_size > 0 {
             self.output
-                .write_all(&encoded)
+                .write_all(&self.out_buf[..enc_info.output_size])
                 .map_err(|error| error.to_string())?;
             self.encoded_frames += 1;
         }
@@ -792,16 +809,29 @@ impl<W: Write> AacStreamEncoder<W> {
         if self.encoded_frames == 0 {
             return Err("AAC encoder produced no frames".to_string());
         }
-        // Drain the encoder pipeline: the pure-Rust encoder has a
-        // `encoder_delay()` of 2048 samples (LC, 1024 frame) etc. Encoding
-        // `ceil(delay / frame)` additional silent frames guarantees the tail
-        // is not truncated and matches the FDK flushing contract.
-        let delay = self.encoder.encoder_delay() as usize;
-        let per_channel = self.encoder.input_samples_per_channel();
-        let flush_frames = delay.div_ceil(per_channel);
+        // Drain the encoder pipeline: FDK reports nDelay 2048 for LC 1024-frame.
+        // Encoding ceil(nDelay / frameLength) silent frames plus `flush()` guarantees
+        // the tail is not truncated and matches the real FDK flushing contract.
+        let flush_frames = self.n_delay.div_ceil(self.per_channel);
         let silence = vec![0_i16; self.frame_len];
         for _ in 0..flush_frames {
             self.encode_frame(&silence)?;
+        }
+        loop {
+            match self.encoder.flush(&mut self.out_buf) {
+                Ok(Some(info)) => {
+                    if info.output_size > 0 {
+                        self.output
+                            .write_all(&self.out_buf[..info.output_size])
+                            .map_err(|error| error.to_string())?;
+                        self.encoded_frames += 1;
+                    } else {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => return Err(format!("AAC flush failed: {error:?}")),
+            }
         }
         self.output
             .flush()
@@ -1067,14 +1097,12 @@ mod tests {
             })
             .collect();
         assert!(has_finite, "ffmpeg decoded non-finite samples");
-        if peak < 0.05 {
-            eprintln!(
-                "warning: ffmpeg peak low {:.4} for pure-Rust AAC, expected ~0.5 - file may be silent but still decodable",
-                peak
-            );
-        } else {
-            assert!(peak < 2.0, "peak too high {:.4}", peak);
-        }
+        // Real FDK should produce peak ~0.5; fdk-aac-rust 0.2.3 silent defect gives peak 0.0.
+        assert!(
+            peak >= 0.1,
+            "AAC ffmpeg roundtrip peak too low {peak:.4} - fdk-aac-rust 0.2.3 silent defect (peak 0.0) - with real FDK (fdk-aac) expected ~0.5"
+        );
+        assert!(peak < 2.0, "peak too high {:.4}", peak);
         // Generate original PCM f32 for comparison (same sine, interleaved stereo)
         let mut orig = Vec::with_capacity(frames * 2);
         for i in 0..frames {
@@ -1120,12 +1148,11 @@ mod tests {
                 best_corr = corr;
             }
         }
-        if best_corr < 0.5 {
-            eprintln!(
-                "warning: delay-trimmed correlation low {:.4}, peak {:.4} - pure-Rust may have low SNR but file is still decodable",
-                best_corr, peak
-            );
-        }
+        // fdk-aac-rust 0.2.3 silent defect yields corr ~-0.18; real FDK should be >0.9.
+        assert!(
+            best_corr > 0.9,
+            "AAC ffmpeg roundtrip correlation too low {best_corr:.4} peak {peak:.4} - fdk-aac-rust 0.2.3 silent defect (corr -0.18) - with real FDK expected >0.9"
+        );
         // SNR at best offset ~0
         let mut sig_pow = 0.0;
         let mut noise_pow = 0.0;
@@ -1141,12 +1168,11 @@ mod tests {
         } else {
             99.0
         };
-        if snr < 5.0 {
-            eprintln!(
-                "warning: SNR low {:.2} dB, peak {:.4}, corr {:.4} - may be expected for pure-Rust at low bitrate",
-                snr, peak, best_corr
-            );
-        }
+        // fdk-aac-rust 0.2.3 silent defect yields very low SNR; real FDK should be >10 dB.
+        assert!(
+            snr > 10.0,
+            "AAC ffmpeg roundtrip SNR too low {snr:.2} dB peak {peak:.4} corr {best_corr:.4} - fdk-aac-rust 0.2.3 silent defect (SNR <5dB, peak 0.0) - with real FDK expected >10 dB"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
