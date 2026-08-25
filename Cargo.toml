@@ -34,7 +34,7 @@ chrono = { version = "0", features = ["serde"] }
 chrono-tz = "0"
 dirs = { version = "6", optional = true }
 dotenvy = { version = "0", optional = true }
-fdk-aac = { git = "https://github.com/Rumia-Channel/fdk-aac-rs.git", optional = true }
+fdk-aac = { version = "0.8", optional = true }
 fs2 = { version = "0", optional = true }
 lofty = { version = "0", optional = true }
 ogg = { version = "0", optional = true }

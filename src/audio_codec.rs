@@ -17,23 +17,6 @@ use symphonia::core::meta::MetadataOptions;
 const DEFAULT_BITRATE_KBPS: u32 = 192;
 const TARGET_BITRATE: u32 = DEFAULT_BITRATE_KBPS * 1_000;
 const OPUS_LOOKAHEAD_48K: u64 = 312;
-/// Keep the pure-Rust CBR encoder below the long-run reservoir edge case.
-///
-/// At high stereo CBR rates, the codec's automatic bandwidth can occasionally
-/// request a frame larger than its available reservoir. Capping the
-/// psychoacoustic bandwidth preserves the requested bitrate and keeps the
-/// streaming path recoverable instead of leaving a partial AAC file.
-fn aac_bandwidth_hz(bitrate_bps: u32, channels: u8) -> u32 {
-    let per_channel = bitrate_bps / u32::from(channels.max(1));
-    match per_channel {
-        0..=24_000 => 2_000,
-        24_001..=32_000 => 5_700,
-        32_001..=40_000 => 8_800,
-        40_001..=56_000 => 12_800,
-        56_001..=64_000 => 15_000,
-        _ => 15_000,
-    }
-}
 
 fn bitrate_bps(bitrate_kbps: u32) -> Result<u32, String> {
     if !(8..=512).contains(&bitrate_kbps) {
@@ -321,15 +304,11 @@ pub fn encode_aac_file_with_bitrate(
 }
 
 fn channel_mode_for(channels: u8) -> Result<ChannelMode, String> {
+    // The binding only exposes Mono/Stereo; decoded audio is clamped to at
+    // most two channels before reaching the AAC encoder.
     match channels {
         1 => Ok(ChannelMode::Mono),
         2 => Ok(ChannelMode::Stereo),
-        3 => Ok(ChannelMode::Mode1_2),
-        4 => Ok(ChannelMode::Mode1_2_1),
-        5 => Ok(ChannelMode::Mode1_2_2),
-        6 => Ok(ChannelMode::Mode1_2_2_1),
-        7 => Ok(ChannelMode::Mode6_1),
-        8 => Ok(ChannelMode::Mode1_2_2_2_1),
         _ => Err(format!("unsupported AAC channel count {channels}")),
     }
 }
@@ -337,15 +316,13 @@ fn channel_mode_for(channels: u8) -> Result<ChannelMode, String> {
 fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, String> {
     let profile = aac_profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
-    let channel_mode = channel_mode_for(profile.channels)?;
-    let mut params = EncoderParams::new(
-        BitRate::Cbr(TARGET_BITRATE),
-        profile.target_rate,
-        Transport::Adts,
-        channel_mode,
-        AudioObjectType::Mpeg4LowComplexity,
-    );
-    params.bandwidth = Some(aac_bandwidth_hz(TARGET_BITRATE, profile.channels));
+    let params = EncoderParams {
+        bit_rate: BitRate::Cbr(TARGET_BITRATE),
+        sample_rate: profile.target_rate,
+        transport: Transport::Adts,
+        channels: channel_mode_for(profile.channels)?,
+        audio_object_type: AudioObjectType::Mpeg4LowComplexity,
+    };
     let encoder = Encoder::new(params)
         .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
     let info = encoder
@@ -392,24 +369,19 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
             output
                 .write_all(&out_buf[..enc_info.output_size])
                 .map_err(|error| error.to_string())?;
-            encoded_frames += 1;
         }
     }
     loop {
-        match encoder.flush(&mut out_buf) {
-            Ok(Some(info)) => {
-                if info.output_size > 0 {
-                    output
-                        .write_all(&out_buf[..info.output_size])
-                        .map_err(|error| error.to_string())?;
-                    encoded_frames += 1;
-                } else {
-                    break;
-                }
-            }
-            Ok(None) => break,
-            Err(error) => return Err(format!("AAC flush failed: {error:?}")),
+        // Feeding a zero-length input drains the encoder's EOF pipeline.
+        let written = encoder
+            .encode(&[], &mut out_buf)
+            .map_err(|error| format!("AAC flush failed: {error:?}"))?;
+        if written.output_size == 0 {
+            break;
         }
+        output
+            .write_all(&out_buf[..written.output_size])
+            .map_err(|error| error.to_string())?;
     }
     Ok(output)
 }
@@ -738,15 +710,13 @@ struct AacStreamEncoder<W: Write> {
 }
 impl<W: Write> AacStreamEncoder<W> {
     fn new(profile: AudioProfile, bitrate_bps: u32, output: W) -> Result<Self, String> {
-        let channel_mode = channel_mode_for(profile.channels)?;
-        let mut params = EncoderParams::new(
-            BitRate::Cbr(bitrate_bps),
-            profile.target_rate,
-            Transport::Adts,
-            channel_mode,
-            AudioObjectType::Mpeg4LowComplexity,
-        );
-        params.bandwidth = Some(aac_bandwidth_hz(bitrate_bps, profile.channels));
+        let params = EncoderParams {
+            bit_rate: BitRate::Cbr(bitrate_bps),
+            sample_rate: profile.target_rate,
+            transport: Transport::Adts,
+            channels: channel_mode_for(profile.channels)?,
+            audio_object_type: AudioObjectType::Mpeg4LowComplexity,
+        };
         let encoder = Encoder::new(params)
             .map_err(|error| format!("could not initialize AAC encoder: {error:?}"))?;
         let info = encoder
@@ -809,29 +779,28 @@ impl<W: Write> AacStreamEncoder<W> {
         if self.encoded_frames == 0 {
             return Err("AAC encoder produced no frames".to_string());
         }
-        // Drain the encoder pipeline: FDK reports nDelay 2048 for LC 1024-frame.
-        // Encoding ceil(nDelay / frameLength) silent frames plus `flush()` guarantees
-        // the tail is not truncated and matches the real FDK flushing contract.
+        // Drain the encoder pipeline: FDK reports nDelay 2048 for LC
+        // 1024-frame. Encoding ceil(nDelay / frameLength) silent frames, then
+        // feeding zero-length input until the EOF drain runs dry, guarantees
+        // the tail is not truncated and matches the FDK flushing contract.
         let flush_frames = self.n_delay.div_ceil(self.per_channel);
         let silence = vec![0_i16; self.frame_len];
         for _ in 0..flush_frames {
             self.encode_frame(&silence)?;
         }
         loop {
-            match self.encoder.flush(&mut self.out_buf) {
-                Ok(Some(info)) => {
-                    if info.output_size > 0 {
-                        self.output
-                            .write_all(&self.out_buf[..info.output_size])
-                            .map_err(|error| error.to_string())?;
-                        self.encoded_frames += 1;
-                    } else {
-                        break;
-                    }
-                }
-                Ok(None) => break,
-                Err(error) => return Err(format!("AAC flush failed: {error:?}")),
+            // Feeding a zero-length input drains the encoder's EOF pipeline.
+            let written = self
+                .encoder
+                .encode(&[], &mut self.out_buf)
+                .map_err(|error| format!("AAC flush failed: {error:?}"))?;
+            if written.output_size == 0 {
+                break;
             }
+            self.output
+                .write_all(&self.out_buf[..written.output_size])
+                .map_err(|error| error.to_string())?;
+            self.encoded_frames += 1;
         }
         self.output
             .flush()
@@ -990,9 +959,9 @@ mod tests {
     use opus_rs::OpusDecoder;
 
     use super::{
-        OPUS_LOOKAHEAD_48K, aac_bandwidth_hz, aac_sample_rate, bitrate_bps, encode_aac,
-        encode_aac_file, encode_aac_file_with_bitrate, encode_opus, encode_opus_file,
-        encode_opus_file_with_bitrate, opus_sample_rate,
+        OPUS_LOOKAHEAD_48K, aac_sample_rate, bitrate_bps, encode_aac, encode_aac_file,
+        encode_aac_file_with_bitrate, encode_opus, encode_opus_file, encode_opus_file_with_bitrate,
+        opus_sample_rate,
     };
     #[test]
     fn chooses_the_smallest_supported_opus_rate_not_below_source() {
@@ -1181,9 +1150,7 @@ mod tests {
         assert_eq!(bitrate_bps(512), Ok(512_000));
         assert!(bitrate_bps(7).is_err());
         assert!(bitrate_bps(513).is_err());
-        assert_eq!(aac_bandwidth_hz(192_000, 2), 15_000);
     }
-
     #[test]
     fn encodes_audio_bytes_without_a_filesystem() {
         let source = pcm_wav(48_000, 1, 4_800);

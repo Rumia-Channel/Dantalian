@@ -1067,16 +1067,18 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fdk-aac"
-version = "0.9.0"
-source = "git+https://github.com/Rumia-Channel/fdk-aac-rs.git#fead732aee8c6c4893f1a133e1ad43be390456c5"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bb67e142688083cb9afb63f2424203fc98c4e7afb494bf912b60b55513b177e"
 dependencies = [
  "fdk-aac-sys",
 ]
 
 [[package]]
 name = "fdk-aac-sys"
-version = "0.5.1"
-source = "git+https://github.com/Rumia-Channel/fdk-aac-rs.git#fead732aee8c6c4893f1a133e1ad43be390456c5"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24516d2611506d5cb1833555adc75f6baf9fe2706b9c13e6fc33a6b22c51ca83"
 dependencies = [
  "cc",
 ]
