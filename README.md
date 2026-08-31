@@ -2,9 +2,10 @@
 
 ## FDK AAC ライセンス・特許告知
 
-**2026-08-12:** 本プロジェクトは、`fdk-aac` を通じて
+**2026-08-31:** 本プロジェクトは、`fdk-aac-rust` を通じて
 **Third-Party Modified Version of the Fraunhofer FDK AAC Codec Library for Android**
 を含みます。これは Fraunhofer の公式プロジェクトではなく、Fraunhofer の承認・推奨を受けていません。
+`fdk-aac-rust` は Fraunhofer FDK AAC の純 Rust 移植版であり、C/C++ コンパイラは不要です。
 Rust ポートへの変更とこの告知の日付を明示しています。
 
 完全なライセンス本文は [`NOTICE`](NOTICE) に保持しています。
@@ -14,8 +15,6 @@ Rust ポートへの変更とこの告知の日付を明示しています。
 Fraunhofer の名称を承認・推奨の表示に使用してはなりません。
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
-
-ISBN から書籍メタデータを自動取得し、ローカルで管理する Web アプリケーション。
 
 ## 外部 API / スクレイピング
 

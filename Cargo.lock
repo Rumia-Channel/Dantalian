@@ -859,7 +859,7 @@ dependencies = [
  "chrono-tz",
  "dirs",
  "dotenvy",
- "fdk-aac",
+ "fdk-aac-rust",
  "fs2",
  "lofty",
  "ogg",
@@ -1066,19 +1066,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
-name = "fdk-aac"
-version = "0.8.0"
+name = "fdk-aac-rust"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bb67e142688083cb9afb63f2424203fc98c4e7afb494bf912b60b55513b177e"
+checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
 dependencies = [
- "fdk-aac-sys",
+ "fdk-aac-rust-sys",
 ]
 
 [[package]]
-name = "fdk-aac-sys"
-version = "0.5.0"
+name = "fdk-aac-rust-sys"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24516d2611506d5cb1833555adc75f6baf9fe2706b9c13e6fc33a6b22c51ca83"
+checksum = "7406544a09804c15c8d5008f5237d42334feea1c5e59f0128eaba9657d9d5f16"
 dependencies = [
  "cc",
 ]
@@ -2229,9 +2229,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "opus-rs"
-version = "0.1.31"
+version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7206a32855c6007342b16e37fc3e8a57cab5a02ffc2f764a56556ba97582bce1"
+checksum = "4f18e50e3ad1d816434f675150eca1b4c669e49cac7b685f733a88127cd75551"
 
 [[package]]
 name = "outref"

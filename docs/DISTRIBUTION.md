@@ -1,10 +1,10 @@
 # Distribution compliance
 
-Dantalian includes `fdk-aac`, a **Third-Party Modified Version of the
-Fraunhofer FDK AAC Codec Library for Android**. This project is not an official
-Fraunhofer project and is not endorsed by Fraunhofer. Every distributor is
-responsible for reading and complying with the complete license in
-[`NOTICE`](../NOTICE). This document is operational guidance and is not a
+Dantalian includes `fdk-aac-rust`, a **Third-Party Modified Version of the
+Fraunhofer FDK AAC Codec Library for Android** (pure Rust port). This project
+is not an official Fraunhofer project and is not endorsed by Fraunhofer. Every
+distributor is responsible for reading and complying with the complete license
+in [`NOTICE`](../NOTICE). This document is operational guidance and is not a
 replacement for that license.
 
 ## Source distributions
@@ -23,15 +23,9 @@ represent the modified codec as an official Fraunhofer release.
 
 ## Build and source availability
 
-`fdk-aac` is used without its optional FFI feature, so a C/C++ compiler is
-not required for this project's pure Rust codec path. Its build still reads
-reference tables from a pinned upstream source tree. The first build therefore
-requires GitHub/network access, or a compatible local source tree supplied with
-`FDK_AAC_SOURCE_DIR`.
-
-For reproducible releases, retain the resolved `fdk-aac` version in
-`Cargo.lock` and record the exact corresponding upstream revision used by the
-crate build.
+`fdk-aac-rust` is a pure Rust crate with no C/C++ FFI dependency, so a C/C++
+compiler is not required. For reproducible releases, retain the resolved
+`fdk-aac-rust` version in `Cargo.lock`.
 
 ## Binary distributions
 
@@ -41,16 +35,15 @@ recipient where applicable:
 
 1. the complete `NOTICE` text in the accompanying documentation or materials;
 2. a free-of-charge copy of the complete corresponding source code for
-   `fdk-aac` and all distributed modifications, using an offer and delivery
+   `fdk-aac-rust` and all distributed modifications, using an offer and delivery
    method that recipients can actually access;
 3. the prominent modified-version name and dated change notice;
 4. no use of the Fraunhofer name to endorse or promote the modified version;
 5. no copyright license fee charged for use, copying, or distribution of the
    codec or its modifications.
 
-Record the exact `fdk-aac` version and the corresponding source revision
-for each binary release. A link to a moving branch is not an adequate record of
-corresponding source.
+Record the exact `fdk-aac-rust` version for each binary release. A link to a
+moving branch is not an adequate record of corresponding source.
 
 ## Patent rights
 
@@ -60,6 +53,15 @@ applicable patent owners or a licensing administrator. Copyright-license
 compliance does not establish patent clearance for any product, territory, or
 use case.
 
+## Known encoder limitation
+
+The pure-Rust AAC encoder (`fdk-aac-rust` v0.2.3) has a known bitstream defect:
+the encoded ADTS output is structurally valid and decodable by standard
+decoders (e.g. ffmpeg), but the decoded PCM is silent. This is a documented
+limitation of the pure-Rust port — the analysis filterbank and quantizer work,
+but the scaling/global_gain semantics are broken. See
+[`docs/FDK_AAC_RUST_HANDOFF.md`](FDK_AAC_RUST_HANDOFF.md) for details.
+
 ## Review checklist
 
 Before publishing a release that includes AAC support, confirm:
@@ -68,6 +70,6 @@ Before publishing a release that includes AAC support, confirm:
 - `MODULE_LICENSE_FRAUNHOFER` is present;
 - the README notice includes the modification date and modified-version name;
 - the corresponding Rust codec source is available to recipients;
-- the exact dependency version and source revision are recorded;
+- the exact dependency version is recorded;
 - no product documentation implies Fraunhofer endorsement;
 - patent clearance has been reviewed for the intended distribution and use.
