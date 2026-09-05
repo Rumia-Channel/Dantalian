@@ -349,18 +349,31 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
     // Debug: Check PCM data before encoding
     let pcm_sum: f64 = pcm.iter().map(|s| (*s as f64).abs()).sum();
     let pcm_peak = pcm.iter().map(|s| s.abs()).max().unwrap_or(0);
-    eprintln!("[AAC DEBUG] PCM: {} samples, sum: {}, peak: {}", pcm.len(), pcm_sum, pcm_peak);
+    eprintln!(
+        "[AAC DEBUG] PCM: {} samples, sum: {}, peak: {}",
+        pcm.len(),
+        pcm_sum,
+        pcm_peak
+    );
     if pcm_sum < 1.0 {
         eprintln!("[AAC DEBUG] WARNING: PCM data is near-silent!");
     }
     // Debug: Check f32 conversion
     let f32_sum: f32 = pcm_f32.iter().map(|s| s.abs()).sum();
     let f32_peak = pcm_f32.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    eprintln!("[AAC DEBUG] PCM f32: {} samples, sum: {}, peak: {}", pcm_f32.len(), f32_sum, f32_peak);
+    eprintln!(
+        "[AAC DEBUG] PCM f32: {} samples, sum: {}, peak: {}",
+        pcm_f32.len(),
+        f32_sum,
+        f32_peak
+    );
     if f32_sum < 0.001 {
         eprintln!("[AAC DEBUG] WARNING: f32 data is near-silent!");
     }
-    eprintln!("[AAC DEBUG] Encoder: channels={}, per_channel={}, frame_len={}, delay={}", channels, per_channel, frame_len, delay);
+    eprintln!(
+        "[AAC DEBUG] Encoder: channels={}, per_channel={}, frame_len={}, delay={}",
+        channels, per_channel, frame_len, delay
+    );
 
     // Convert i16 PCM to f32 interleaved for the pure-Rust encoder.
     let pcm_f32: Vec<f32> = pcm.iter().map(|s| *s as f32 / 32768.0).collect();
