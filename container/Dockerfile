@@ -2,7 +2,7 @@ FROM rust:1.96-bookworm AS builder
 
 WORKDIR /src
 COPY . .
-RUN cargo build --release --bin audio_processor --features native,audio-codec
+RUN cargo build --release --bin audio_processor --features native,audio-codec --locked
 
 FROM debian:bookworm-slim AS runtime
 
