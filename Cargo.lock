@@ -1070,18 +1070,6 @@ name = "fdk-aac-rust"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
-dependencies = [
- "fdk-aac-rust-sys",
-]
-
-[[package]]
-name = "fdk-aac-rust-sys"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7406544a09804c15c8d5008f5237d42334feea1c5e59f0128eaba9657d9d5f16"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "find-msvc-tools"

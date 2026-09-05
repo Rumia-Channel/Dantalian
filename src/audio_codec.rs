@@ -346,7 +346,8 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
     let delay = encoder.encoder_delay() as usize;
     let mut output = output;
     let mut encoded_frames = 0u32;
-    // Debug: Check PCM data before encoding
+    // Convert i16 PCM to f32 interleaved for the pure-Rust encoder.
+    let pcm_f32: Vec<f32> = pcm.iter().map(|s| *s as f32 / 32768.0).collect();
     let pcm_sum: f64 = pcm.iter().map(|s| (*s as f64).abs()).sum();
     let pcm_peak = pcm.iter().map(|s| s.abs()).max().unwrap_or(0);
     eprintln!(
@@ -375,8 +376,6 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
         channels, per_channel, frame_len, delay
     );
 
-    // Convert i16 PCM to f32 interleaved for the pure-Rust encoder.
-    let pcm_f32: Vec<f32> = pcm.iter().map(|s| *s as f32 / 32768.0).collect();
     for chunk in pcm_f32.chunks(frame_len) {
         let mut frame = vec![0.0f32; frame_len];
         frame[..chunk.len()].copy_from_slice(chunk);
