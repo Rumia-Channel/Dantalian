@@ -38,7 +38,7 @@ fdk-aac-rust = { version = "0", optional = true, default-features = false }
 fs2 = { version = "0", optional = true }
 lofty = { version = "0", optional = true }
 ogg = { version = "0", optional = true }
-opus-rs = { version = "0", optional = true }
+opus-rs = { version = "0", optional = true, git = "https://github.com/Rumia-Channel/opus-rs.git", rev = "a04201ec5fdf4575931be4086737d2ddb33f24aa" }
 quick-xml = { version = "0", features = ["serialize"], optional = true }
 reqwest = { version = "0", features = ["charset", "cookies", "default-tls", "hickory-dns", "http2", "json", "native-tls"], default-features = false, optional = true }
 rusqlite = { version = "0", features = ["backup", "bundled"], optional = true }
