@@ -44,6 +44,23 @@ impl<R: AuthorRepository> AuthorService<R> {
     pub async fn delete(&self, id: i64) -> Result<(), AppError> {
         self.repo.delete(id).await
     }
+
+    pub async fn merge(&self, survivor_id: i64, duplicate_ids: &[i64]) -> Result<usize, AppError> {
+        let dupes: Vec<i64> = duplicate_ids
+            .iter()
+            .copied()
+            .filter(|id| *id != survivor_id)
+            .collect();
+        if dupes.is_empty() {
+            return Err(AppError::Validation(
+                "Select at least one duplicate author to merge".to_string(),
+            ));
+        }
+        // The survivor must exist; the repository reports zero without it,
+        // but failing fast keeps the UI honest.
+        self.repo.get(survivor_id).await?;
+        self.repo.merge(survivor_id, &dupes).await
+    }
 }
 
 fn normalize_name(name: &str) -> Result<String, AppError> {
@@ -98,6 +115,10 @@ mod tests {
         async fn delete(&self, _id: i64) -> Result<(), AppError> {
             Ok(())
         }
+
+        async fn merge(&self, _survivor_id: i64, duplicate_ids: &[i64]) -> Result<usize, AppError> {
+            Ok(duplicate_ids.len())
+        }
     }
 
     #[tokio::test]
@@ -115,6 +136,15 @@ mod tests {
             .create("  ", None, None)
             .await
             .unwrap_err();
+        assert!(matches!(error, AppError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn merge_rejects_empty_duplicates() {
+        let service = AuthorService::new(FakeRepository);
+        let error = service.merge(1, &[]).await.expect_err("empty merge");
+        assert!(matches!(error, AppError::Validation(_)));
+        let error = service.merge(1, &[1]).await.expect_err("self merge");
         assert!(matches!(error, AppError::Validation(_)));
     }
 }

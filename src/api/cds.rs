@@ -457,12 +457,30 @@ pub async fn cd_register(
         )
     })?;
 
-    if let Some(ref tracks) = new_cd.tracks {
+    if let Some(tracks) = &new_cd.tracks {
         let _ = state.db.insert_tracks_batch_for_cd(cd.id, tracks);
+    }
+
+    // JAN lookup carries only a text artist credit. Link it as an author row
+    // (normalized reuse) so the grid can group by author ID instead of
+    // falling back to the name branch. Whole credit as one entity: splitting
+    // "A & B" style credits would vandalize single-entity names.
+    if let Some(name) = new_cd
+        .artist
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if let Ok(ids) = state.db.ensure_authors_for_names(&[name.to_string()]) {
+            for id in ids {
+                let _ = state.db.add_cd_author(cd.id, id);
+            }
+        }
     }
 
     let cd_id = cd.id;
     let tracks = state.db.list_tracks_for_cd(cd_id).unwrap_or_default();
+    let authors = state.db.get_cd_authors(cd_id).unwrap_or_default();
     let (track_artist, album_artist) = cd_tag_artists_from_metadata(&state.db, cd_id);
     Ok((
         StatusCode::CREATED,
@@ -471,7 +489,7 @@ pub async fn cd_register(
             track_artist,
             album_artist,
             tracks,
-            authors: vec![],
+            authors,
         }),
     ))
 }
@@ -1201,14 +1219,21 @@ fn non_empty_audio_tag(value: Option<&String>) -> Option<&str> {
     })
 }
 
+/// Display text for the CD album artist. An explicitly registered value wins;
+/// audio tags only fill an empty field. Letting tags overwrite the text on
+/// every upload silently replaces the user's chosen artist with the tag
+/// spelling (and spawns duplicate author rows downstream).
 fn preferred_cd_artist(
     extracted: &crate::external::audio_meta::TrackMetadata,
     existing: Option<&str>,
 ) -> Option<String> {
+    let existing = existing.filter(|value| !value.trim().is_empty());
+    if existing.is_some() {
+        return existing.map(str::to_string);
+    }
     non_empty_audio_tag(extracted.artist.as_ref())
         .or_else(|| non_empty_audio_tag(extracted.album_artist.as_ref()))
         .map(str::to_string)
-        .or_else(|| existing.map(str::to_string))
 }
 
 #[cfg(test)]
@@ -1217,7 +1242,7 @@ mod tests {
     use crate::external::audio_meta::TrackMetadata;
 
     #[test]
-    fn prefers_track_artist_before_album_artist() {
+    fn keeps_explicit_artist_ahead_of_audio_tags() {
         let metadata = TrackMetadata {
             artist: Some("Track artist".to_string()),
             album_artist: Some("Album artist".to_string()),
@@ -1225,18 +1250,28 @@ mod tests {
         };
         assert_eq!(
             preferred_cd_artist(&metadata, Some("Existing artist")),
-            Some("Track artist".to_string())
+            Some("Existing artist".to_string())
         );
     }
 
     #[test]
-    fn falls_back_to_album_artist_then_existing_artist() {
+    fn fills_empty_artist_from_tags() {
+        let metadata = TrackMetadata {
+            artist: Some("Track artist".to_string()),
+            album_artist: Some("Album artist".to_string()),
+            ..TrackMetadata::default()
+        };
+        assert_eq!(
+            preferred_cd_artist(&metadata, None),
+            Some("Track artist".to_string())
+        );
+
         let album_only = TrackMetadata {
             album_artist: Some("Album artist".to_string()),
             ..TrackMetadata::default()
         };
         assert_eq!(
-            preferred_cd_artist(&album_only, Some("Existing artist")),
+            preferred_cd_artist(&album_only, Some("   ")),
             Some("Album artist".to_string())
         );
 

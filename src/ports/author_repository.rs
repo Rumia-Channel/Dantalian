@@ -23,4 +23,10 @@ pub trait AuthorRepository {
     ) -> impl Future<Output = Result<(), AppError>>;
 
     fn delete(&self, id: i64) -> impl Future<Output = Result<(), AppError>>;
+
+    fn merge(
+        &self,
+        survivor_id: i64,
+        duplicate_ids: &[i64],
+    ) -> impl Future<Output = Result<usize, AppError>>;
 }

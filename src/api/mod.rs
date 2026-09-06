@@ -82,6 +82,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route("/authors", get(authors::list))
         .route("/authors", post(authors::create))
+        .route("/authors/merge", post(authors::merge))
         .route(
             "/authors/{id}",
             get(authors::get)

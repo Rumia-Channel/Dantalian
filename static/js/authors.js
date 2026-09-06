@@ -77,12 +77,27 @@ function renderAuthorEdit(id) {
                 <label>NDL ID</label>
                 <input type="text" name="ndl_id" value="${escapeAttr(author.ndl_id || '')}">
             </div>
-            <div class="edit-actions">
+        <div class="edit-actions">
                 <button type="button" class="btn btn-md btn-ghost" onclick="renderAuthorList()">一覧に戻る</button>
                 <button type="button" class="btn btn-md btn-outline-danger" onclick="deleteAuthor(${author.id})">削除</button>
                 <button type="submit" class="btn btn-md btn-primary">保存</button>
             </div>
         </form>
+        <h3>重複の統合</h3>
+        <p>同じ人物の別表記にチェックを入れて統合すると、書籍・CD・曲の関連付けがこの ID:${author.id} にまとまります。元に戻せません。</p>
+        <div class="edit-author-list">
+            ${authors.filter((a) => a.id !== author.id).map((a) => `
+                <label class="edit-author-item">
+                    <input type="checkbox" class="merge-dupe" value="${a.id}">
+                    <span class="edit-author-info">
+                        <span class="edit-author-name">${escapeHtml(a.name)}</span>
+                        <span class="edit-author-meta">ID: ${a.id}${a.ndl_id ? ` NDL: ${escapeHtml(a.ndl_id)}` : ""}</span>
+                    </span>
+                </label>`).join("")}
+        </div>
+        <div class="edit-actions">
+            <button type="button" class="btn btn-md btn-primary" onclick="mergeAuthors(${author.id})">選択をこのアーティストに統合</button>
+        </div>
     `;
 }
 
@@ -150,5 +165,36 @@ async function deleteAuthor(authorId) {
         }
     } catch {
         alert("アーティストの削除中に通信エラーが発生しました");
+    }
+}
+
+async function mergeAuthors(survivorId) {
+    const survivor = authors.find((item) => item.id === survivorId);
+    if (!survivor) return;
+    const duplicateIds = [...document.querySelectorAll(".merge-dupe:checked")]
+        .map((el) => parseInt(el.value, 10))
+        .filter((id) => Number.isInteger(id) && id !== survivorId);
+    if (duplicateIds.length === 0) return;
+    const ok = await showConfirm({
+        message: `「${survivor.name}」(ID:${survivorId})に${duplicateIds.length}件を統合しますか？\n書籍・CD・曲の関連付けが付け替わり、統合されたアーティストは削除されます。元に戻せません。`,
+        okLabel: "統合",
+    });
+    if (!ok) return;
+
+    try {
+        const res = await fetch("/api/authors/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ survivor_id: survivorId, duplicate_ids: duplicateIds }),
+        });
+        if (res.ok) {
+            await loadAuthors();
+            renderAuthorEdit(survivorId);
+        } else {
+            const body = await res.json().catch(() => ({}));
+            alert(`アーティストの統合に失敗しました (HTTP ${res.status})${body.error ? `: ${body.error}` : ""}`);
+        }
+    } catch {
+        alert("アーティストの統合中に通信エラーが発生しました");
     }
 }

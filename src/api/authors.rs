@@ -69,3 +69,25 @@ pub async fn delete(
         .map(|()| StatusCode::NO_CONTENT)
         .map_err(error_response)
 }
+
+#[derive(serde::Deserialize)]
+pub struct MergeAuthorsRequest {
+    pub survivor_id: i64,
+    #[serde(default)]
+    pub duplicate_ids: Vec<i64>,
+}
+
+/// Merge duplicate author rows into one survivor so every list groups by a
+/// single author ID. Reassigns book/CD/track links, backfills identity
+/// fields, deletes the duplicates.
+pub async fn merge(
+    State(state): State<AppState>,
+    Json(request): Json<MergeAuthorsRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let service = AuthorService::new(NativeAuthorRepository::new(state.db));
+    service
+        .merge(request.survivor_id, &request.duplicate_ids)
+        .await
+        .map(|merged| Json(serde_json::json!({"merged": merged})))
+        .map_err(error_response)
+}

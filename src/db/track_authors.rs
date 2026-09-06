@@ -101,15 +101,11 @@ impl Db {
             if trimmed.is_empty() {
                 continue;
             }
-            let existing: Option<i64> = tx
-                .query_row(
-                    "SELECT id FROM authors WHERE name = ?1 LIMIT 1",
-                    params![trimmed],
-                    |row| row.get(0),
-                )
-                .ok();
+            // Byte-exact lookup scatters tag spellings ("A　B" vs "A B") into
+            // duplicate rows; match on the normalized identity instead.
+            let existing = Self::find_author_by_normalized_name(&tx, trimmed)?;
             let id = match existing {
-                Some(id) => id,
+                Some((id, _, _)) => id,
                 None => {
                     tx.execute("INSERT INTO authors (name) VALUES (?1)", params![trimmed])?;
                     tx.last_insert_rowid()
@@ -119,5 +115,25 @@ impl Db {
         }
         tx.commit()?;
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Db;
+
+    #[test]
+    fn ensure_reuses_spelling_variants_instead_of_scattering() {
+        let db = Db::new(":memory:").expect("database");
+        let ids = db
+            .ensure_authors_for_names(&["村上　春樹".to_string(), "村上 春樹".to_string()])
+            .expect("ensure");
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], ids[1]);
+        // Exact repeat still resolves to the same row.
+        let again = db
+            .ensure_authors_for_names(&["村上春樹".to_string()])
+            .expect("ensure");
+        assert_eq!(again, vec![ids[0]]);
     }
 }

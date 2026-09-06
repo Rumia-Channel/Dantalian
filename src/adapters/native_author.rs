@@ -103,6 +103,20 @@ impl AuthorRepository for NativeAuthorRepository {
             Err(AppError::NotFound)
         }
     }
+
+    async fn merge(&self, survivor_id: i64, duplicate_ids: &[i64]) -> Result<usize, AppError> {
+        let db = self.db.clone();
+        let duplicate_ids = duplicate_ids.to_vec();
+        let merged =
+            tokio::task::spawn_blocking(move || db.merge_authors(survivor_id, &duplicate_ids))
+                .await
+                .map_err(|error| AppError::Internal(error.to_string()))?
+                .map_err(map_db_error)?;
+        if merged == 0 {
+            return Err(AppError::NotFound);
+        }
+        Ok(merged)
+    }
 }
 
 impl From<crate::db::Author> for Author {

@@ -482,6 +482,36 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
                 .map_err(db_error)?;
         }
     }
+    // JAN lookup carries only a text artist credit: link it (normalized reuse)
+    // like native so lists group by author ID. Whole credit as one entity.
+    if let Some(name) = artist.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+        let d1 = ctx.d1("DB")?;
+        let existing =
+            super::author_repository::find_author_by_normalized_name(&d1, name)
+                .await
+                .map_err(db_error)?;
+        let author_id = match existing.map(|author| author.id) {
+            Some(id) => Some(id),
+            None => d1
+                .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
+                .bind_refs(&D1Type::Text(name))
+                .map_err(db_error)?
+                .first::<serde_json::Value>(None)
+                .await
+                .map_err(db_error)?
+                .and_then(|value| value.get("id").and_then(|value| value.as_i64())),
+        };
+        if let Some(author_id) = author_id {
+            let author_id = id_type(author_id, "author id")
+                .map_err(|error| worker::Error::from(error.to_string()))?;
+            d1.prepare("INSERT OR IGNORE INTO cd_authors (cd_id, author_id) VALUES (?,?)")
+                .bind_refs([&cd_id, &author_id])
+                .map_err(db_error)?
+                .run()
+                .await
+                .map_err(db_error)?;
+        }
+    }
     if let Some(grand_series_id) = body.grand_series_id.filter(|value| *value > 0) {
         let grand_series_id = id_type(grand_series_id, "grand_series id")
             .map_err(|error| worker::Error::from(error.to_string()))?;
@@ -752,15 +782,12 @@ pub async fn add_authors_from_names(mut req: Request, ctx: RouteContext<()>) -> 
         };
         let name_value = D1Type::Text(name);
         let db = ctx.d1("DB")?;
-        let author = db
-            .prepare("SELECT id FROM authors WHERE name = ?")
-            .bind_refs(&name_value)
-            .map_err(db_error)?
-            .first::<serde_json::Value>(None)
+        // Byte-exact lookup scatters tag spellings into duplicate rows;
+        // match on the normalized identity like native ensure_authors_for_names.
+        let existing = super::author_repository::find_author_by_normalized_name(&db, name)
             .await
             .map_err(db_error)?;
-        let author = match author.and_then(|value| value.get("id").and_then(|value| value.as_i64()))
-        {
+        let author = match existing.map(|author| author.id) {
             Some(author) => author,
             None => db
                 .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")

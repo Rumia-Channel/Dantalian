@@ -123,6 +123,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .delete_async("/api/uploads/multipart/:id", multipart_api::abort)
         .get_async("/api/authors", author_api::list)
         .post_async("/api/authors", author_api::create)
+        .post_async("/api/authors/merge", author_api::merge)
         .get_async("/api/authors/:id", author_api::get)
         .put_async("/api/authors/:id", author_api::update)
         .delete_async("/api/authors/:id", author_api::delete)

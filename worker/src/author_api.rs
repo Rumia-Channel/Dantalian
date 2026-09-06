@@ -2,6 +2,7 @@ use dantalian::{
     application::author::AuthorService,
     domain::author::{CreateAuthor, UpdateAuthor},
 };
+use serde::Deserialize;
 use worker::{Request, Response, Result, RouteContext};
 
 use crate::{
@@ -79,4 +80,25 @@ pub async fn delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     service.delete(id).await.map_or_else(error_response, |_| {
         Response::empty().map(|response| response.with_status(204))
     })
+}
+
+#[derive(serde::Deserialize)]
+struct MergeAuthorsRequest {
+    survivor_id: i64,
+    #[serde(default)]
+    duplicate_ids: Vec<i64>,
+}
+
+pub async fn merge(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let request = match parse_json::<MergeAuthorsRequest>(&mut req).await {
+        Ok(request) => request,
+        Err(response) => return Ok(response),
+    };
+    let service = AuthorService::new(D1AuthorRepository::new(ctx.d1("DB")?));
+    service
+        .merge(request.survivor_id, &request.duplicate_ids)
+        .await
+        .map_or_else(error_response, |merged| {
+            Response::from_json(&serde_json::json!({"merged": merged}))
+        })
 }

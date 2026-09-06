@@ -708,6 +708,25 @@ async fn insert_ndl_authors(
                 .await
                 .map_err(db_error)?
                 .and_then(|row| row.get("id").and_then(|value| value.as_i64()))
+        } else if let Some(existing) =
+            super::author_repository::find_author_by_normalized_name(db, name)
+                .await
+                .map_err(db_error)?
+        {
+            // Same person under another source's spelling: reuse the row and
+            // backfill the transcription when the row lacks one.
+            if existing.transcription.is_none() && transcription.is_some() {
+                db.prepare("UPDATE authors SET transcription = ? WHERE id = ?")
+                    .bind_refs([
+                        &transcription.map(D1Type::Text).unwrap_or(D1Type::Null),
+                        &D1Type::Integer(existing.id as i32),
+                    ])
+                    .map_err(db_error)?
+                    .run()
+                    .await
+                    .map_err(db_error)?;
+            }
+            Some(existing.id)
         } else {
             db.prepare("INSERT INTO authors (name, transcription) VALUES (?, ?) RETURNING id")
                 .bind_refs([
