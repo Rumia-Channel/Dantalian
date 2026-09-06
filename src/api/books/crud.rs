@@ -454,6 +454,7 @@ pub async fn upload_cover(
     let ext = match ct.as_str() {
         "image/png" => "png",
         "image/webp" => "webp",
+        "image/avif" => "avif",
         "image/gif" => "gif",
         _ => "jpg",
     };

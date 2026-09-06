@@ -51,7 +51,7 @@ impl MediaType {
 
     fn allowed_exts(&self) -> &'static [&'static str] {
         match self {
-            MediaType::Images => &["jpg", "jpeg", "png", "webp", "gif"],
+            MediaType::Images => &["jpg", "jpeg", "png", "webp", "gif", "avif"],
             MediaType::Audio => &["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"],
             MediaType::Epubs => &["epub", "pdf", "zip"],
         }
@@ -70,6 +70,7 @@ impl MediaType {
             "jpg" | "jpeg" => "image/jpeg",
             "png" => "image/png",
             "webp" => "image/webp",
+            "avif" => "image/avif",
             "gif" => "image/gif",
             "mp3" => "audio/mpeg",
             "wav" => "audio/wav",

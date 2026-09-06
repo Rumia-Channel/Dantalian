@@ -702,6 +702,7 @@ pub fn image_content_type(value: &str) -> Option<(&'static str, &'static str)> {
         "image/jpeg" | "image/jpg" => Some(("image/jpeg", "jpg")),
         "image/png" => Some(("image/png", "png")),
         "image/webp" => Some(("image/webp", "webp")),
+        "image/avif" => Some(("image/avif", "avif")),
         "image/gif" => Some(("image/gif", "gif")),
         _ => None,
     }
@@ -892,5 +893,18 @@ mod tests {
             black_curtain_eligibility_url("https://www.amazon.co.jp/book/dp/B000000001/ref=x"),
             "https://www.amazon.co.jp/black-curtain/save-eligibility/black-curtain?returnUrl=%2Fdp%2FB000000001"
         );
+    }
+
+    #[test]
+    fn maps_cover_content_types_to_extensions() {
+        assert_eq!(
+            image_content_type("image/avif"),
+            Some(("image/avif", "avif"))
+        );
+        assert_eq!(
+            image_content_type("image/jpeg; charset=binary"),
+            Some(("image/jpeg", "jpg"))
+        );
+        assert_eq!(image_content_type("image/bmp"), None);
     }
 }

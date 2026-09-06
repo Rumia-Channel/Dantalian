@@ -104,6 +104,7 @@ async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<
     let ext = match content_type.as_str() {
         "image/png" => "png",
         "image/webp" => "webp",
+        "image/avif" => "avif",
         "image/gif" => "gif",
         _ => "jpg",
     };
@@ -525,5 +526,45 @@ mod tests {
         assert!(images_dir.join(cover).is_file());
 
         let _ = std::fs::remove_dir_all(images_dir);
+    }
+
+    #[tokio::test]
+    async fn amazon_cover_saves_avif_with_avif_extension() {
+        // Same AVIF-mislabel guard as external::download_image, but through
+        // the Amazon-specific fetch (it has its own content-type map).
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let port = listener.local_addr().expect("local port").port();
+        let body: Vec<u8> = b"\x00\x00\x00 ftypavif\x00\x00\x00\x00".to_vec();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: image/avif\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test connection");
+            use std::io::{Read, Write};
+            let mut head = [0u8; 1024];
+            let _ = stream.read(&mut head);
+            stream.write_all(&response).expect("write headers");
+            stream.write_all(&body).expect("write body");
+        });
+        let dir =
+            std::env::temp_dir().join(format!("dantalian-amazon-avif-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create image directory");
+        let client = reqwest::Client::new();
+        let filename = super::download_cover(
+            &client,
+            &format!("http://127.0.0.1:{port}/71C7D2Yo3mL._SL1500_.jpg"),
+            dir.to_str().expect("temporary path is UTF-8"),
+        )
+        .await
+        .expect("AVIF download should succeed");
+        assert!(
+            filename.ends_with(".avif"),
+            "AVIF bytes must not be saved as .jpg: {filename}"
+        );
+        assert!(dir.join(&filename).is_file());
+        server.join().expect("test server finishes");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
