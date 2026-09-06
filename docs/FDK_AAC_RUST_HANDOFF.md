@@ -32,6 +32,17 @@
 sampling_frequency_index などのヘッダフィールドは正しい。ffmpeg による
 デコードもエラーなく成功するが、デコード結果の PCM は無音 (peak ≈ 0.0)。
 
+## 解消 (2026-09-06): Rumia-Channel/fdk-aac-rust fix/aac-lc-audibility
+
+- 直した点: forward MDCT の正規直交化を除去 (ISO 非正規 domain)、スケールファクタ探索を
+  `2^((S-64)/4)` wire domain で粗→細に走査 (8191 clamp が細側の単調性を壊すため)、
+  不成立 band は無音 fallback、CBR は推定ではなく実書込バイトでリトライ
+  (`BitReservoirUnderflow` 消滅)。
+- 検証: 同梱 983 tests green、ffmpeg 復号で tone/music/chord 0.98+、
+- 実曲 192k で ffmpeg 製 AAC と帯域別に ±0.02 で並ぶ。
+- Dantalian は `Rumia-Channel/fdk-aac-rust rev f5d8ed5` を git 依存で使用。
+- `aac_ffmpeg_roundtrip_retains_tone` が peak/RMS/ZCR の可聴性ゲートになった。
+
 ## 却下した選択肢と理由
 
 ### crates.io `fdk-aac` 0.8 (実 Fraunhofer FDK C コード)

@@ -1068,8 +1068,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 [[package]]
 name = "fdk-aac-rust"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "607e6ba558b60e1219ccc8200bbf03fb96fad20c5d948ab25982ea964af13ae5"
+source = "git+https://github.com/Rumia-Channel/fdk-aac-rust.git?rev=f5d8ed5d0cc69c23777004430da53eb8731cf2d7#f5d8ed5d0cc69c23777004430da53eb8731cf2d7"
 
 [[package]]
 name = "find-msvc-tools"

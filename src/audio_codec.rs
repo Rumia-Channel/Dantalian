@@ -1071,7 +1071,7 @@ mod tests {
         assert!(bytes.len() > 0, "ffmpeg produced no output");
         let mut peak: f32 = 0.0;
         let mut has_finite = true;
-        let _decoded: Vec<f32> = bytes
+        let decoded: Vec<f32> = bytes
             .chunks_exact(4)
             .map(|c| {
                 let v = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
@@ -1083,15 +1083,33 @@ mod tests {
             })
             .collect();
         assert!(has_finite, "ffmpeg decoded non-finite samples");
-        // fdk-aac-rust 0.2.3 has a known bitstream defect: the encoder produces
-        // a valid ADTS bitstream that ffmpeg can decode, but the decoded PCM
-        // is silent (peak ≈ 0.0). This is a documented limitation of the
-        // pure-Rust port — the analysis filterbank and quantizer work, but the
-        // scaling/global_gain semantics are broken. We verify structural
-        // correctness (valid ADTS header, decodable by ffmpeg, finite samples)
-        // but do NOT assert on peak/correlation/SNR, which would fail under
-        // this defect. See docs/FDK_AAC_RUST_HANDOFF.md.
-        let _ = peak;
+        // Audibility gate: the pure-Rust encoder used to emit valid ADTS that
+        // decoded to digital silence on standard decoders (crates.io 0.2.3,
+        // see docs/FDK_AAC_RUST_HANDOFF.md). Since the Rumia-Channel fork fix,
+        // the 440 Hz tone must survive: peak/RMS at musical levels and a
+        // zero-crossing rate matching 440 Hz at 48 kHz (~0.0183).
+        assert!(
+            peak > 0.1,
+            "AAC roundtrip lost the tone: peak {peak} (silent encoder?)"
+        );
+        let rms = (decoded.iter().map(|sample| sample * sample).sum::<f32>()
+            / decoded.len() as f32)
+            .sqrt();
+        assert!(rms > 0.05, "AAC roundtrip too quiet: rms {rms}");
+        // Skip codec priming before measuring the zero-crossing rate. The
+        // ffmpeg output is interleaved stereo; stepping by 2 keeps one
+        // channel (adjacent L/R twins would halve the rate).
+        let body = &decoded[decoded.len().min(4096)..];
+        let mono: Vec<f32> = body.iter().copied().step_by(2).collect();
+        let crossings = mono
+            .windows(2)
+            .filter(|pair| (pair[0] <= 0.0) != (pair[1] <= 0.0))
+            .count();
+        let rate = crossings as f32 / mono.len().max(1) as f32;
+        assert!(
+            (0.010..0.030).contains(&rate),
+            "AAC roundtrip tone frequency off: zero-crossing rate {rate}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
