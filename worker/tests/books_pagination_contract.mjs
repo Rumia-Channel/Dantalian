@@ -38,7 +38,7 @@ test("Books API returns summary pages without N+1 detail fields", async () => {
     assert.equal(first.status, 200);
     assert.ok(Array.isArray(first.body.items));
     assert.equal(first.body.items.length, 1);
-    assert.equal(first.body.items[0].authors, undefined);
+    assert.deepEqual(first.body.items[0].authors, []);
     assert.equal(typeof first.body.items[0].copies_count, "number");
     assert.equal(typeof first.body.items[0].lent_count, "number");
     assert.ok(first.body.next_cursor);
@@ -58,6 +58,25 @@ test("Books API returns summary pages without N+1 detail fields", async () => {
     const detail = await request("GET", `/api/books/${ids[0]}`);
     assert.equal(detail.status, 200);
     assert.ok(Array.isArray(detail.body.authors));
+
+    // Linked authors must appear on summary items with IDs so clients can
+    // group books and CDs by author ID instead of name text.
+    const author = await request("POST", "/api/authors", { name: `page-author-${marker}` });
+    assert.equal(author.status, 201);
+    try {
+      const linked = await request("POST", `/api/books/${ids[0]}/authors/${author.body.id}`);
+      assert.ok(linked.status === 200 || linked.status === 204, `link author: ${linked.status}`);
+      const page = await request("GET", "/api/books?limit=100");
+      const item = page.body.items.find((entry) => entry.id === ids[0]);
+      assert.ok(item, "linked book appears on summary page");
+      assert.ok(Array.isArray(item.authors), "summary item carries authors array");
+      assert.ok(
+        item.authors.some((entry) => entry.id === author.body.id && entry.name === `page-author-${marker}`),
+        "summary authors carry the linked author ID",
+      );
+    } finally {
+      await request("DELETE", `/api/authors/${author.body.id}`);
+    }
 
     const invalid = await request("GET", "/api/books?cursor=invalid");
     assert.equal(invalid.status, 400);

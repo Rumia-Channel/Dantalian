@@ -43,7 +43,7 @@ test("Worker responses preserve the UI book and CD contracts", async () => {
     const bookPage = await request("GET", "/api/books?limit=100");
     assert.equal(bookPage.status, 200);
     assert.ok(bookPage.body.items.some((item) => item.id === ids.book));
-    assert.equal(bookPage.body.items.find((item) => item.id === ids.book).authors, undefined);
+    assert.deepEqual(bookPage.body.items.find((item) => item.id === ids.book).authors, []);
     const initialBook = await request("GET", `/api/books/${ids.book}`);
     assert.equal(initialBook.status, 200);
     assert.deepEqual(initialBook.body.authors, []);

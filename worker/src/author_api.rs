@@ -2,7 +2,6 @@ use dantalian::{
     application::author::AuthorService,
     domain::author::{CreateAuthor, UpdateAuthor},
 };
-use serde::Deserialize;
 use worker::{Request, Response, Result, RouteContext};
 
 use crate::{
