@@ -13,7 +13,7 @@ class PlayerEngine {
         this.queue = [];
         this.index = -1;
         this.shuffle = false;
-        this.repeatMode = "queue"; // queue | track | off
+        this.repeatMode = "off"; // off | queue | track
         this.playOrder = [];
         this.listeners = {};
         this._sourceCandidates = [];
@@ -477,7 +477,7 @@ class PlayerEngine {
     }
 
     toggleRepeatMode() {
-        const next = { queue: "track", track: "off", off: "queue" }[this.repeatMode];
+        const next = { off: "queue", queue: "track", track: "off" }[this.repeatMode];
         return this.setRepeatMode(next);
     }
 

@@ -105,8 +105,8 @@ function createPlayerUI(rootEl) {
                         <button class="player-secondary-btn" data-act="shuffle" data-el="shuffle-button" aria-pressed="false" aria-label="シャッフル" title="シャッフル">
                             <span class="material-icons">shuffle</span><span>シャッフル</span>
                         </button>
-                        <button class="player-secondary-btn" data-act="repeat" data-el="repeat-button" aria-pressed="true" aria-label="キューをループ" title="ループモード">
-                            <span class="material-icons" data-el="repeat-icon">repeat</span><span data-el="repeat-label">キュー</span>
+                        <button class="player-secondary-btn" data-act="repeat" data-el="repeat-button" aria-pressed="false" aria-label="ループオフ" title="ループモード">
+                            <span class="material-icons" data-el="repeat-icon">repeat</span><span data-el="repeat-label">オフ</span>
                         </button>
                         <button class="player-secondary-btn" data-act="toggle-queue" aria-label="再生キューを開く" title="再生キュー">
                             <span class="material-icons">queue_music</span><span>再生キュー</span>
