@@ -1,6 +1,6 @@
 [package]
 name = "dantalian-worker"
-version = "0.1.0"
+version = "0.1.1"
 license = "BSD-2-Clause"
 edition = "2024"
 
@@ -13,7 +13,7 @@ strip = false
 codegen-units = 1
 
 [dependencies]
-dantalian = { version = "0.1.0", path = "..", default-features = false }
+dantalian = { version = "0.1.1", path = "..", default-features = false }
 futures-util = { version = "0.3.34", features = ["std"] }
 hmac = "0.13.0"
 quick-xml = { version = "0.41.0", features = ["serialize"] }
