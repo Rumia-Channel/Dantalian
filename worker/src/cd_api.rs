@@ -484,12 +484,15 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     }
     // JAN lookup carries only a text artist credit: link it (normalized reuse)
     // like native so lists group by author ID. Whole credit as one entity.
-    if let Some(name) = artist.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+    if let Some(name) = artist
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
         let d1 = ctx.d1("DB")?;
-        let existing =
-            super::author_repository::find_author_by_normalized_name(&d1, name)
-                .await
-                .map_err(db_error)?;
+        let existing = super::author_repository::find_author_by_normalized_name(&d1, name)
+            .await
+            .map_err(db_error)?;
         let author_id = match existing.map(|author| author.id) {
             Some(id) => Some(id),
             None => d1

@@ -187,11 +187,7 @@ impl AuthorRepository for D1AuthorRepository {
         Ok(())
     }
 
-    async fn merge(
-        &self,
-        survivor_id: i64,
-        duplicate_ids: &[i64],
-    ) -> Result<usize, AppError> {
+    async fn merge(&self, survivor_id: i64, duplicate_ids: &[i64]) -> Result<usize, AppError> {
         let survivor = Self::bind_id(survivor_id)?;
         // Survivor must exist; service checks too, this keeps direct callers honest.
         let exists = self
@@ -206,7 +202,11 @@ impl AuthorRepository for D1AuthorRepository {
             return Err(AppError::NotFound);
         }
         let mut merged = 0usize;
-        for dupe in duplicate_ids.iter().copied().filter(|id| *id != survivor_id) {
+        for dupe in duplicate_ids
+            .iter()
+            .copied()
+            .filter(|id| *id != survivor_id)
+        {
             let dupe = Self::bind_id(dupe)?;
             for (table, entity) in [
                 ("book_authors", "book_id"),
