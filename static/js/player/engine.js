@@ -27,6 +27,8 @@ class PlayerEngine {
         this._loading = false;
         this._playActivationPending = false;
         this._playbackWarmup = null;
+        this._prefetchedNext = null;
+        this._prefetchToken = 0;
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
         this.audio.addEventListener("loadedmetadata", () => {
@@ -76,6 +78,82 @@ class PlayerEngine {
         this.playOrder = this.shuffle ? this._shuffleIndexes(indexes, anchorIndex) : indexes;
     }
 
+    // next(true) が選ぶキュー位置を状態変更なしで予測する。
+    // シャッフル時の末尾巻き戻しは next() 内で再シャッフルされるため予測不可。
+    _peekNextIndex() {
+        if (this.queue.length === 0 || this.index < 0 || this.repeatMode === "track") return null;
+        const position = this.playOrder.indexOf(this.index);
+        let nextPosition = position + 1;
+        if (nextPosition >= this.playOrder.length) {
+            if (this.repeatMode !== "queue") return null;
+            if (this.shuffle) return null;
+            nextPosition = this.playOrder.length > 1 ? 1 : 0;
+        }
+        return this.playOrder[nextPosition];
+    }
+
+    _invalidateNextPrefetch() {
+        this._prefetchToken += 1;
+        const prefetched = this._prefetchedNext;
+        this._prefetchedNext = null;
+        if (prefetched?.cachedUrl && typeof releaseCachedAudioSource === "function") {
+            releaseCachedAudioSource(prefetched.cachedUrl);
+        }
+    }
+
+    _takePrefetchedSource(entry) {
+        const prefetched = this._prefetchedNext;
+        this._prefetchedNext = null;
+        if (!prefetched) return null;
+        if (prefetched.entry !== entry) {
+            if (prefetched.cachedUrl && typeof releaseCachedAudioSource === "function") {
+                releaseCachedAudioSource(prefetched.cachedUrl);
+            }
+            return null;
+        }
+        return prefetched;
+    }
+
+    // 画面非表示 (iPadOS のロック画面等) ではページ JS がサスペンドされ、
+    // ended 後の非同期ソース解決が再開されず次曲へ進めない。
+    // 再生中に次曲のソースを解決しておき、ended 時の遷移を同期処理にする。
+    _prefetchNextSource() {
+        const nextIndex = this._peekNextIndex();
+        const nextEntry = nextIndex === null ? null : this.queue[nextIndex];
+        if (!nextEntry) {
+            this._invalidateNextPrefetch();
+            return;
+        }
+        if (this._prefetchedNext?.entry === nextEntry) return;
+        this._invalidateNextPrefetch();
+        const token = this._prefetchToken;
+        void (async () => {
+            try {
+                const selection = await Promise.resolve(this._url(nextEntry.track));
+                const urls = Array.isArray(selection) ? selection : (selection?.urls || []);
+                const sizes = Array.isArray(selection) ? [] : (selection?.sizes || []);
+                const cached = typeof getCachedAudioSource === "function"
+                    ? await getCachedAudioSource(nextEntry.track)
+                    : null;
+                if (token !== this._prefetchToken) {
+                    if (cached && typeof releaseCachedAudioSource === "function") {
+                        releaseCachedAudioSource(cached.url);
+                    }
+                    return;
+                }
+                this._prefetchedNext = {
+                    entry: nextEntry,
+                    urls: cached ? [cached.url, ...urls] : urls,
+                    sizes: cached ? [cached.size || null, ...sizes] : sizes,
+                    cachedUrl: cached?.url || null,
+                    cachedFormat: cached?.format || null,
+                };
+            } catch {
+                // プリフェッチは最善努力。失敗時は従来の非同期ロードにフォールバックする。
+            }
+        })();
+    }
+
     _syncPlayOrderAfterAppend(previousLength) {
         if (!this.shuffle) {
             this._rebuildPlayOrder(this.index);
@@ -103,6 +181,7 @@ class PlayerEngine {
             this._sourceCandidates = [];
             this._sourceSizes = [];
             this.audio.removeAttribute("src");
+            this._invalidateNextPrefetch();
             this._emit("empty", true);
         }
     }
@@ -128,6 +207,7 @@ class PlayerEngine {
         this.queue.push(...additions);
         this._syncPlayOrderAfterAppend(previousLength);
         this._emit("queuechange", this.queue);
+        this._prefetchNextSource();
         return additions.length;
     }
 
@@ -254,7 +334,13 @@ class PlayerEngine {
             return;
         }
 
-        if (this._isCachedSource() || this._hasPlaybackBuffer()) {
+        // 画面非表示ではタイマーがサスペンドされるため、バッファ待ちを挟まず
+        // 即時 play() する (ロック画面での曲送りを止めないため)。
+        if (
+            (typeof document !== "undefined" && document.hidden)
+            || this._isCachedSource()
+            || this._hasPlaybackBuffer()
+        ) {
             this._playImmediately(loadToken, playRequestId);
             return;
         }
@@ -340,31 +426,39 @@ class PlayerEngine {
         if (!entry) {
             this.audio.removeAttribute("src");
             this._loading = false;
+            this._invalidateNextPrefetch();
             this._emit("empty", true);
             return;
         }
 
-        const selection = await Promise.resolve(this._url(entry.track));
-        const networkCandidates = Array.isArray(selection) ? selection : (selection?.urls || []);
-        const networkSizes = Array.isArray(selection) ? [] : (selection?.sizes || []);
-        let cachedSource = null;
-        if (typeof getCachedAudioSource === "function") {
-            cachedSource = await getCachedAudioSource(entry.track);
+        const prefetched = this._takePrefetchedSource(entry);
+        let resolved;
+        if (prefetched) {
+            resolved = prefetched;
+        } else {
+            const selection = await Promise.resolve(this._url(entry.track));
+            const urls = Array.isArray(selection) ? selection : (selection?.urls || []);
+            const sizes = Array.isArray(selection) ? [] : (selection?.sizes || []);
+            const cached = typeof getCachedAudioSource === "function"
+                ? await getCachedAudioSource(entry.track)
+                : null;
+            resolved = {
+                urls: cached ? [cached.url, ...urls] : urls,
+                sizes: cached ? [cached.size || null, ...sizes] : sizes,
+                cachedUrl: cached?.url || null,
+                cachedFormat: cached?.format || null,
+            };
         }
         if (token !== this._loadToken || this.currentEntry() !== entry) {
-            if (cachedSource && typeof releaseCachedAudioSource === "function") {
-                releaseCachedAudioSource(cachedSource.url);
+            if (resolved.cachedUrl && typeof releaseCachedAudioSource === "function") {
+                releaseCachedAudioSource(resolved.cachedUrl);
             }
             return;
         }
-        this._cacheObjectUrl = cachedSource?.url || null;
-        this._cacheFormat = cachedSource?.format || null;
-        this._sourceCandidates = cachedSource
-            ? [cachedSource.url, ...networkCandidates]
-            : networkCandidates;
-        this._sourceSizes = cachedSource
-            ? [cachedSource.size || null, ...networkSizes]
-            : networkSizes;
+        this._cacheObjectUrl = resolved.cachedUrl;
+        this._cacheFormat = resolved.cachedFormat;
+        this._sourceCandidates = resolved.urls;
+        this._sourceSizes = resolved.sizes;
         this._sourceIndex = 0;
         if (this._sourceCandidates.length === 0) {
             this._loading = false;
@@ -382,7 +476,10 @@ class PlayerEngine {
         this._loading = false;
         this._emit("trackchange", entry.track);
         if (shouldPlay) this._playWhenBuffered(token, playRequestId, allowActivationWarmup);
+        this._prefetchNextSource();
     }
+
+
 
     play() {
         const allowActivationWarmup = this._hasUserActivation();
@@ -462,6 +559,7 @@ class PlayerEngine {
         this._rebuildPlayOrder(this.index);
         this._emit("shuffle", this.shuffle);
         this._emit("queuechange", this.queue);
+        this._prefetchNextSource();
     }
 
     toggleShuffle() {
@@ -473,6 +571,7 @@ class PlayerEngine {
         if (!["queue", "track", "off"].includes(mode)) return this.repeatMode;
         this.repeatMode = mode;
         this._emit("repeat", this.repeatMode);
+        this._prefetchNextSource();
         return this.repeatMode;
     }
 
@@ -531,6 +630,7 @@ class PlayerEngine {
             this._loadCurrent(wasPlaying);
         } else {
             this._rebuildPlayOrder(this.index);
+            this._prefetchNextSource();
         }
         this._emit("queuechange", this.queue);
         return true;
@@ -547,6 +647,7 @@ class PlayerEngine {
         this.index = -1;
         this.playOrder = [];
         this.audio.removeAttribute("src");
+        this._invalidateNextPrefetch();
         this._emit("queuechange", this.queue);
         this._emit("empty", true);
     }
