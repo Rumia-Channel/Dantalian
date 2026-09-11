@@ -13,6 +13,22 @@ use crate::{
 
 const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
 
+/// Presigned GET URLs expire after `DOWNLOAD_URL_TTL_SECONDS` (300s). Keep the
+/// redirect cache lifetime below that so a cached redirect never points at an
+/// expired signature. `private` keeps the per-user redirect out of shared
+/// caches while still letting the browser skip the Worker round-trip.
+const REDIRECT_CACHE_MAX_AGE_SECONDS: u64 = 240;
+
+fn cached_redirect(url: &str) -> Result<Response> {
+    let mut response = Response::redirect(
+        worker::Url::parse(url).map_err(|error| worker::Error::RustError(error.to_string()))?,
+    )?;
+    response.headers_mut().set(
+        "cache-control",
+        &format!("private, max-age={REDIRECT_CACHE_MAX_AGE_SECONDS}"),
+    )?;
+    Ok(response)
+}
 fn db_error(error: worker::Error) -> worker::Error {
     error
 }
@@ -128,9 +144,7 @@ pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = WasabiStorage::new(config)
         .presigned_get_url(&key)
         .map_err(|error| worker::Error::from(error.to_string()))?;
-    Response::redirect(
-        worker::Url::parse(&url).map_err(|error| worker::Error::RustError(error.to_string()))?,
-    )
+    cached_redirect(&url)
 }
 
 async fn redirect_file(ctx: &RouteContext<()>, name: &str, kind: ObjectKind) -> Result<Response> {
@@ -145,9 +159,7 @@ async fn redirect_file(ctx: &RouteContext<()>, name: &str, kind: ObjectKind) -> 
     let url = WasabiStorage::new(config)
         .presigned_get_url(&key)
         .map_err(|error| worker::Error::from(error.to_string()))?;
-    Response::redirect(
-        worker::Url::parse(&url).map_err(|error| worker::Error::RustError(error.to_string()))?,
-    )
+    cached_redirect(&url)
 }
 
 pub async fn image(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
