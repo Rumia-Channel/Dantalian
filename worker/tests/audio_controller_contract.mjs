@@ -15,7 +15,8 @@ test("audio controller config attaches the target queue and Worker service", asy
     process.env.DANTALIAN_AUDIO_JOB_DLQ ?? `${queue}-dlq`;
   const config = await readFile(configPath, "utf8");
   assert.match(config, /binding = "DANTALIAN_API"/);
-  requiredConfigValue(config, "service", `dantalian-worker-${target}`);
+  const workerService = target === "production" ? "dantalian-worker" : `dantalian-worker-${target}`;
+  requiredConfigValue(config, "service", workerService);
   requiredConfigValue(config, "queue", queue);
   requiredConfigValue(config, "dead_letter_queue", deadLetterQueue);
   assert.match(config, /binding = "WASABI_ENDPOINT_STORE"/);

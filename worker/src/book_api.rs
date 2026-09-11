@@ -85,6 +85,8 @@ struct BookSummaryRow {
     copies_count: i64,
     lent_count: i64,
     primary_author_name: Option<String>,
+    #[serde(default, skip_serializing)]
+    authors_json: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -184,7 +186,13 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
          JOIN book_authors ba ON ba.author_id = a.id
          WHERE ba.book_id = b.id
          ORDER BY ba.sort_order,ba.author_id
-         LIMIT 1) AS primary_author_name
+         LIMIT 1) AS primary_author_name,
+        (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ba.sort_order))
+         FROM authors a
+         JOIN book_authors ba ON ba.author_id = a.id
+         WHERE ba.book_id = b.id
+         ORDER BY ba.sort_order,ba.author_id
+         LIMIT -1) AS authors_json
         FROM books b
         LEFT JOIN copies c ON c.book_id = b.id
         LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL";
@@ -226,9 +234,18 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let items = rows
         .into_iter()
         .map(|row| {
+            // The summary row carries linked authors as a JSON array string so
+            // the grid can group books by author ID exactly like CDs. A book
+            // without links yields an empty array, never null.
+            let authors: Vec<serde_json::Value> = row
+                .authors_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str(raw).ok())
+                .unwrap_or_default();
             let mut value = serde_json::to_value(row)
                 .map_err(|error| worker::Error::from(error.to_string()))?;
             if let Some(object) = value.as_object_mut() {
+                object.insert("authors".into(), serde_json::Value::Array(authors));
                 if object
                     .get("media_type")
                     .is_some_and(serde_json::Value::is_null)

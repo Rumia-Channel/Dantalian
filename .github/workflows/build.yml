@@ -604,6 +604,7 @@ jobs:
       WASABI_ENDPOINT_SECRET_NAME: ${{ secrets.WASABI_ENDPOINT_SECRET_NAME }}
       WASABI_REGION_SECRET_NAME: ${{ secrets.WASABI_REGION_SECRET_NAME }}
       WASABI_BUCKET_SECRET_NAME: ${{ secrets.WASABI_BUCKET_SECRET_NAME }}
+      DANTALIAN_PROCESSOR_TOKEN: ${{ secrets.DANTALIAN_PROCESSOR_TOKEN }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -647,8 +648,100 @@ jobs:
       - name: Apply production D1 migrations
         working-directory: worker
         run: npx wrangler d1 migrations apply "${{ steps.resources.outputs.database_name }}" --remote --config wrangler.ci.toml
-      - name: Deploy production Worker
+      - name: Prepare production Worker secrets
         working-directory: worker
         run: |
-          trap 'rm -f wrangler.ci.toml' EXIT
-          npx wrangler deploy --config wrangler.ci.toml
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          processor_token = os.environ.get("DANTALIAN_PROCESSOR_TOKEN", "").strip()
+          if not processor_token:
+              raise SystemExit("DANTALIAN_PROCESSOR_TOKEN is required")
+          Path("production-secrets.json").write_text(
+              json.dumps({"DANTALIAN_PROCESSOR_TOKEN": processor_token}),
+              encoding="utf-8",
+          )
+          PY
+      - name: Deploy production Worker
+        working-directory: worker
+        run: npx wrangler deploy --config wrangler.ci.toml --secrets-file production-secrets.json
+      - name: Resolve workers.dev subdomain
+        id: subdomain
+        run: |
+          subdomain="$(curl --silent --show-error --fail \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            | python -c 'import json, sys; print(json.load(sys.stdin)["result"]["subdomain"])')"
+          echo "subdomain=$subdomain" >> "$GITHUB_OUTPUT"
+      - name: Render production audio controller config
+        env:
+          DANTALIAN_DEPLOY_TARGET: production
+          DANTALIAN_D1_DATABASE_NAME: ${{ steps.resources.outputs.database_name }}
+          DANTALIAN_AUDIO_JOB_QUEUE: ${{ steps.resources.outputs.queue_name }}
+          DANTALIAN_AUDIO_JOB_DLQ: ${{ steps.resources.outputs.dead_letter_queue }}
+          AUDIO_CONTROLLER_BASE_URL: https://dantalian-audio-controller.${{ steps.subdomain.outputs.subdomain }}.workers.dev
+          WASABI_ACCESS_KEY_ID_SECRET_NAME: ${{ secrets.WASABI_ACCESS_KEY_ID_SECRET_NAME }}
+          WASABI_SECRET_ACCESS_KEY_SECRET_NAME: ${{ secrets.WASABI_SECRET_ACCESS_KEY_SECRET_NAME }}
+          WASABI_ENDPOINT_SECRET_NAME: ${{ secrets.WASABI_ENDPOINT_SECRET_NAME }}
+          WASABI_REGION_SECRET_NAME: ${{ secrets.WASABI_REGION_SECRET_NAME }}
+          WASABI_BUCKET_SECRET_NAME: ${{ secrets.WASABI_BUCKET_SECRET_NAME }}
+        run: python worker/ci/render_audio_config.py
+      - name: Test production audio controller config
+        env:
+          DANTALIAN_DEPLOY_TARGET: production
+          DANTALIAN_AUDIO_JOB_QUEUE: ${{ steps.resources.outputs.queue_name }}
+          DANTALIAN_AUDIO_JOB_DLQ: ${{ steps.resources.outputs.dead_letter_queue }}
+        run: node worker/tests/audio_controller_contract.mjs
+      - name: Prepare production audio controller secret
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          token = os.environ.get("DANTALIAN_PROCESSOR_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("DANTALIAN_PROCESSOR_TOKEN is required")
+          Path("audio-controller-secrets.json").write_text(
+              json.dumps({"DANTALIAN_PROCESSOR_TOKEN": token}),
+              encoding="utf-8",
+          )
+          PY
+      - name: Deploy production audio controller
+        id: audio_controller
+        run: |
+          set -o pipefail
+          npx wrangler deploy --config wrangler.audio.ci.toml --secrets-file audio-controller-secrets.json 2>&1 | tee audio-deploy.log
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          urls = re.findall(
+              r"https://[A-Za-z0-9.-]+\.workers\.dev",
+              Path("audio-deploy.log").read_text(encoding="utf-8"),
+          )
+          if not urls:
+              raise SystemExit("production audio controller URL was not reported by Wrangler")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"base_url={urls[-1]}\n")
+          PY
+      - name: Test production audio controller consumer boundary
+        env:
+          AUDIO_CONTROLLER_BASE_URL: ${{ steps.audio_controller.outputs.base_url }}
+        run: |
+          for attempt in {1..30}; do
+            status="$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$AUDIO_CONTROLLER_BASE_URL/health" || true)"
+            if [ "$status" = 200 ]; then
+              break
+            fi
+            sleep 2
+          done
+          test "$status" = 200
+          test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 401
+          test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null -H "Authorization: Bearer $DANTALIAN_PROCESSOR_TOKEN" "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 200
+      - name: Clean production deployment files
+        if: always()
+        run: rm -f wrangler.audio.ci.toml audio-controller-secrets.json audio-deploy.log worker/wrangler.ci.toml worker/production-secrets.json

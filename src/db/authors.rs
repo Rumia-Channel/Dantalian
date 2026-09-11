@@ -60,23 +60,31 @@ impl Db {
         }
 
         // Same person under another source's spelling (tag vs NDL vs manual)
-        // must reuse the row instead of scattering.
+        // must reuse the row instead of scattering. Exception: two different
+        // non-null NDL ids mean two authority records that happen to share a
+        // name (同姓同名) — merging those would fuse distinct people.
         if let Some((id, existing_ndl, existing_transcription)) =
             Self::find_author_by_normalized_name(&conn, name)?
         {
-            if existing_ndl.is_none() && ndl_id.is_some() {
-                conn.execute(
-                    "UPDATE authors SET ndl_id = ?1 WHERE id = ?2",
-                    params![ndl_id, id],
-                )?;
+            let distinct_authorities = match (ndl_id, existing_ndl.as_deref()) {
+                (Some(incoming), Some(known)) => incoming != known,
+                _ => false,
+            };
+            if !distinct_authorities {
+                if existing_ndl.is_none() && ndl_id.is_some() {
+                    conn.execute(
+                        "UPDATE authors SET ndl_id = ?1 WHERE id = ?2",
+                        params![ndl_id, id],
+                    )?;
+                }
+                if existing_transcription.is_none() && transcription.is_some() {
+                    conn.execute(
+                        "UPDATE authors SET transcription = ?1 WHERE id = ?2",
+                        params![transcription, id],
+                    )?;
+                }
+                return Ok(id);
             }
-            if existing_transcription.is_none() && transcription.is_some() {
-                conn.execute(
-                    "UPDATE authors SET transcription = ?1 WHERE id = ?2",
-                    params![transcription, id],
-                )?;
-            }
-            return Ok(id);
         }
 
         conn.execute(
@@ -362,5 +370,21 @@ mod tests {
                 .expect("ndl"),
             first
         );
+    }
+
+    #[test]
+    fn insert_author_keeps_distinct_ndl_authorities_apart() {
+        let db = Db::new(":memory:").expect("database");
+        let first = db
+            .insert_author(Some("ndl-1"), "山田 太郎", None)
+            .expect("insert");
+        // Same normalized name but a different authority record: 同姓同名,
+        // must not fuse into the first row.
+        let second = db
+            .insert_author(Some("ndl-2"), "山田太郎", None)
+            .expect("insert");
+        assert_ne!(first, second);
+        let kept = db.get_author_by_id(first).expect("read").expect("row");
+        assert_eq!(kept.ndl_id.as_deref(), Some("ndl-1"));
     }
 }

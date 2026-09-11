@@ -64,6 +64,8 @@ fn main() {
         "static/js/music/main.js",
         "static/js/licenses.js",
         "static/js/app.js",
+        "static/js/pwa.js",
+        "static/sw.js",
     ];
 
     let wasm_files = [
@@ -76,7 +78,14 @@ fn main() {
         "static/fonts/MaterialIconsOutlined-Regular.otf",
     ];
 
-    let image_files = ["static/favicon.svg"];
+    let image_files = [
+        "static/favicon.svg",
+        "static/manifest.webmanifest",
+        "static/icons/icon-192.png",
+        "static/icons/icon-512.png",
+        "static/icons/icon-maskable-512.png",
+        "static/icons/apple-touch-icon.png",
+    ];
 
     println!("cargo:rerun-if-changed=about.toml");
     println!("cargo:rerun-if-changed=about.hbs");
