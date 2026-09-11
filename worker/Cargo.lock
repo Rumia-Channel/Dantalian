@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "dantalian"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "dantalian-worker"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dantalian",
  "futures-util",
