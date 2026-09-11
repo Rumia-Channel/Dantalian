@@ -31,6 +31,15 @@
 - バージョン 1.0.0 未満の場合、DB の構造が大きく変わる際は後方互換性を気にせず大幅な変更を加えてよい。
 - バージョン 1.0.0 以降では、DB スキーマの大幅な変更（既存データの破棄を伴うもの）は加えてはならない。
 
+## リリース手順
+
+- バージョンは `python scripts/bump_version.py X.Y.Z` で一括更新すること。手で個別に書き換えないこと。
+  - 更新対象: `Cargo.toml`、`worker/Cargo.toml`（package version と `dantalian` 依存の version）、`about.hbs`（ライセンスページの `Dantalian X.Y.Z` 表記）、`Cargo.lock` / `worker/Cargo.lock`（`cargo check` で再生成）
+- バージョンバンプは `develop` でコミットし、`master` へ `git merge --no-ff develop` で合流させること（fast-forward 禁止）。
+- タグは `master` 上でアノテーテッドタグとして切る: `git tag -a vX.Y.Z -m "Dantalian vX.Y.Z: <変更概要>"`
+- `git push origin master vX.Y.Z develop` で master・タグ・develop をまとめてプッシュする。タグプッシュが本番デプロイ CI のトリガー。
+- タグを切る前に `git grep "旧バージョン" -- '*.toml' '*.hbs'` で残存バージョン表記がないか確認すること。
+
 ## コミット前フォーマット規約
 
 - コミット（および PR 作成）前は、必ずリポジトリ全体に対して `cargo fmt` を実行すること。
