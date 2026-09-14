@@ -329,4 +329,25 @@ mod tests {
         assert!(url.contains("X-Amz-Signature="));
         assert!(!url.contains("secret"));
     }
+
+    #[test]
+    fn presigned_signature_matches_reference_vector() {
+        // Independently computed SigV4 presign (Python reference implementation)
+        // for GET https://s3.ap-northeast-1.wasabisys.com/bucket/images/abc123.jpg
+        // at 2024-03-01T00:00:00Z, ap-northeast-1, expires=300.
+        let url = presigned_url(
+            "https://s3.ap-northeast-1.wasabisys.com/bucket/images/abc123.jpg",
+            "GET",
+            &BTreeMap::new(),
+            "AKIDEXAMPLE",
+            "secretexamplekey123",
+            "ap-northeast-1",
+            300,
+            1_709_251_200,
+        )
+        .unwrap();
+        assert!(url.contains(
+            "X-Amz-Signature=350711fe76e63df156c18d4dfe53a22131e3deda9292f479e4e60fbe9309e5fb"
+        ));
+    }
 }
