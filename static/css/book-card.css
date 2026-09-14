@@ -121,8 +121,8 @@
 }
 
 .view-tab.active {
-    color: var(--color-success);
-    border-bottom-color: var(--color-success);
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
 }
 
 .author-group {
@@ -152,8 +152,8 @@
 }
 
 .author-group-header:hover {
-    color: var(--color-success);
-    border-bottom-color: rgba(94, 96, 206, 0.4);
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent-alpha);
 }
 
 .author-group-header::before {
@@ -185,7 +185,7 @@
 }
 
 .author-group-header--none:hover {
-    color: var(--color-success);
+    color: var(--color-accent);
 }
 
 .author-group-name {
@@ -261,7 +261,7 @@
 }
 
 .media-badge--cd {
-    background: var(--color-success);
+    background: var(--color-accent);
 }
 
 .media-badge--audiobook {
@@ -439,7 +439,7 @@
 }
 
 .cd-card-action--download:hover {
-    background: var(--color-success-alpha);
-    border-color: var(--color-success);
-    color: var(--color-success-hover);
+    background: var(--color-accent-alpha);
+    border-color: var(--color-accent);
+    color: var(--color-accent-hover);
 }

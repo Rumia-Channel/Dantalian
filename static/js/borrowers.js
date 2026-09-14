@@ -75,8 +75,8 @@ function renderBorrowerList() {
             <span class="series-item-name">${escapeHtml(b.name)}</span>
             ${b.notes ? `<span class="borrower-notes">${escapeHtml(b.notes)}</span>` : ""}
             <div class="series-item-actions">
-                <button class="btn btn-xs btn-ghost" onclick="renameBorrower(${b.id})">名前変更</button>
-                <button class="btn btn-xs btn-outline-danger" onclick="deleteBorrower(${b.id})">削除</button>
+                <button class="icon-btn" onclick="renameBorrower(${b.id})" aria-label="名前変更" title="名前変更"><span class="material-icons" aria-hidden="true">edit</span></button>
+                <button class="icon-btn icon-btn-danger" onclick="deleteBorrower(${b.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
             </div>
         </div>
     `).join("");

@@ -14,7 +14,7 @@ function renderHomeLoadError() {
             <span class="material-icons" aria-hidden="true">cloud_off</span>
             <p>一覧データを読み込めませんでした。登録内容は削除されていません。</p>
             <small>${escapeHtml(details)}</small>
-            <button type="button" class="btn btn-secondary" onclick="initializeHome()">再読み込み</button>
+            <button type="button" class="btn btn-ghost" onclick="initializeHome()">再読み込み</button>
         </div>`;
 }
 

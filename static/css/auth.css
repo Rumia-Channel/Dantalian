@@ -1,11 +1,3 @@
-.auth-settings {
-    margin-left: auto;
-}
-
-.auth-settings.hidden {
-    display: none;
-}
-
 .auth-open {
     min-width: 7rem;
 }

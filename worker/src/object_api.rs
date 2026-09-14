@@ -20,14 +20,17 @@ const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
 const REDIRECT_CACHE_MAX_AGE_SECONDS: u64 = 240;
 
 fn cached_redirect(url: &str) -> Result<Response> {
-    let mut response = Response::redirect(
-        worker::Url::parse(url).map_err(|error| worker::Error::RustError(error.to_string()))?,
-    )?;
-    response.headers_mut().set(
-        "cache-control",
-        &format!("private, max-age={REDIRECT_CACHE_MAX_AGE_SECONDS}"),
-    )?;
-    Ok(response)
+    // `Response::redirect()` produces a response whose headers are immutable, so
+    // setting cache-control on it throws. Build the 302 manually instead.
+    worker::Url::parse(url).map_err(|error| worker::Error::RustError(error.to_string()))?;
+    Ok(Response::builder()
+        .with_status(302)
+        .with_header("location", url)?
+        .with_header(
+            "cache-control",
+            &format!("private, max-age={REDIRECT_CACHE_MAX_AGE_SECONDS}"),
+        )?
+        .empty())
 }
 fn db_error(error: worker::Error) -> worker::Error {
     error

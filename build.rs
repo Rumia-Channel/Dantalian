@@ -190,7 +190,49 @@ fn generate_basic_license_page(version: &str) {
             .replace('>', "&gt;")
     };
     let html = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Dantalian licenses</title></head><body><h1>Dantalian licenses</h1><h2>Project license</h2><pre>{}</pre><h2>Third-party notices</h2><pre>{}</pre><p>Asset version: {version}</p></body></html>",
+        r##"<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - ライセンス</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v={version}">
+    <link rel="stylesheet" href="/css/base.css?v={version}">
+    <link rel="stylesheet" href="/css/auth.css?v={version}">
+    <link rel="stylesheet" href="/css/settings.css?v={version}">
+    <link rel="stylesheet" href="/css/licenses.css?v={version}">
+    <link rel="stylesheet" href="/css/responsive.css?v={version}">
+</head>
+<body data-active-nav="licenses">
+    <div id="app">
+        <main class="licenses-page">
+            <header class="licenses-intro">
+                <p class="licenses-eyebrow">Dantalian</p>
+                <h2>ライセンス</h2>
+                <p>
+                    Dantalian 本体のライセンス全文は
+                    <a href="/LICENSE" target="_blank" rel="noreferrer">LICENSE</a>、
+                    FDK AAC の告知とライセンス全文は
+                    <a href="/NOTICE" target="_blank" rel="noreferrer">NOTICE</a> を参照してください。
+                </p>
+            </header>
+
+            <section class="license-summary project-license" aria-labelledby="project-license-heading">
+                <h3 id="project-license-heading">Dantalian 本体</h3>
+                <p>Dantalian は BSD 2-Clause License で公開されています。</p>
+                <pre class="license-text">{}</pre>
+            </section>
+
+            <section class="license-summary" aria-labelledby="notice-heading">
+                <h3 id="notice-heading">Third-party notices</h3>
+                <pre class="license-text">{}</pre>
+            </section>
+        </main>
+    </div>
+    <script src="/js/header.js?v={version}"></script>
+    <script src="/js/settings.js?v={version}"></script>
+</body>
+</html>"##,
         escape(&license),
         escape(&notice),
     );

@@ -25,7 +25,7 @@ async function loadAuthors() {
 function renderAuthorList() {
     window.history.replaceState(null, "", "/authors/");
     authorsContent.innerHTML = `
-        <h2>アーティスト一覧 <span style="font-size:0.8rem;color:#888;">(${authors.length}件)</span></h2>
+        <h2>アーティスト一覧 <span class="authors-count">(${authors.length}件)</span></h2>
         <div class="author-create">
             <input type="text" id="new-author-name" placeholder="アーティスト名">
             <input type="text" id="new-author-transcription" placeholder="ヨミガナ（任意）">
@@ -42,7 +42,7 @@ function renderAuthorList() {
                             ${a.transcription ? `<span>${escapeHtml(a.transcription)}</span>` : ""}
                         </div>
                     </div>
-                    <button class="btn btn-xs btn-outline-success" onclick="renderAuthorEdit(${a.id})">編集</button>
+                    <button class="btn btn-xs btn-outline-accent" onclick="renderAuthorEdit(${a.id})">編集</button>
                 </div>
             `).join("")}
             ${authors.length === 0 ? '<p class="series-empty">アーティストがいません</p>' : ""}

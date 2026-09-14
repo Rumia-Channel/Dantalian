@@ -15,28 +15,107 @@ use sha3::{Digest, Sha3_256};
 
 use super::ApiError;
 
-pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<BookWithAuthors>>, StatusCode> {
+const BOOK_CURSOR_MASK: i64 = 0x5A17_C0DE;
+
+#[derive(Deserialize)]
+pub struct ListBooksQuery {
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BooksPage {
+    pub items: Vec<BookWithAuthors>,
+    pub next_cursor: Option<String>,
+}
+
+fn encode_book_cursor(id: i64) -> String {
+    format!("c{:x}", id ^ BOOK_CURSOR_MASK)
+}
+
+fn decode_book_cursor(value: &str) -> Result<i64, StatusCode> {
+    let encoded = value
+        .strip_prefix('c')
+        .filter(|v| !v.is_empty() && v.len() <= 16)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let encoded = i64::from_str_radix(encoded, 16).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let id = encoded ^ BOOK_CURSOR_MASK;
+    if id <= 0 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(id)
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    Query(query): Query<ListBooksQuery>,
+) -> Result<Json<BooksPage>, StatusCode> {
+    let limit = match query.limit {
+        Some(value) if (1..=100).contains(&value) => value,
+        Some(_) => return Err(StatusCode::BAD_REQUEST),
+        None => 50,
+    };
+    let cursor = match query.cursor.as_deref() {
+        Some(value) => Some(decode_book_cursor(value)?),
+        None => None,
+    };
+
     let db = state.db.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let books = db.list_books()?;
-        let mut result = Vec::new();
+        // limit+1 件取得して次ページの有無を判定する
+        let mut books = db.list_books_page(limit + 1, cursor)?;
+        let has_more = books.len() > limit;
+        books.truncate(limit);
+        let next_cursor = books
+            .last()
+            .map(|book| encode_book_cursor(book.id))
+            .filter(|_| has_more);
+
+        let mut items = Vec::with_capacity(books.len());
         for book in books {
             let authors = db.get_book_authors(book.id).unwrap_or_default();
             let (copies_count, lent_count) = db.get_book_copy_counts(book.id).unwrap_or((0, 0));
-            result.push(BookWithAuthors {
+            items.push(BookWithAuthors {
                 book,
                 authors,
                 copies_count,
                 lent_count,
             });
         }
-        Ok::<_, rusqlite::Error>(result)
+        Ok::<_, rusqlite::Error>(BooksPage { items, next_cursor })
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(result))
+}
+pub async fn get(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<BookWithAuthors>, StatusCode> {
+    let db = state.db.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let book = db.find_by_id(id)?;
+        Ok::<_, rusqlite::Error>(book.map(|book| {
+            let authors = db.get_book_authors(book.id).unwrap_or_default();
+            let (copies_count, lent_count) = db.get_book_copy_counts(book.id).unwrap_or((0, 0));
+            BookWithAuthors {
+                book,
+                authors,
+                copies_count,
+                lent_count,
+            }
+        }))
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    match result {
+        Some(book) => Ok(Json(book)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 pub async fn delete(
