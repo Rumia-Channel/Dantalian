@@ -59,6 +59,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/books/isdn", post(books::isdn_register))
         .route("/books/manual", post(books::manual_register))
         .route("/books", get(books::list))
+        .route("/books/{id}", get(books::get))
         .route("/books/{id}", delete(books::delete))
         .route("/books/{id}", put(books::update_book))
         .route("/books/{id}/series", put(books::set_series))

@@ -206,6 +206,22 @@ impl Db {
         rows.collect()
     }
 
+    /// `before_id` より小さい id を持つ行を id 降順で最大 `limit` 件返す。
+    /// 一覧 API のカーソルページネーション用。
+    pub fn list_books_page(
+        &self,
+        limit: usize,
+        before_id: Option<i64>,
+    ) -> Result<Vec<Book>, rusqlite::Error> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {} FROM books WHERE (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?1",
+            BOOK_SELECT_COLUMNS
+        ))?;
+        let rows = stmt.query_map(params![limit as i64, before_id], Self::row_to_book)?;
+        rows.collect()
+    }
+
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
         let conn = self.0.lock().unwrap();
         let mut stmt = conn.prepare(&format!(
