@@ -27,7 +27,7 @@ async function renderCopiesSection(bookId) {
             </div>
             <div class="edit-copy-actions">
                 ${isLent
-                    ? `<button type="button" class="btn btn-xs btn-outline-success" onclick="returnCopy(${c.id}, ${bookId})">返却</button>`
+                    ? `<button type="button" class="btn btn-xs btn-outline-accent" onclick="returnCopy(${c.id}, ${bookId})">返却</button>`
                     : `<button type="button" class="btn btn-xs btn-outline-warning" onclick="showLendForm(${c.id}, ${bookId})">貸出</button>`}
                 <button type="button" class="btn btn-xs btn-ghost" onclick="editCopyDialog(${c.id}, ${c.copy_type}, ${JSON.stringify(c.location).replace(/"/g, '&quot;')}, ${JSON.stringify(c.notes).replace(/"/g, '&quot;')}, ${bookId})">編集</button>
                 <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteCopy(${c.id}, ${bookId})">削除</button>
@@ -37,7 +37,7 @@ async function renderCopiesSection(bookId) {
 
     html += `
         <div class="edit-copy-add" id="edit-copy-add">
-            <button type="button" class="btn btn-xs btn-outline-success" onclick="addCopy(${bookId})">+ 所蔵を追加</button>
+            <button type="button" class="btn btn-xs btn-outline-accent" onclick="addCopy(${bookId})">+ 所蔵を追加</button>
         </div>
     `;
 

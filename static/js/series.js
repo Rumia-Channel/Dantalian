@@ -45,8 +45,8 @@ function renderSeriesManager() {
         <div class="series-list-item" id="series-item-${s.id}">
             <span class="series-list-name" ondblclick="startRenameSeries(${s.id})">${escapeHtml(s.name)}${gsLabel}</span>
             <div class="series-list-actions">
-                <button class="btn btn-xs btn-outline-success" onclick="startRenameSeries(${s.id})">改名</button>
-                <button class="btn btn-xs btn-outline-danger" onclick="deleteSeries(${s.id})">削除</button>
+                <button class="icon-btn" onclick="startRenameSeries(${s.id})" aria-label="改名" title="改名"><span class="material-icons" aria-hidden="true">edit</span></button>
+                <button class="icon-btn icon-btn-danger" onclick="deleteSeries(${s.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
             </div>
         </div>`;
     }).join("");
@@ -181,15 +181,15 @@ function renderGrandSeriesManager() {
             <div class="gs-list-header">
                 <span class="gs-list-name" ondblclick="startRenameGrandSeries(${gs.id})">${escapeHtml(gs.name)}</span>
                 <div class="series-list-actions">
-                    <button class="btn btn-xs btn-outline-success" onclick="startRenameGrandSeries(${gs.id})">改名</button>
-                    <button class="btn btn-xs btn-outline-danger" onclick="deleteGrandSeries(${gs.id})">削除</button>
+                    <button class="icon-btn" onclick="startRenameGrandSeries(${gs.id})" aria-label="改名" title="改名"><span class="material-icons" aria-hidden="true">edit</span></button>
+                    <button class="icon-btn icon-btn-danger" onclick="deleteGrandSeries(${gs.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
                 </div>
             </div>
             <div class="gs-items">${itemsHtml}</div>
             <div class="gs-add-item" id="gs-add-item-${gs.id}">
                 <div id="gs-add-type-${gs.id}"></div>
                 <div id="gs-add-target-${gs.id}"></div>
-                <button class="btn btn-xs btn-outline-success" onclick="addGrandSeriesItem(${gs.id})">追加</button>
+                <button class="btn btn-xs btn-outline-accent" onclick="addGrandSeriesItem(${gs.id})">追加</button>
             </div>
         </div>`;
     }).join("");

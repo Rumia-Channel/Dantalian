@@ -257,7 +257,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                 book.epub_file_hash
                     ? `<div class="detail-epub-info">
                         <span class="detail-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                        <a class="btn btn-xs btn-outline-success detail-epub-open" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
+                        <a class="btn btn-xs btn-outline-accent detail-epub-open" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
                         <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
                     </div>`
                     : `<div class="detail-epub-empty">ファイル未登録</div>`
@@ -282,7 +282,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
             <div id="detail-grand-series-select-container"></div>
         </div>
         <div class="detail-actions">
-            <a href="/edit/?mode=book&book=${book.id}" class="btn btn-sm btn-outline-success">編集</a>
+            <a href="/edit/?mode=book&book=${book.id}" class="btn btn-sm btn-outline-accent">編集</a>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteBook(${book.id})">削除</button>
         </div>
     `;
@@ -391,7 +391,7 @@ function renderChildrenInDetail(bookId) {
         <div class="detail-children-title">関連CD/オーディオブック (${children.length}件)</div>
         ${children.map((cd) => `
             <div class="detail-child-item">
-                <span class="media-badge media-badge--${cd.media_type === 'audiobook' ? 'audiobook' : 'cd'}" style="position:static;display:inline-block;vertical-align:middle;margin-right:0.5rem">
+                <span class="media-badge media-badge--inline media-badge--${cd.media_type === 'audiobook' ? 'audiobook' : 'cd'}" style="margin-right:0.5rem">
                     ${cd.media_type === 'audiobook' ? 'AB' : 'CD'}
                 </span>
                 <span>${escapeHtml(cd.title)}</span>
@@ -415,7 +415,7 @@ function showCdDetail(cdId) {
 
 function renderCdDetail(cd, currentSeries, tracks) {
     tracks = tracks || [];
-    const mediaBadge = `<span class="media-badge media-badge--${cd.media_type === "audiobook" ? "audiobook" : "cd"}" style="position:static;display:inline-block;margin-bottom:0.5rem">${cd.media_type === "audiobook" ? "AB" : "CD"}</span>`;
+    const mediaBadge = `<span class="media-badge media-badge--inline media-badge--${cd.media_type === "audiobook" ? "audiobook" : "cd"}" style="margin-bottom:0.5rem">${cd.media_type === "audiobook" ? "AB" : "CD"}</span>`;
     const metaParts = [];
     if (cd.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(cd.publisher)}</div>`);
     if (cd.publish_date) metaParts.push(`<div><span class="detail-meta-label">出版日</span>${escapeHtml(cd.publish_date)}</div>`);
@@ -497,7 +497,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
             <button class="btn btn-sm btn-primary" onclick="openCdPlayer(${cd.originalId})">
                 <span class="material-icons" style="font-size:1.1em;vertical-align:-0.15em;">play_arrow</span> 再生
             </button>
-            <a href="/edit/?mode=cd&cd=${cd.originalId}" class="btn btn-sm btn-outline-success">編集</a>
+            <a href="/edit/?mode=cd&cd=${cd.originalId}" class="btn btn-sm btn-outline-accent">編集</a>
             <button class="btn btn-sm btn-outline-danger" onclick="deleteCd(${cd.originalId})">削除</button>
         </div>
     `;

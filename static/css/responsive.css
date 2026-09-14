@@ -9,14 +9,11 @@
         padding: 1.25rem 0.75rem;
     }
 
-    h1 {
-        font-size: 1.75rem;
-        margin-bottom: 1.25rem;
+    .header-brand {
+        font-size: 1.2rem;
     }
 
     nav {
-        max-width: 100%;
-        margin-bottom: 1.5rem;
         flex-wrap: wrap;
     }
 
@@ -30,9 +27,6 @@
         box-shadow: 0 -0.35rem 1rem rgba(0, 0, 0, 0.22);
     }
 
-    .settings-bar {
-        align-items: stretch;
-    }
 
     .settings-group {
         flex-wrap: wrap;

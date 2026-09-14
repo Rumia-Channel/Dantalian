@@ -152,7 +152,7 @@ async function renderSettingsForm() {
         container.innerHTML = `
             <div class="load-error" role="alert">
                 <p>${escapeHtml(error?.message || "設定を読み込めませんでした")}</p>
-                <button type="button" class="btn btn-secondary" onclick="renderSettingsForm()">再読み込み</button>
+                <button type="button" class="btn btn-ghost" onclick="renderSettingsForm()">再読み込み</button>
             </div>`;
         return;
     }
@@ -343,7 +343,7 @@ async function renderSettingsForm() {
             </div>
 
             <div class="settings-form-row">
-                <button class="btn btn-secondary" type="button" onclick="runMediaSyncNow()"${workerDisabledAttr}>今すぐ同期</button>
+                <button class="btn btn-ghost" type="button" onclick="runMediaSyncNow()"${workerDisabledAttr}>今すぐ同期</button>
                 <span class="settings-label" style="font-size:0.75rem;color:var(--color-text-dim)">※ upload-only。S3 側の削除は行いません。</span>
             </div>
 

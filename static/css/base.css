@@ -1,4 +1,6 @@
 :root {
+    color-scheme: dark;
+
     --card-min-w: 12.5rem;
     --card-min-w-in-series: calc(var(--card-min-w) * 0.75);
 
@@ -6,14 +8,19 @@
     --color-primary: #4f8cff;
     --color-primary-hover: #6fa2ff;
     --color-primary-alpha: rgba(79, 140, 255, 0.15);
-    --color-success: #5e60ce;
-    --color-success-hover: #7b7ee8;
-    --color-success-alpha: rgba(94, 96, 206, 0.15);
+    /* セカンダリアクセント (シリーズ・CD などの区別色) */
+    --color-accent: #7b7ee8;
+    --color-accent-hover: #9a9cf0;
+    --color-accent-alpha: rgba(123, 126, 232, 0.15);
+    /* 成功・完了の意味色 */
+    --color-success: #4cc38a;
+    --color-success-hover: #6fd9a6;
+    --color-success-alpha: rgba(76, 195, 138, 0.15);
     --color-warning: #ff9800;
     --color-danger: #e5534b;
     --color-danger-hover: #f26d65;
     --color-danger-alpha: rgba(229, 83, 75, 0.15);
-    --color-muted: #555;
+    --color-muted: #646a86;
 
     /* テキストの色 */
     --color-text-primary: #f0f2f8;
@@ -25,6 +32,8 @@
 
     /* 背景色 */
     --color-bg-body: #08090f;
+    --color-bg: #0e1020;
+    --color-bg-hover: rgba(255, 255, 255, 0.07);
 
     --color-bg-surface: rgba(14, 16, 32, 0.92);
     --color-bg-input: rgba(18, 20, 38, 0.85);
@@ -46,7 +55,8 @@
     --radius-sm: 0.25rem;
     --radius-md: 0.375rem;
     --radius-lg: 0.5rem;
-    --radius-pill: 0.375rem;
+    --radius-xl: 0.75rem;
+    --radius-pill: 999px;
 }
 
 @font-face {
@@ -104,13 +114,25 @@ button {
 }
 
 body {
-    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
     background: var(--color-bg-body);
     color: var(--color-text-primary);
     min-height: 100vh;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+    background: var(--color-primary-alpha);
+}
+
+a {
+    color: var(--color-primary-hover);
+}
+
+a:hover {
+    color: var(--color-primary);
 }
 
 #app {
@@ -142,38 +164,38 @@ body {
     color: var(--color-text-dim);
 }
 
-h1 {
-    text-align: center;
-    margin-bottom: 2.5rem;
-    font-size: 2.25rem;
+/* --- ヘッダー --- */
+#dantalian-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1.75rem;
+}
+
+.header-brand {
+    margin: 0;
+    font-size: 1.35rem;
     font-weight: 700;
-    color: var(--color-primary);
     letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
-h2 {
-    margin-bottom: 1rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    border-bottom: 0.0625rem solid var(--color-border);
-    padding-bottom: 0.5rem;
+.header-brand a {
+    color: var(--color-primary);
+    text-decoration: none;
 }
 
-.empty-state {
-    text-align: center;
-    color: var(--color-text-secondary);
-    padding: 3rem 1rem;
-    background: var(--color-bg-surface);
-    border: 0.0625rem solid var(--color-border);
-    border-radius: var(--radius-md);
-    backdrop-filter: blur(0.5rem);
+.header-brand a:hover {
+    color: var(--color-primary-hover);
 }
 
 nav {
     display: flex;
     gap: 0.25rem;
     justify-content: center;
-    margin-bottom: 2.5rem;
+    margin-left: auto;
+    margin-right: auto;
     padding: 0.35rem;
     background: var(--color-bg-nav);
     border: 0.0625rem solid var(--color-border);
@@ -181,8 +203,7 @@ nav {
     backdrop-filter: blur(0.5rem);
     box-shadow: var(--shadow-sm);
     width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
+    max-width: 100%;
 }
 
 nav a {
@@ -205,6 +226,39 @@ nav a.active {
     color: #fff;
 }
 
+nav a:focus-visible {
+    outline: 0.125rem solid var(--color-primary-hover);
+    outline-offset: 0.125rem;
+}
+
+.header-auth {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-auth.hidden {
+    display: none;
+}
+
+h2 {
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    border-bottom: 0.0625rem solid var(--color-border);
+    padding-bottom: 0.5rem;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--color-text-secondary);
+    padding: 3rem 1rem;
+    background: var(--color-bg-surface);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-md);
+    backdrop-filter: blur(0.5rem);
+}
+
 input,
 select,
 textarea {
@@ -216,6 +270,16 @@ textarea {
     font-size: 1rem;
     backdrop-filter: blur(0.4rem);
     transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa0b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    cursor: pointer;
 }
 
 input:focus,
@@ -264,9 +328,13 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .btn:disabled {
-    background: var(--color-muted);
-    color: var(--color-text-tertiary);
+    opacity: 0.45;
     cursor: not-allowed;
+}
+
+.btn:focus-visible {
+    outline: 0.125rem solid var(--color-primary-hover);
+    outline-offset: 0.125rem;
 }
 
 .btn-md {
@@ -294,14 +362,14 @@ input[type="number"]::-webkit-outer-spin-button {
     background: var(--color-primary-hover);
 }
 
-.btn-outline-success {
+.btn-outline-accent {
     background: transparent;
-    border: 0.0625rem solid var(--color-success);
-    color: var(--color-success);
+    border: 0.0625rem solid var(--color-accent);
+    color: var(--color-accent);
 }
 
-.btn-outline-success:hover {
-    background: var(--color-success);
+.btn-outline-accent:hover {
+    background: var(--color-accent);
     color: #fff;
 }
 
@@ -328,6 +396,43 @@ input[type="number"]::-webkit-outer-spin-button {
     color: var(--color-text-primary);
 }
 
+/* アイコンボタン（一覧の行内操作など） */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    background: transparent;
+    border: 0.0625rem solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-dim);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.icon-btn .material-icons {
+    font-size: 1.1rem;
+}
+
+.icon-btn:hover {
+    color: var(--color-text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--color-border-light);
+}
+
+.icon-btn.icon-btn-danger:hover {
+    color: var(--color-danger);
+    background: var(--color-danger-alpha);
+    border-color: var(--color-danger);
+}
+
+.icon-btn:focus-visible {
+    outline: 0.125rem solid var(--color-primary-hover);
+    outline-offset: 0.125rem;
+}
+
 /* --- Confirm dialog --- */
 .confirm-overlay {
     position: fixed;
@@ -346,10 +451,12 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .confirm-box {
     background: var(--color-bg-surface);
-    border-radius: 0.75rem;
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: var(--radius-xl);
     padding: 1.5rem 2rem;
     max-width: 24rem;
     width: 90%;
+    box-shadow: var(--shadow-lg);
 }
 
 .confirm-message {
@@ -576,10 +683,10 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .ss-native {
-    padding: 0.35rem 0.6rem;
+    padding: 0.35rem 1.8rem 0.35rem 0.6rem;
     font-size: 0.85rem;
     color: var(--color-text-primary);
-    background: var(--color-bg-input);
+    background-color: var(--color-bg-input);
     border: 0.0625rem solid var(--color-border);
     border-radius: 0.375rem;
     font-family: inherit;
@@ -587,7 +694,6 @@ input[type="number"]::-webkit-outer-spin-button {
     outline: none;
     min-width: 5rem;
 }
-
 .ss-native:focus {
     border-color: var(--color-primary);
 }

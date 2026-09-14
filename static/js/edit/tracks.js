@@ -3,7 +3,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         if (editType === "cd") {
             return `<p class='series-empty'>トラックなし</p>
                 <div style="margin-top:0.4rem">
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},1,'${editType}')">+ トラック追加</button>
+                    <button type="button" class="btn btn-xs btn-outline-accent" onclick="addTrackToDisc(${parentId},1,'${editType}')">+ トラック追加</button>
                 </div>`;
         }
         return "<p class='series-empty'>トラックなし</p>";
@@ -24,7 +24,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         if (discKeys.length > 1) {
             html += `<div class="detail-tracks-disc" style="display:flex;justify-content:space-between;align-items:center">
                 <span>Disc ${d} <span class="edit-disc-count">(${discTracks.length} トラック)</span></span>
-                <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${d},'${editType}')">+ トラック追加</button>
+                <button type="button" class="btn btn-xs btn-outline-accent" onclick="addTrackToDisc(${parentId},${d},'${editType}')">+ トラック追加</button>
             </div>`;
         }
         html += discTracks.map((t, idx) => {
@@ -50,14 +50,14 @@ function renderTracksHtml(tracks, editType, parentId) {
                                        <span class="material-icons" aria-hidden="true">play_arrow</span>
                                    </button>
                                    <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
-                                   <label class="btn btn-xs btn-outline-success" style="cursor:pointer" title="音声を差し替え">
+                                   <label class="btn btn-xs btn-outline-accent" style="cursor:pointer" title="音声を差し替え">
                                        差替
                                        <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
                                    </label>
                                    <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
                                        <span class="material-icons" aria-hidden="true">info</span>
                                    </button>`
-                                : `<label class="btn btn-sm btn-outline-success" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、設定画面の上限まで）">
+                                : `<label class="btn btn-sm btn-outline-accent" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、設定画面の上限まで）">
                                        <span class="material-icons" aria-hidden="true">upload</span>
                                        音声
                                        <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
@@ -78,7 +78,7 @@ function renderTracksHtml(tracks, editType, parentId) {
         const discCount = discGroups[dVal].length;
         html += `<div style="margin-top:0.4rem;display:flex;justify-content:space-between;align-items:center">
             <span class="edit-disc-count">Disc ${dVal} / ${discCount} トラック</span>
-            <button type="button" class="btn btn-xs btn-outline-success" onclick="addTrackToDisc(${parentId},${dVal},'${editType}')">+ トラック追加</button>
+            <button type="button" class="btn btn-xs btn-outline-accent" onclick="addTrackToDisc(${parentId},${dVal},'${editType}')">+ トラック追加</button>
         </div>`;
     }
 
@@ -461,7 +461,7 @@ async function showTrackMetadata(editType, parentId, trackId) {
             <div id="meta-track-artists-list" class="meta-author-list"></div>
             <div class="meta-author-add">
                 <div id="meta-track-artists-select"></div>
-                <button type="button" class="btn btn-xs btn-outline-success" id="meta-track-artists-add">追加</button>
+                <button type="button" class="btn btn-xs btn-outline-accent" id="meta-track-artists-add">追加</button>
             </div>
             <table class="edit-meta-table" style="margin-top:0.5rem">${trackLevelRows}</table>
             ` : `
@@ -469,14 +469,14 @@ async function showTrackMetadata(editType, parentId, trackId) {
             <div id="meta-track-artists-list" class="meta-author-list"></div>
             <div class="meta-author-add">
                 <div id="meta-track-artists-select"></div>
-                <button type="button" class="btn btn-xs btn-outline-success" id="meta-track-artists-add">追加</button>
+                <button type="button" class="btn btn-xs btn-outline-accent" id="meta-track-artists-add">追加</button>
             </div>
             <table class="edit-meta-table" style="margin-top:0.5rem">${trackLevelRows}</table>
             `}
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end;gap:0.4rem">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-close">キャンセル</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="meta-modal-clear">クリア</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-save">保存</button>
+                <button type="button" class="btn btn-sm btn-outline-accent" id="meta-modal-save">保存</button>
             </div>
         </div>
     `;
@@ -664,7 +664,7 @@ async function offerToApplyAudioDuration(
         message: `音声ファイルの長さ ${formatted} をトラックの長さに設定しますか？`,
         okLabel: "設定する",
         cancelLabel: "設定しない",
-        okClass: "btn btn-sm btn-outline-success",
+        okClass: "btn btn-sm btn-outline-accent",
     });
     if (!ok) return;
     await saveTrackField(parentId, trackId, "duration", formatted, editType);
@@ -708,7 +708,7 @@ async function showExtractedMetadataModal(
             <table class="edit-meta-table">${rows}</table>
             <div class="confirm-actions" style="margin-top:0.8rem;justify-content:flex-end">
                 <button type="button" class="btn btn-sm btn-ghost" id="meta-modal-skip">閉じる</button>
-                ${allowApply && (!isCd && meta.title) ? '<button type="button" class="btn btn-sm btn-outline-success" id="meta-modal-apply-title">タイトルを反映</button>' : ""}
+                ${allowApply && (!isCd && meta.title) ? '<button type="button" class="btn btn-sm btn-outline-accent" id="meta-modal-apply-title">タイトルを反映</button>' : ""}
             </div>
         </div>
     `;

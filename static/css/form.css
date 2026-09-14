@@ -1,5 +1,9 @@
 .register {
     margin-bottom: 2rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--color-bg-surface);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-md);
 }
 
 .register form {
@@ -9,9 +13,22 @@
     gap: 0.6rem;
 }
 
-.register form > input {
-    flex: 1 1 14rem;
-    min-width: 0;
+.register form:not(.edit-form) input[type="text"],
+.register form:not(.edit-form) input[type="number"] {
+    flex: 1;
+    min-width: 9rem;
+}
+
+.register form:not(.edit-form) label {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+/* 手動登録フォームは縦積みの編集フォーム。横並びセンタリングを解除する */
+.register form.edit-form {
+    flex-wrap: nowrap;
+    align-items: stretch;
 }
 
 #register-status,
@@ -69,8 +86,8 @@
 }
 
 .register-tab.active {
-    color: var(--color-success);
-    border-bottom-color: var(--color-success);
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
 }
 
 /* --- Bulk toggle --- */
@@ -174,7 +191,7 @@
 }
 
 .bulk-item--processing {
-    border-left: 0.1875rem solid var(--color-success);
+    border-left: 0.1875rem solid var(--color-primary);
 }
 
 .bulk-item--success {

@@ -124,7 +124,7 @@ function renderMusicLoadError(messages) {
             <span class="material-icons" aria-hidden="true">cloud_off</span>
             <p>音楽ライブラリを読み込めませんでした。登録内容は削除されていません。</p>
             <small>${escapeHtml(messages.join(" / "))}</small>
-            <button type="button" class="btn btn-secondary" onclick="initMusicPage()">再読み込み</button>
+            <button type="button" class="btn btn-ghost" onclick="initMusicPage()">再読み込み</button>
         </div>`;
 }
 

@@ -65,8 +65,8 @@ function renderLabels() {
         <div class="series-item">
             <span class="series-item-name">${escapeHtml(l.name)}</span>
             <div class="series-item-actions">
-                <button class="btn btn-xs btn-ghost" onclick="renameLabel(${l.id})">名前変更</button>
-                <button class="btn btn-xs btn-outline-danger" onclick="deleteLabel(${l.id})">削除</button>
+                <button class="icon-btn" onclick="renameLabel(${l.id})" aria-label="名前変更" title="名前変更"><span class="material-icons" aria-hidden="true">edit</span></button>
+                <button class="icon-btn icon-btn-danger" onclick="deleteLabel(${l.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
             </div>
         </div>
     `).join("");

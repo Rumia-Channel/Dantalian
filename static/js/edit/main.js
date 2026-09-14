@@ -72,7 +72,7 @@ async function renderBookEdit(id) {
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">
-                    <label class="btn btn-xs btn-outline-success edit-cover-upload-label">
+                    <label class="btn btn-xs btn-outline-accent edit-cover-upload-label">
                         変更
                         <input type="file" id="edit-cover-input" accept="image/*" hidden>
                     </label>
@@ -308,7 +308,7 @@ async function renderBookEdit(id) {
                     }
                 </div>
                 <div class="edit-epub-actions">
-                    <label class="btn btn-xs btn-outline-success edit-epub-upload-label">
+                    <label class="btn btn-xs btn-outline-accent edit-epub-upload-label">
                         ${book.epub_file_hash ? "差し替え" : "アップロード"}
                         <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" hidden>
                     </label>
@@ -343,7 +343,7 @@ async function renderBookEdit(id) {
                 </div>
                 <div class="edit-author-add" id="edit-author-add-wrap">
                     <div id="edit-author-select-container"></div>
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToBook(${book.id})">追加</button>
+                    <button type="button" class="btn btn-xs btn-outline-accent" onclick="addAuthorToBook(${book.id})">追加</button>
                 </div>
             </div>
             <div class="edit-section">
@@ -666,7 +666,7 @@ async function renderCdEdit(cdId) {
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">
-                    <label class="btn btn-xs btn-outline-success edit-cover-upload-label">
+                    <label class="btn btn-xs btn-outline-accent edit-cover-upload-label">
                         変更
                         <input type="file" id="edit-cover-input" accept="image/*" hidden>
                     </label>
@@ -752,11 +752,11 @@ async function renderCdEdit(cdId) {
                 ${(!(cd.authors || []).length && tags.album_artist) ? `
                 <div class="edit-tag-hint">
                     タグ由来のアルバムアーティスト: <strong>${escapeHtml(tags.album_artist)}</strong>
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="registerCdAlbumArtistFromTag(${cdId})">この名前で登録</button>
+                    <button type="button" class="btn btn-xs btn-outline-accent" onclick="registerCdAlbumArtistFromTag(${cdId})">この名前で登録</button>
                 </div>` : ""}
                 <div class="edit-author-add">
                     <div id="edit-cd-author-select-container"></div>
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addAuthorToCd(${cdId})">追加</button>
+                    <button type="button" class="btn btn-xs btn-outline-accent" onclick="addAuthorToCd(${cdId})">追加</button>
                 </div>
             </div>
             <div class="edit-section">

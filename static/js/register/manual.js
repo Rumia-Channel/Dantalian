@@ -98,8 +98,8 @@ async function renderManualForm() {
                 <label>説明</label>
                 <textarea name="description" rows="6"></textarea>
             </div>
-            <div class="edit-section">
-                <h3 class="edit-section-title">ISBN / NDL 固有</h3>
+            <details class="edit-section edit-section-collapsible">
+                <summary class="edit-section-title">ISBN / NDL 固有</summary>
                 <div class="edit-row">
                     <div class="edit-field">
                         <label>ISBN</label>
@@ -114,9 +114,9 @@ async function renderManualForm() {
                     <label>NDL URL</label>
                     <input type="text" name="ndl_url">
                 </div>
-            </div>
-            <div class="edit-section">
-                <h3 class="edit-section-title">ISDN 固有</h3>
+            </details>
+            <details class="edit-section edit-section-collapsible">
+                <summary class="edit-section-title">ISDN 固有</summary>
                 <div class="edit-row">
                     <div class="edit-field">
                         <label>ISDN</label>
@@ -191,21 +191,17 @@ async function renderManualForm() {
                     <label>サンプル画像URL</label>
                     <input type="text" name="isdn_sample_image_url">
                 </div>
-            </div>
+            </details>
             <div class="edit-field">
                 <label>表紙画像</label>
                 <div class="manual-cover-row">
-                    <label class="btn btn-xs btn-outline-success manual-cover-label">
+                    <label class="btn btn-xs btn-outline-accent manual-cover-label">
                         ファイルを選択
                         <input type="file" id="manual-cover-input" accept="image/*" hidden>
                     </label>
                     <span class="manual-cover-filename" id="manual-cover-filename"></span>
                     ${manualCoverPreview ? `<img class="manual-cover-preview" id="manual-cover-preview" src="${manualCoverPreview}" alt="">` : '<img class="manual-cover-preview" id="manual-cover-preview" src="" alt="" hidden>'}
                 </div>
-            </div>
-            <div id="manual-register-status"></div>
-            <div class="edit-actions">
-                <button type="submit" class="btn btn-md btn-primary">登録</button>
             </div>
             </div>
             <div id="manual-cd-fields" hidden>
@@ -297,13 +293,13 @@ async function renderManualForm() {
                 <h3 class="edit-section-title">トラック</h3>
                 <div id="manual-cd-tracks-list"><p class="manual-cd-tracks-empty">トラックなし</p></div>
                 <div class="manual-cd-track-add">
-                    <button type="button" class="btn btn-sm btn-outline-success" onclick="addManualCdTrack()">+ トラック追加</button>
+                    <button type="button" class="btn btn-sm btn-outline-accent" onclick="addManualCdTrack()">+ トラック追加</button>
                 </div>
             </div>
             <div class="edit-field">
                 <label>表紙画像</label>
                 <div class="manual-cover-row">
-                    <label class="btn btn-sm btn-outline-success manual-cover-label">
+                    <label class="btn btn-sm btn-outline-accent manual-cover-label">
                         ファイルを選択
                         <input type="file" id="manual-cd-cover-input" accept="image/*" hidden>
                     </label>
@@ -311,17 +307,13 @@ async function renderManualForm() {
                     <img class="manual-cover-preview" id="manual-cd-cover-preview" src="" alt="" hidden>
                 </div>
             </div>
-            <div id="manual-cd-register-status"></div>
-            <div class="edit-actions">
-                <button type="button" class="btn btn-md btn-primary" onclick="submitManualCd(event)">登録</button>
-            </div>
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">アーティスト</h3>
                 <div class="edit-author-list" id="manual-author-list"></div>
                 <div class="edit-author-add">
                     <div id="manual-author-select-container"></div>
-                    <button type="button" class="btn btn-xs btn-outline-success" onclick="addManualAuthor()">追加</button>
+                    <button type="button" class="btn btn-xs btn-outline-accent" onclick="addManualAuthor()">追加</button>
                 </div>
             </div>
             <div class="edit-section">
@@ -340,6 +332,11 @@ async function renderManualForm() {
                     <label>大シリーズ</label>
                     <div id="manual-grand-series-select-container"></div>
                 </div>
+            </div>
+            <div id="manual-register-status"></div>
+            <div id="manual-cd-register-status"></div>
+            <div class="edit-actions">
+                <button type="submit" class="btn btn-md btn-primary">登録</button>
             </div>
         </form>
     `;

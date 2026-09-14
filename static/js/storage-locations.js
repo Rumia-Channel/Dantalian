@@ -86,17 +86,17 @@ function renderStorageLocations() {
         <div class="series-item">
             <span class="series-item-name">${escapeHtml(parent.name)}</span>
             <div class="series-item-actions">
-                <button class="btn btn-xs btn-ghost" onclick="renameStorageLocation(${parent.id})">名前変更</button>
-                <button class="btn btn-xs btn-outline-danger" onclick="deleteStorageLocation(${parent.id})">削除</button>
+                <button class="icon-btn" onclick="renameStorageLocation(${parent.id})" aria-label="名前変更" title="名前変更"><span class="material-icons" aria-hidden="true">edit</span></button>
+                <button class="icon-btn icon-btn-danger" onclick="deleteStorageLocation(${parent.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
             </div>
         </div>`;
         for (const child of kids) {
             html += `
-            <div class="series-item" style="padding-left:2rem;">
-                <span class="series-item-name" style="color:var(--color-text-dim);">└ ${escapeHtml(child.name)}</span>
+            <div class="series-item series-item-child">
+                <span class="series-item-name series-item-child-name">${escapeHtml(child.name)}</span>
                 <div class="series-item-actions">
-                    <button class="btn btn-xs btn-ghost" onclick="renameStorageLocation(${child.id})">名前変更</button>
-                    <button class="btn btn-xs btn-outline-danger" onclick="deleteStorageLocation(${child.id})">削除</button>
+                    <button class="icon-btn" onclick="renameStorageLocation(${child.id})" aria-label="名前変更" title="名前変更"><span class="material-icons" aria-hidden="true">edit</span></button>
+                    <button class="icon-btn icon-btn-danger" onclick="deleteStorageLocation(${child.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
                 </div>
             </div>`;
         }
@@ -108,8 +108,8 @@ function renderStorageLocations() {
         <div class="series-item">
             <span class="series-item-name">${escapeHtml(loc.name)}</span>
             <div class="series-item-actions">
-                <button class="btn btn-xs btn-ghost" onclick="renameStorageLocation(${loc.id})">名前変更</button>
-                <button class="btn btn-xs btn-outline-danger" onclick="deleteStorageLocation(${loc.id})">削除</button>
+                <button class="icon-btn" onclick="renameStorageLocation(${loc.id})" aria-label="名前変更" title="名前変更"><span class="material-icons" aria-hidden="true">edit</span></button>
+                <button class="icon-btn icon-btn-danger" onclick="deleteStorageLocation(${loc.id})" aria-label="削除" title="削除"><span class="material-icons" aria-hidden="true">delete</span></button>
             </div>
         </div>`;
     }

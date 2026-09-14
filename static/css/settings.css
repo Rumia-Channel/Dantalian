@@ -1,8 +1,10 @@
 .settings-bar {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.35rem;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem 1rem;
+    flex: 1 0 100%;
     padding: 0.6rem 0;
     margin-bottom: 1rem;
     font-size: 0.8rem;
@@ -50,7 +52,38 @@
     background: var(--color-primary);
     color: #fff;
 }
+.settings-form-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
 
+.settings-form-row:last-child {
+    margin-bottom: 0;
+}
+
+/* ラベル+入力の行は入力を残り幅いっぱいに広げる */
+.settings-form-row > .form-input,
+.settings-form-row > input:not([type="checkbox"]):not([type="radio"]),
+.settings-form-row > select {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-form-row > input[type="time"],
+.settings-form-row > .form-input[style*="width"],
+.settings-form-row > input[style*="width"],
+.settings-form-row > select[style*="width"] {
+    flex: 0 0 auto;
+}
+
+.settings-form-row input[type="checkbox"] {
+    accent-color: var(--color-primary);
+    width: 1.05rem;
+    height: 1.05rem;
+    flex-shrink: 0;
+}
 .settings-form-section {
     padding: 1rem 0;
     margin-bottom: 1rem;
@@ -67,17 +100,6 @@
     margin: 0 0 1rem;
     color: var(--color-text-primary);
     padding-bottom: 0.5rem;
-}
-
-.settings-form-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
-}
-
-.settings-form-row:last-child {
-    margin-bottom: 0;
 }
 
 .settings-form-actions {

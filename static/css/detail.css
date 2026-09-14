@@ -15,13 +15,15 @@
 
 .detail-modal {
     background: var(--color-bg-surface);
-    border-radius: 0.75rem;
+    border: 0.0625rem solid var(--color-border-light);
+    border-radius: var(--radius-xl);
     max-width: 56.25rem;
     width: 95%;
     max-height: 90vh;
     overflow-y: auto;
     padding: 2rem;
     position: relative;
+    box-shadow: var(--shadow-lg);
 }
 
 .detail-close {
@@ -94,13 +96,13 @@
 
 .detail-grand-series-name {
     font-size: 0.85rem;
-    color: var(--color-success);
+    color: var(--color-accent);
     margin-bottom: 0.15rem;
 }
 
 .detail-volume {
     font-size: 0.9rem;
-    color: var(--color-success);
+    color: var(--color-accent);
     margin-bottom: 0.3rem;
 }
 
@@ -118,6 +120,9 @@
 }
 
 .detail-meta-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.1rem 1.5rem;
     font-size: 0.85rem;
     color: var(--color-text-secondary);
     line-height: 1.8;
@@ -144,11 +149,11 @@
     display: inline-block;
     margin-bottom: 1.5rem;
     font-size: 0.85rem;
-    color: var(--color-success);
+    color: var(--color-accent);
 }
 
 .detail-ndl-link:hover {
-    color: var(--color-success-hover);
+    color: var(--color-accent-hover);
 }
 
 .detail-series-assign {
@@ -257,8 +262,8 @@
 }
 
 .detail-author-link:hover {
-    color: var(--color-success);
-    border-bottom-color: var(--color-success);
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
 }
 
 .edit-form {
@@ -376,21 +381,76 @@
 }
 
 .edit-author-tag:hover {
-    color: var(--color-success);
-    border-color: var(--color-success);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
 }
 
 .edit-section {
     margin-top: 0.5rem;
-    padding-top: 0.75rem;
-    border-top: 0.0625rem solid var(--color-border);
+    padding: 0.9rem 1rem;
+    background: var(--color-bg-input);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-md);
 }
 
 .edit-section-title {
     font-size: 0.9rem;
     color: var(--color-text-secondary);
     margin-bottom: 0.75rem;
+    font-weight: 600;
 }
+
+/* 折りたたみ可能なセクション (details) */
+.edit-section-collapsible {
+    padding: 0;
+}
+
+.edit-section-collapsible > summary.edit-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-radius: var(--radius-md);
+    transition: color 0.15s, background 0.15s;
+}
+
+.edit-section-collapsible > summary.edit-section-title::-webkit-details-marker {
+    display: none;
+}
+
+.edit-section-collapsible > summary.edit-section-title::before {
+    content: "expand_more";
+    font-family: "Material Icons";
+    font-feature-settings: "liga";
+    -webkit-font-feature-settings: "liga";
+    font-size: 1.1rem;
+    color: var(--color-text-dim);
+    transform: translateY(var(--material-icon-optical-y)) rotate(-90deg);
+    transition: transform 0.2s;
+}
+
+.edit-section-collapsible[open] > summary.edit-section-title::before {
+    transform: translateY(var(--material-icon-optical-y)) rotate(0deg);
+}
+
+.edit-section-collapsible > summary.edit-section-title:hover {
+    color: var(--color-text-primary);
+    background: var(--color-bg-hover);
+}
+
+.edit-section-collapsible > *:not(summary) {
+    margin-left: 1rem;
+    margin-right: 1rem;
+}
+
+.edit-section-collapsible > *:not(summary):last-child {
+    margin-bottom: 0.9rem;
+}
+
 
 .edit-author-list {
     display: flex;
@@ -403,6 +463,11 @@
     display: flex;
     gap: 0.4rem;
     align-items: center;
+}
+
+.edit-author-add > div:first-child {
+    flex: 1;
+    min-width: 0;
 }
 
 .edit-author-add select {
@@ -973,13 +1038,27 @@
 }
 
 .detail-reading-status.rs-reading {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
+    background: var(--color-primary-alpha);
+    color: var(--color-primary-hover);
 }
 
 .detail-reading-status.rs-completed {
-    background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
+    background: var(--color-success-alpha);
+    color: var(--color-success);
+}
+
+/* --- アーティスト一覧 --- */
+.authors-count {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--color-text-dim);
+}
+
+/* --- インライン表示用メディアバッジ --- */
+.media-badge--inline {
+    position: static;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 /* ---------- タグ由来の参考表示 / ヒント ---------- */
