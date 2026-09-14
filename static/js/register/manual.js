@@ -12,6 +12,35 @@ let manualAuthorSelect = null;
 let manualSeriesSelect = null;
 let manualGrandSeriesSelect = null;
 
+// 登録種別に合わせてフィールド群の hidden / required / disabled を揃える。
+// 非表示 (display:none) の required コントロールを残すと、ブラウザが検証エラーを
+// 表示できず submit 自体を中断する ("An invalid form control with name='title'
+// is not focusable")。
+function syncManualMediaTypeFields() {
+    const mediaTypeEl = document.getElementById("manual-media-type");
+    const bookFields = document.getElementById("manual-book-fields");
+    const cdFields = document.getElementById("manual-cd-fields");
+    if (!mediaTypeEl || !bookFields || !cdFields) return;
+
+    const isCd = mediaTypeEl.value === "cd";
+    bookFields.hidden = isCd;
+    cdFields.hidden = !isCd;
+
+    for (const [group, active] of [
+        [bookFields, !isCd],
+        [cdFields, isCd],
+    ]) {
+        for (const el of group.querySelectorAll("input, select, textarea")) {
+            el.disabled = !active;
+        }
+    }
+
+    const bookTitle = bookFields.querySelector('input[name="title"]');
+    const cdTitle = cdFields.querySelector('input[name="cd_title"]');
+    if (bookTitle) bookTitle.required = !isCd;
+    if (cdTitle) cdTitle.required = isCd;
+}
+
 async function renderManualForm() {
     if (manualRendered) return;
     manualRendered = true;
@@ -343,17 +372,8 @@ async function renderManualForm() {
 
     bindPublishDateInputs(container);
 
-    document.getElementById("manual-media-type").addEventListener("change", function () {
-        const bookFields = document.getElementById("manual-book-fields");
-        const cdFields = document.getElementById("manual-cd-fields");
-        if (this.value === "cd") {
-            bookFields.hidden = true;
-            cdFields.hidden = false;
-        } else {
-            bookFields.hidden = false;
-            cdFields.hidden = true;
-        }
-    });
+    document.getElementById("manual-media-type").addEventListener("change", syncManualMediaTypeFields);
+    syncManualMediaTypeFields();
 
     const form = document.getElementById("manual-form");
 
