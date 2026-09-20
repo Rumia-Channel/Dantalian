@@ -226,13 +226,77 @@ async fn with_children(db: &worker::D1Database, cd: CdRow) -> Result<serde_json:
     Ok(value)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CdListRow {
+    id: i64,
+    jan: Option<String>,
+    title: String,
+    artist: Option<String>,
+    publisher: Option<String>,
+    label: Option<String>,
+    catalog_number: Option<String>,
+    publish_date: Option<String>,
+    cover_url: Option<String>,
+    description: Option<String>,
+    disc_count: Option<i64>,
+    volume: Option<String>,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+    parent_book_id: Option<i64>,
+    media_type: Option<String>,
+    series_id: Option<i64>,
+    track_artist: Option<String>,
+    album_artist: Option<String>,
+    #[serde(default, skip_serializing)]
+    tracks_json: Option<String>,
+    #[serde(default, skip_serializing)]
+    authors_json: Option<String>,
+}
+
+/// Single-statement CD list: child collections are folded into the row via
+/// correlated subqueries so the endpoint costs one D1 round trip regardless of
+/// how many CDs exist. The previous per-CD loop issued 1 + 3N sequential
+/// statements, which dominates latency when each D1 round trip is ~180ms.
+const LIST_SELECT: &str = "SELECT c.id, c.jan, c.title, c.artist, c.publisher, c.label, c.catalog_number, c.publish_date, c.cover_url, c.description, c.disc_count, c.volume, c.created_at, c.updated_at, c.parent_book_id, c.media_type, c.series_id,
+    (SELECT json_group_array(json_object('id', t.id, 'book_id', t.book_id, 'cd_id', t.cd_id, 'disc_number', t.disc_number, 'track_number', t.track_number, 'title', t.title, 'duration', t.duration, 'file_hash', t.file_hash, 'file_name', t.file_name))
+     FROM tracks t WHERE t.cd_id = c.id ORDER BY t.disc_number, t.track_number, t.id LIMIT -1) AS tracks_json,
+    (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ca.sort_order))
+     FROM authors a JOIN cd_authors ca ON ca.author_id = a.id WHERE ca.cd_id = c.id ORDER BY ca.sort_order, ca.author_id LIMIT -1) AS authors_json,
+    (SELECT tm.artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.artist IS NOT NULL AND tm.artist <> '' ORDER BY t.disc_number, t.track_number LIMIT 1) AS track_artist,
+    (SELECT tm.album_artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.album_artist IS NOT NULL AND tm.album_artist <> '' ORDER BY t.disc_number, t.track_number LIMIT 1) AS album_artist
+    FROM cds c ORDER BY c.id DESC";
+
 pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("DB")?;
-    let cds = db.prepare("SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id FROM cds ORDER BY id DESC").all().await.map_err(db_error)?.results::<CdRow>().map_err(db_error)?;
-    let mut result = Vec::with_capacity(cds.len());
-    for cd in cds {
-        result.push(with_children(&db, cd).await?);
-    }
+    let rows = db
+        .prepare(LIST_SELECT)
+        .all()
+        .await
+        .map_err(db_error)?
+        .results::<CdListRow>()
+        .map_err(db_error)?;
+    let result = rows
+        .into_iter()
+        .map(|row| {
+            let tracks: Vec<serde_json::Value> = row
+                .tracks_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str(raw).ok())
+                .unwrap_or_default();
+            let authors: Vec<serde_json::Value> = row
+                .authors_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str(raw).ok())
+                .unwrap_or_default();
+            let mut value = serde_json::to_value(row)
+                .map_err(|error| worker::Error::from(error.to_string()))?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("tracks".into(), serde_json::Value::Array(tracks));
+                object.insert("authors".into(), serde_json::Value::Array(authors));
+            }
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>>>()?;
     Response::from_json(&result)
 }
 
