@@ -93,6 +93,15 @@ function escapeJs(text) {
         .replace(/\u2029/g, "\\u2029");
 }
 
+// 検索・グループキー用の正規化: 小文字化 + NFKC + 半角カタカナ→全角 + 空白除去。
+function normalizeSearchText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[ぁ-ゖ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60))
+        .replace(/\s+/g, "");
+}
+
 function startRegisterProgress(element, operation) {
     const startedAt = Date.now();
     const formatElapsed = () => {

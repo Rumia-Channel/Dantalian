@@ -167,14 +167,6 @@ function getBookAuthorLabel(book) {
     return book.primary_author_name || "";
 }
 
-function normalizeSearchText(value) {
-    return String(value || "")
-        .toLowerCase()
-        .normalize("NFKC")
-        .replace(/[ぁ-ゖ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60))
-        .replace(/\s+/g, "");
-}
-
 function getItemSearchText(item) {
     const series = item.series_id != null ? allSeries.find((s) => s.id === item.series_id) : null;
     const grandSeriesNames = [];
