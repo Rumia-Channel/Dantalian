@@ -11,18 +11,27 @@ use crate::wasabi::{WasabiConfig, WasabiStorage};
 
 const MAX_MULTIPART_SIZE: u64 = 5 * 1024 * 1024 * 1024 * 1024;
 const OWNER_SCOPE: &str = "api-token";
-const OBJECT_KIND: &str = "epub";
+/// Both presigned kinds are public so the finalize handlers resolve the same
+/// ObjectKind the session was created with.
+pub const EPUB_OBJECT_KIND: &str = "epub";
+pub const AUDIO_OBJECT_KIND: &str = "audio";
 
+/// EPUB multipart init keeps the original request shape (content type only).
 #[derive(Debug, Deserialize)]
 pub struct MultipartInitRequest {
     pub expected_size: u64,
     pub content_type: String,
+    #[serde(default)]
+    pub object_kind: Option<String>,
+    #[serde(default)]
+    pub file_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct MultipartInitResponse {
     id: String,
     object_key: String,
+    object_kind: String,
     content_type: String,
     part_size: u64,
     status: &'static str,
@@ -50,6 +59,7 @@ pub struct MultipartPartRequest {
 struct MultipartCompleteResponse {
     id: String,
     object_key: String,
+    object_kind: String,
     expected_size: u64,
     content_type: String,
     status: &'static str,
@@ -77,12 +87,20 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(content_type) => content_type,
         Err(error) => return error_response(error),
     };
+    let object_kind = match object_kind_for(&request) {
+        Ok(kind) => kind,
+        Err(error) => return error_response(error),
+    };
+    let extension = match extension_for(&request, object_kind) {
+        Ok(extension) => extension,
+        Err(error) => return error_response(error),
+    };
     let config = match WasabiConfig::from_env(&ctx.env).await {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
     let id = Uuid::new_v4().simple().to_string();
-    let key = match object_key(config.prefix.as_deref(), ObjectKind::Epub, &id, "epub") {
+    let key = match object_key(config.prefix.as_deref(), object_kind, &id, &extension) {
         Ok(key) => key,
         Err(error) => return error_response(error),
     };
@@ -95,7 +113,7 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         id: id.clone(),
         provider_upload_id,
         object_key: key.clone(),
-        object_kind: OBJECT_KIND.to_string(),
+        object_kind: object_kind_name(object_kind).to_string(),
         expected_size: request.expected_size.to_string(),
         content_type: content_type.clone(),
         status: "pending".to_string(),
@@ -120,6 +138,7 @@ pub async fn init(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     Response::from_json(&MultipartInitResponse {
         id,
         object_key: key,
+        object_kind: session.object_kind,
         content_type,
         part_size: MULTIPART_PART_SIZE,
         status: "pending",
@@ -211,7 +230,13 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         .await
     {
         Ok(metadata) => metadata,
-        Err(error) => return error_response(error),
+        Err(error) => {
+            // The provider may have assembled the parts even when the response
+            // is unreadable, so the object must not be left orphaned.
+            let _ = storage.delete_object(&session.object_key).await;
+            let _ = update_status(&db, &session.id, "failed").await;
+            return error_response(error);
+        }
     };
     let expected_size = match session.expected_size.parse::<u64>() {
         Ok(value) => value,
@@ -235,6 +260,7 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     Response::from_json(&MultipartCompleteResponse {
         id: session.id,
         object_key: session.object_key,
+        object_kind: session.object_kind,
         expected_size,
         content_type: session.content_type,
         status: "complete",
@@ -285,12 +311,113 @@ fn validate_init(request: &MultipartInitRequest) -> Result<String, AppError> {
         ));
     }
     let content_type = request.content_type.trim().to_ascii_lowercase();
-    if content_type != "application/epub+zip" && content_type != "application/octet-stream" {
-        return Err(AppError::Validation(
-            "multipart uploads currently support EPUB content only".to_string(),
-        ));
+    if content_type.is_empty() || content_type.len() > 128 {
+        return Err(AppError::Validation("invalid content_type".to_string()));
+    }
+    let kind = object_kind_for(request)?;
+    // Validate the extension here, not only in `init`, so an unsupported name
+    // is rejected before a Wasabi multipart session is created.
+    extension_for(request, kind)?;
+    match kind {
+        ObjectKind::OriginalAudio => {
+            // Browsers report `application/octet-stream` for some audio
+            // containers (FLAC in particular), so both shapes are accepted.
+            if !validate_audio_content_type(&content_type) {
+                return Err(AppError::Validation(
+                    "audio multipart uploads require an audio/* content type".to_string(),
+                ));
+            }
+        }
+        _ => {
+            if content_type != "application/epub+zip" && content_type != "application/octet-stream"
+            {
+                return Err(AppError::Validation(
+                    "multipart uploads currently support EPUB content only".to_string(),
+                ));
+            }
+        }
     }
     Ok(content_type)
+}
+
+/// EPUB sessions keep working without `object_kind`, so the default stays epub.
+fn object_kind_for(request: &MultipartInitRequest) -> Result<ObjectKind, AppError> {
+    match request.object_kind.as_deref() {
+        None => Ok(ObjectKind::Epub),
+        Some(kind) => parse_object_kind(kind),
+    }
+}
+
+fn parse_object_kind(kind: &str) -> Result<ObjectKind, AppError> {
+    match kind.trim().to_ascii_lowercase().as_str() {
+        EPUB_OBJECT_KIND => Ok(ObjectKind::Epub),
+        AUDIO_OBJECT_KIND => Ok(ObjectKind::OriginalAudio),
+        _ => Err(AppError::Validation(
+            "object_kind must be epub or audio".to_string(),
+        )),
+    }
+}
+
+pub fn object_kind_name(kind: ObjectKind) -> &'static str {
+    match kind {
+        ObjectKind::Epub => EPUB_OBJECT_KIND,
+        ObjectKind::OriginalAudio => AUDIO_OBJECT_KIND,
+        _ => EPUB_OBJECT_KIND,
+    }
+}
+
+/// The object extension is part of the canonical media key, so it is derived
+/// from the uploaded file name and validated against the kind. `epub` and
+/// `bin` keep the historical EPUB contract working for callers that only send
+/// a content type.
+fn extension_for(request: &MultipartInitRequest, kind: ObjectKind) -> Result<String, AppError> {
+    let extension = request
+        .file_name
+        .as_deref()
+        .and_then(extension_of)
+        .unwrap_or_else(|| match kind {
+            ObjectKind::OriginalAudio => "bin".to_string(),
+            _ => EPUB_OBJECT_KIND.to_string(),
+        });
+    match kind {
+        ObjectKind::OriginalAudio => {
+            if !AUDIO_EXTENSIONS.contains(&extension.as_str()) {
+                return Err(AppError::Validation(format!(
+                    "unsupported audio extension: {extension}"
+                )));
+            }
+        }
+        _ => {
+            if extension != EPUB_OBJECT_KIND {
+                return Err(AppError::Validation(
+                    "multipart epub objects must end with .epub".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(extension)
+}
+
+const AUDIO_EXTENSIONS: [&str; 8] = ["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"];
+
+/// Audio content types accepted for presigned audio sessions. The extension is
+/// what identifies the media, so a generic binary type is accepted too.
+pub fn validate_audio_content_type(content_type: &str) -> bool {
+    let content_type = content_type.trim().to_ascii_lowercase();
+    (content_type.starts_with("audio/") || content_type == "application/octet-stream")
+        && content_type.len() <= 128
+}
+
+fn extension_of(name: &str) -> Option<String> {
+    let (_, extension) = name.rsplit_once('.')?;
+    let extension = extension.to_ascii_lowercase();
+    if extension.is_empty()
+        || extension.len() > 12
+        || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    Some(extension)
 }
 
 fn validate_parts(parts: &[MultipartPartRequest]) -> Result<Vec<MultipartPart>, AppError> {
@@ -404,4 +531,83 @@ async fn update_status(
 
 fn db_error(error: impl std::fmt::Display) -> AppError {
     AppError::Database(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_request(
+        kind: Option<&str>,
+        file_name: Option<&str>,
+        content_type: &str,
+    ) -> MultipartInitRequest {
+        MultipartInitRequest {
+            expected_size: 1024,
+            content_type: content_type.to_string(),
+            object_kind: kind.map(str::to_string),
+            file_name: file_name.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn epub_init_keeps_the_legacy_contract() {
+        let request = init_request(None, None, "application/epub+zip");
+        assert_eq!(
+            validate_init(&request).expect("valid"),
+            "application/epub+zip"
+        );
+        assert_eq!(
+            object_kind_for(&request).expect("default kind"),
+            ObjectKind::Epub
+        );
+        assert_eq!(
+            extension_for(&request, ObjectKind::Epub).expect("extension"),
+            "epub"
+        );
+        assert_eq!(object_kind_name(ObjectKind::Epub), EPUB_OBJECT_KIND);
+    }
+
+    #[test]
+    fn audio_init_derives_the_media_extension() {
+        let request = init_request(Some("audio"), Some("Track 01.FLAC"), "audio/flac");
+        assert_eq!(validate_init(&request).expect("valid"), "audio/flac");
+        assert_eq!(
+            object_kind_for(&request).expect("kind"),
+            ObjectKind::OriginalAudio
+        );
+        assert_eq!(
+            extension_for(&request, ObjectKind::OriginalAudio).expect("extension"),
+            "flac"
+        );
+        assert_eq!(
+            object_kind_name(ObjectKind::OriginalAudio),
+            AUDIO_OBJECT_KIND
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_kinds_unsupported_extensions_and_content_types() {
+        assert!(validate_init(&init_request(Some("cover"), None, "image/png")).is_err());
+        assert!(
+            validate_init(&init_request(
+                Some("audio"),
+                Some("track.exe"),
+                "audio/mpeg"
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_init(&init_request(Some("audio"), Some("track.mp3"), "video/mp4")).is_err()
+        );
+        assert!(
+            validate_init(&init_request(
+                Some("epub"),
+                Some("book.pdf"),
+                "application/epub+zip"
+            ))
+            .is_err()
+        );
+        assert!(validate_init(&init_request(None, None, "")).is_err());
+    }
 }

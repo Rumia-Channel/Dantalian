@@ -510,25 +510,61 @@ async function saveBook(e, bookId) {
     } catch {}
 }
 
+// ブラウザ→Wasabi 直送 (presigned multipart) の例外は、応答が読めないことが
+// 多い (CORS / ネットワーク)。もっとも多い原因を切り分けて案内する。
+function describePresignedUploadError(error, label) {
+    console.error("presigned upload failed:", error);
+    if (!error || !error.presigned) {
+        return `${label}のアップロード中に通信エラーが発生しました。`;
+    }
+    if (error.presignedKind === "etag") {
+        return `${label}のアップロードに失敗しました: オブジェクトストレージの応答からETagを` +
+            `読み取れません。WasabiバケットのCORSルールで ExposeHeaders に ETag を追加してください。`;
+    }
+    if (error.presignedKind === "put") {
+        return `${label}のアップロードに失敗しました: ブラウザからオブジェクトストレージへ` +
+            `直接アップロードできません。WasabiバケットのCORSルール` +
+            ` (AllowedOrigins に ${window.location.origin}、AllowedMethods に PUT/GET/HEAD) ` +
+            `を確認してください。`;
+    }
+    return `${label}のアップロードに失敗しました: マルチパートの開始に失敗しました。` +
+        `コンソールの診断情報を確認してください。`;
+}
+
 // Upload errors expose both the application detail and the Worker direct-size contract.
+// 本文は一度しか読めないため、診断用に全文を取り出してからメッセージを組み立てる。
 async function describeUploadError(res, label) {
-    let errorBody = null;
-    try {
-        errorBody = await res.json();
-    } catch {}
-    const serverMsg = (errorBody && errorBody.error) || "";
+    const diagnostic = typeof readApiDiagnostic === "function"
+        ? await readApiDiagnostic(res)
+        : { status: res.status, json: null, body: "", headers: {} };
+    const errorBody = diagnostic.json;
+    console.warn(`upload diagnostic (${label}):`, describeApiDiagnostic
+        ? describeApiDiagnostic(diagnostic)
+        : diagnostic.status, diagnostic);
+    const serverMsg = errorBody && typeof errorBody.error === "string" ? errorBody.error : "";
     if (res.status === 413 && errorBody?.code === "presigned_multipart_required") {
         const maxBytes = Number(errorBody.max_bytes);
         const maxMb = Number.isFinite(maxBytes) ? Math.round(maxBytes / 1024 / 1024) : null;
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
-            `Cloudflare Workerの直接アップロード上限${maxMb ? ` (${maxMb}MB)` : ""}を超えています。` +
-            `大容量ファイルはオブジェクトストレージのマルチパート契約が必要です。`;
+            `オブジェクトストレージへ直接アップロードする経路 (presigned multipart) を` +
+            `開始できませんでした。上限${maxMb ? ` (${maxMb}MB)` : ""}とバケットの設定を確認してください。`;
     }
     if (res.status === 413 && !serverMsg) {
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
             `ファイルサイズが上限を超えています。` +
             `前面のリバースプロキシ (nginx: client_max_body_size / Caddy / Cloudflare 等) の上限をまず確認してください。` +
             `(参考: Dantalian 本体の初期値は file 500MB / audio 100MB / cover 10MB。設定画面で変更可能)`;
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+        // アプリは 5xx を返さない (Worker は 400/404/409/500 のみ)。ここに来る場合は
+        // Cloudflare 側のエラーページか Worker の強制終了 (CPU/メモリ上限) を疑う。
+        const code = diagnostic.cloudflareCode ? ` / Cloudflare error ${diagnostic.cloudflareCode}` : "";
+        const ray = diagnostic.rayId ? ` / Ray ID ${diagnostic.rayId}` : "";
+        const detail = serverMsg ? `: ${serverMsg}` : "";
+        return `${label}のアップロードに失敗しました (${res.status}${code}${ray})${detail}\n` +
+            `サーバーが 5xx を返しています。アップロードしたファイルサイズと、` +
+            `Cloudflare ダッシュボードの Workers Logs (該当時刻のエラー / CPU time / memory) を確認してください。\n` +
+            `診断情報はコンソールに出力しました。`;
     }
     const detail = serverMsg ? `: ${serverMsg}` : "";
     return `${label}のアップロードに失敗しました (${res.status})${detail}`;

@@ -336,7 +336,9 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         }
     } catch (err) {
         console.error("uploadTrackAudio error:", err);
-        alert("音声のアップロード中に通信エラーが発生しました");
+        alert(typeof describePresignedUploadError === "function"
+            ? describePresignedUploadError(err, "音声")
+            : "音声のアップロード中に通信エラーが発生しました");
     }
 }
 async function saveExtractedTrackMetadata(editType, parentId, trackId, metadata) {

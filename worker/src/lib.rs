@@ -144,6 +144,14 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             object_api::delete_book_audio,
         )
         .post_async("/api/cds/:id/tracks/:track_id/audio", object_api::cd_audio)
+        .post_async(
+            "/api/cds/:id/tracks/:track_id/audio/finalize",
+            track_api::finalize_cd_audio,
+        )
+        .post_async(
+            "/api/books/:id/tracks/:track_id/audio/finalize",
+            track_api::finalize_book_audio,
+        )
         .delete_async(
             "/api/cds/:id/tracks/:track_id/audio",
             object_api::delete_cd_audio,

@@ -61,6 +61,41 @@ async function jsonRequest(method, path, body) {
   };
 }
 
+test("audio multipart init validates the object kind before touching storage", async () => {
+  const unknownKind = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: 1024,
+    content_type: "audio/flac",
+    object_kind: "cover",
+    file_name: "cover.png",
+  });
+  assert.equal(unknownKind.status, 400);
+  assert.match(unknownKind.body.error, /object_kind must be epub or audio/);
+
+  const unsupportedExtension = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: 1024,
+    content_type: "audio/flac",
+    object_kind: "audio",
+    file_name: "track.exe",
+  });
+  assert.equal(unsupportedExtension.status, 400);
+
+  const wrongContentType = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: 1024,
+    content_type: "video/mp4",
+    object_kind: "audio",
+    file_name: "track.mp4",
+  });
+  assert.equal(wrongContentType.status, 400);
+
+  const zeroSize = await jsonRequest("POST", "/api/uploads/multipart/init", {
+    expected_size: 0,
+    content_type: "audio/flac",
+    object_kind: "audio",
+    file_name: "track.flac",
+  });
+  assert.equal(zeroSize.status, 400);
+});
+
 test("Worker audio metadata retains technical fields and tags", async () => {
   const created = await jsonRequest("POST", "/api/cds", {
     title: `metadata-contract-${Date.now()}`,
@@ -101,6 +136,36 @@ test("Worker audio metadata retains technical fields and tags", async () => {
       tracknumber: "01",
     });
   } finally {
+    await jsonRequest("DELETE", `/api/cds/${cd.id}`, {});
+  }
+});
+
+test("audio upload endpoints reject the native chunk query protocol", async () => {
+  const created = await jsonRequest("POST", "/api/cds", {
+    title: `chunk-contract-${Date.now()}`,
+    tracks: [{ track_number: 1, title: "Chunk contract track" }],
+  });
+  assert.equal(created.status, 201);
+  const cd = created.body?.cd;
+  const track = cd?.tracks?.[0];
+  assert.ok(cd?.id);
+  assert.ok(track?.id);
+
+  try {
+    const form = new FormData();
+    form.append("audio", new Blob([new Uint8Array([1, 2, 3])]), "chunk.flac");
+    const response = await fetch(
+      `${baseUrl}/api/cds/${cd.id}/tracks/${track.id}/audio?upload_id=abc&part=0&total_parts=2`,
+      { method: "POST", headers: authHeaders, body: form },
+    );
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: "the Worker endpoint does not accept native chunked uploads",
+      code: "chunked_upload_unsupported",
+      hint: "use the presigned multipart upload endpoints for large media",
+    });
+  } finally {
+    await jsonRequest("DELETE", `/api/cds/${cd.id}/tracks/${track.id}`);
     await jsonRequest("DELETE", `/api/cds/${cd.id}`, {});
   }
 });

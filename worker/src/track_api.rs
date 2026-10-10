@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
-use worker::{D1Type, Request, Response, Result, RouteContext};
+use worker::{D1Type, Date, Request, Response, Result, RouteContext};
 
 use crate::error::{bad_request, error_response, parse_id, parse_json};
+use crate::multipart_api::AUDIO_OBJECT_KIND;
+use crate::wasabi::{WasabiConfig, WasabiStorage};
 use dantalian::application::error::AppError;
+use dantalian::ports::object_storage::validate_object_key;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TrackRow {
@@ -718,10 +721,305 @@ pub async fn search(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     Response::from_json(&Vec::<serde_json::Value>::new())
 }
 
+/// Request body for the presigned audio finalize step. The browser uploads the
+/// object parts straight to Wasabi, then hands the completed multipart session
+/// back so the track row and the derived audio jobs can be created.
+#[derive(Debug, Deserialize)]
+pub struct TrackAudioFinalizeRequest {
+    pub session_id: String,
+    /// Original client file name, recorded in `object_uploads` for later sync.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Object key and session details of a completed presigned multipart upload.
+struct CompletedAudioUpload {
+    object_key: String,
+    file_hash: String,
+    extension: String,
+    object_kind: String,
+    content_type: String,
+    expected_size: i64,
+    original_name: Option<String>,
+}
+
+/// Binds a completed presigned multipart audio object to a track.
+///
+/// The Worker never sees the audio bytes on this path: it verifies the session
+/// metadata and the object size in Wasabi, records the object, updates the
+/// track, and queues the data-saver jobs.
+pub async fn finalize_cd_audio(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    finalize_track_audio(req, ctx, "cd_id").await
+}
+
+pub async fn finalize_book_audio(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    finalize_track_audio(req, ctx, "book_id").await
+}
+
+async fn finalize_track_audio(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    parent_column: &str,
+) -> Result<Response> {
+    let raw_parent = match parse_id(&ctx, "id") {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let raw_track = match parse_id(&ctx, "track_id") {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let parent = match id_type(raw_parent, "parent id") {
+        Ok(value) => value,
+        Err(error) => return error_response(error),
+    };
+    let track = match id_type(raw_track, "track id") {
+        Ok(value) => value,
+        Err(error) => return error_response(error),
+    };
+    let body = match parse_json::<TrackAudioFinalizeRequest>(&mut req).await {
+        Ok(body) => body,
+        Err(response) => return Ok(response),
+    };
+    if !valid_session_id(&body.session_id) {
+        return Ok(bad_request("invalid multipart session id"));
+    }
+    let db = ctx.d1("DB")?;
+    let sql = format!("SELECT id FROM tracks WHERE id = ? AND {parent_column} = ?");
+    if db
+        .prepare(&sql)
+        .bind_refs([&track, &parent])
+        .map_err(db_error)?
+        .first::<serde_json::Value>(None)
+        .await
+        .map_err(db_error)?
+        .is_none()
+    {
+        return error_response(AppError::NotFound);
+    }
+    let session = match load_completed_audio_session(&ctx, &body.session_id, body.name).await {
+        Ok(session) => session,
+        Err(error) => return error_response(error),
+    };
+    let config = match WasabiConfig::from_env(&ctx.env).await {
+        Ok(config) => config,
+        Err(error) => return error_response(AppError::Storage(error.to_string())),
+    };
+    let storage = WasabiStorage::new(config);
+    let stored = match storage.head_object(&session.object_key).await {
+        Ok(metadata) => metadata.content_length,
+        Err(error) => return error_response(error),
+    };
+    if stored != Some(u64::try_from(session.expected_size).unwrap_or(u64::MAX)) {
+        return error_response(AppError::Conflict(
+            "uploaded audio object size does not match the multipart session".to_string(),
+        ));
+    }
+    let file_name = format!("{}.{}", session.file_hash, session.extension);
+    let created_at = Date::now().as_millis().to_string();
+    // Claim the session before touching the media rows: only the first finalize
+    // can move complete -> finalized, so one object cannot be attached twice.
+    let claimed = db
+        .prepare("UPDATE multipart_uploads SET status = 'finalized' WHERE id = ? AND status = 'complete'")
+        .bind_refs(&D1Type::Text(&body.session_id))
+        .map_err(db_error)?
+        .run()
+        .await
+        .map_err(db_error)?;
+    if claimed
+        .meta()
+        .map_err(db_error)?
+        .and_then(|meta| meta.changes)
+        .unwrap_or_default()
+        == 0
+    {
+        return error_response(AppError::Conflict(
+            "multipart session has already been attached to a track".to_string(),
+        ));
+    }
+    // `tracks` has no updated_at column; the media tables keep only the values.
+    db.prepare("UPDATE tracks SET file_hash = ?, file_name = ? WHERE id = ?")
+        .bind_refs([
+            &D1Type::Text(&session.file_hash),
+            &D1Type::Text(&file_name),
+            &track,
+        ])
+        .map_err(db_error)?
+        .run()
+        .await
+        .map_err(db_error)?;
+    db.prepare(
+        "INSERT OR REPLACE INTO object_uploads
+         (object_key, object_kind, entity_id, content_type, extension, expected_size, original_name, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'complete', ?)",
+    )
+    .bind_refs([
+        &D1Type::Text(&session.object_key),
+        &D1Type::Text(AUDIO_OBJECT_KIND),
+        &track,
+        &D1Type::Text(&session.content_type),
+        &D1Type::Text(&session.extension),
+        &D1Type::Integer(i32::try_from(session.expected_size).unwrap_or(i32::MAX)),
+        &session
+            .original_name
+            .as_deref()
+            .map(D1Type::Text)
+            .unwrap_or(D1Type::Null),
+        &D1Type::Text(&created_at),
+    ])
+    .map_err(db_error)?
+    .run()
+    .await
+    .map_err(db_error)?;
+    // Data-saver encoding runs in the external processor against the object
+    // that now exists in Wasabi, so the request path stays small.
+    if let Err(error) = crate::audio_job_api::enqueue_data_saver_job_for_source(
+        &ctx.env,
+        &session.file_hash,
+        &session.extension,
+    )
+    .await
+    {
+        worker::console_error!("data saver job scheduling deferred after finalize: {error}");
+    }
+    Response::from_json(&serde_json::json!({
+        "file_hash": session.file_hash,
+        "file_name": file_name,
+        "object_key": session.object_key,
+        "object_kind": session.object_kind,
+        "size": session.expected_size,
+    }))
+}
+
+/// Loads a multipart session that has already been completed against Wasabi and
+/// proves it is an audio object of the canonical `audio/<hash>.<extension>`
+/// shape, so the track row can be derived from the session alone.
+async fn load_completed_audio_session(
+    ctx: &RouteContext<()>,
+    session_id: &str,
+    original_name: Option<String>,
+) -> std::result::Result<CompletedAudioUpload, AppError> {
+    let db = ctx
+        .d1("DB")
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let row = db
+        .prepare(
+            "SELECT object_key, object_kind, expected_size, content_type, status
+             FROM multipart_uploads WHERE id = ?",
+        )
+        .bind_refs(&D1Type::Text(session_id))
+        .map_err(|error| AppError::Database(error.to_string()))?
+        .first::<serde_json::Value>(None)
+        .await
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let Some(row) = row else {
+        return Err(AppError::NotFound);
+    };
+    if row.get("status").and_then(|value| value.as_str()) != Some("complete") {
+        return Err(AppError::Conflict(
+            "multipart session is not complete".to_string(),
+        ));
+    }
+    if row.get("object_kind").and_then(|value| value.as_str()) != Some(AUDIO_OBJECT_KIND) {
+        return Err(AppError::Validation(
+            "multipart session is not an audio upload".to_string(),
+        ));
+    }
+    let object_key = row
+        .get("object_key")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| AppError::Database("multipart session has no object key".to_string()))?
+        .to_string();
+    let content_type = row
+        .get("content_type")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::Database("multipart session has no content type".to_string()))?
+        .to_string();
+    let expected_size = row
+        .get("expected_size")
+        .and_then(|value| value.as_str())
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| AppError::Database("multipart session has no size".to_string()))?;
+    let (file_hash, extension) = audio_key_parts(&object_key)?;
+    Ok(CompletedAudioUpload {
+        object_key,
+        file_hash,
+        extension,
+        object_kind: AUDIO_OBJECT_KIND.to_string(),
+        content_type,
+        expected_size,
+        original_name: original_name
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty() && name.len() <= 512),
+    })
+}
+
+/// `audio/<hash>.<extension>` (optionally behind a deployment prefix) is the
+/// only key shape a track can reference, so anything else is rejected before it
+/// can be written into the media tables.
+fn audio_key_parts(object_key: &str) -> std::result::Result<(String, String), AppError> {
+    validate_object_key(object_key)?;
+    let components = object_key.split('/').collect::<Vec<_>>();
+    // `<prefix>/audio/<name>` with an optional deployment prefix; encoded
+    // variants live under `audio/encoded/...` and are never track sources.
+    if components.len() < 2
+        || components[components.len() - 2] != "audio"
+        || components.contains(&"encoded")
+    {
+        return Err(AppError::Validation(
+            "audio objects must live under the audio/ prefix".to_string(),
+        ));
+    }
+    let name = components[components.len() - 1];
+    let (file_hash, extension) = name
+        .rsplit_once('.')
+        .ok_or_else(|| AppError::Validation("invalid audio object name".to_string()))?;
+    if file_hash.is_empty()
+        || !file_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(AppError::Validation(
+            "invalid audio object name".to_string(),
+        ));
+    }
+    // Reuses the audio job extension contract so the finalize step and the
+    // data-saver enqueue agree on the accepted extensions.
+    let extension = crate::audio_job_api::normalize_extension(extension)
+        .ok_or_else(|| AppError::Validation("invalid audio extension".to_string()))?;
+    Ok((file_hash.to_string(), extension))
+}
+
+fn valid_session_id(value: &str) -> bool {
+    value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{custom_metadata_value, merge_custom_metadata};
+    use super::{audio_key_parts, custom_metadata_value, merge_custom_metadata, valid_session_id};
     use serde_json::json;
+
+    #[test]
+    fn audio_key_parts_accepts_only_canonical_audio_objects() {
+        assert_eq!(
+            audio_key_parts("audio/abc123.flac").expect("canonical key"),
+            ("abc123".to_string(), "flac".to_string())
+        );
+        assert_eq!(
+            audio_key_parts("dantalian/production/audio/abc123.MP3").expect("prefixed key"),
+            ("abc123".to_string(), "mp3".to_string())
+        );
+        assert!(audio_key_parts("epubs/abc123.epub").is_err());
+        assert!(audio_key_parts("audio/encoded/opus/abc123.opus").is_err());
+        assert!(audio_key_parts("audio/abc123").is_err());
+        assert!(audio_key_parts("audio/../secret.flac").is_err());
+        assert!(audio_key_parts("audio/abc123.toolongextension").is_err());
+        assert!(valid_session_id("0123456789abcdef0123456789abcdef"));
+        assert!(!valid_session_id("0123"));
+        assert!(!valid_session_id("0123456789abcdef0123456789abcdeZ"));
+    }
 
     #[test]
     fn custom_metadata_round_trips_technical_fields() {

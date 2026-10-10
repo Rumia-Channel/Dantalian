@@ -13,6 +13,7 @@
 - [x] Production Worker uses Cloudflare Access as its user-facing authentication boundary; local/CI can require the app token fail-closed.
 - [ ] Presigned URL routes are only reachable after the Access-protected application boundary.
 - [x] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
+- [x] Worker upload routes reject the native chunk query protocol (`upload_id`/`part`/`total_parts`) with HTTP 400 instead of storing a partial chunk as a complete media object.
 
 ## MyDeploy production inputs
 
@@ -33,6 +34,7 @@
 - [x] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
 - [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
+- [ ] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, `/audio/<hash>.<ext>` streams the uploaded bytes, and EPUB sessions are rejected (`worker/tests/wasabi_audio_multipart_e2e.mjs`, requires `WASABI_E2E=1`).
 - [ ] Deployed Cloudflare Worker to Wasabi completion and multipart E2E pass.
 - [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
@@ -66,10 +68,41 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
 
 - [ ] Deploy Worker with the intended D1 binding, Static Assets binding, Cron, and Wasabi variables.
 - [ ] Confirm the production custom domain is protected by Cloudflare Access and `workers.dev` is disabled.
+- [ ] Apply the Wasabi bucket CORS rules below before testing browser uploads.
 - [ ] Test one representative book, cover, EPUB, CD, and audio track through the Access-protected domain.
 - [ ] Confirm browser uploads go directly to Wasabi; large objects do not pass through Worker.
+      Audio above `PRESIGNED_MULTIPART_MIN_BYTES` (8 MiB) uses
+      `POST /api/uploads/multipart/init` → direct part `PUT` → `complete` →
+      `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`, so the Worker
+      never buffers a full audio object. Cover uploads still use the Worker
+      route because they are capped at 10 MiB.
+- [ ] Known gap: cover and EPUB uploads have no `finalize` binding yet, so the
+      browser only presigns audio. Both therefore stay on the Worker direct
+      route and are capped at `WORKER_DIRECT_UPLOAD_MAX_BYTES` (95 MiB) even when
+      `upload.file_max_mb` is configured higher; the client now rejects those
+      files before sending instead of failing mid-upload. Extending the presigned
+      path to covers and EPUBs requires a completion binding like the audio one.
 - [ ] Monitor structured migration/job events by `job_id`, `object_key`, status, attempt, processor, and error class. Do not log secrets or full signed URLs.
 - [ ] Keep Native available as rollback until post-deployment reconciliation is complete.
+
+## Wasabi bucket CORS for direct browser uploads
+
+The browser PUTs presigned part URLs and receives the presigned GET redirect, so
+the bucket must allow the site origin. Without these rules the upload fails in
+the browser with `net::ERR_FAILED` while the object parts are already stored, and
+the UI reports a CORS hint instead of an HTTP status.
+
+- [ ] Allow origins: `https://<SERVICE_DOMAIN>` only (no wildcard).
+- [ ] Allow methods: `PUT`, `GET`, `HEAD`.
+- [ ] Allow headers: none required. The client sends no custom headers, so the
+      presigned `PUT` stays a CORS simple request and no preflight is needed.
+- [ ] **Expose headers: `ETag`.** The multipart `complete` call needs every part
+      ETag, and browsers hide response headers unless they are exposed. A missing
+      `ETag` surfaces as `presignedKind === "etag"` in the client.
+- [ ] Verify with one audio track larger than 8 MiB: the Network panel must show
+      `PUT https://<bucket endpoint>/...?partNumber=1&uploadId=...` returning 200
+      with an `ETag` response header, followed by the `finalize` call returning 200.
+
 
 ## Rollback
 
