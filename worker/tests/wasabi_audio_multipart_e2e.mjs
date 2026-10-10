@@ -55,9 +55,8 @@ test("Wasabi audio multipart finalize attaches the object to a CD track", { skip
     assert.equal(finalized.body.object_key, upload.objectKey);
 
     // The stream route must resolve the canonical key the finalize step wrote.
-    // The stream route resolves the canonical key the finalize step wrote. Read
-    // the redirect target explicitly: fetching it with the API token would make
-    // Wasabi reject the request for carrying two authentication mechanisms.
+    // Read the redirect target explicitly: fetching it with the API token would
+    // make Wasabi reject the request for carrying two authentication mechanisms.
     const streamed = await fetch(`${baseUrl}/audio/${fileHash}`, {
       headers: { authorization: `Bearer ${apiToken}` },
       redirect: "manual",
@@ -69,7 +68,9 @@ test("Wasabi audio multipart finalize attaches the object to a CD track", { skip
       location.includes(`/audio/${fileHash}.flac?`),
       `presigned URL must point at the canonical audio object: ${location.split("?")[0]}`,
     );
-    const object = await fetch(location);
+    // A bounded range read keeps the assertion cheap and proves the stored
+    // object size, mirroring the Worker's own metadata probe.
+    const object = await fetch(location, { headers: { range: "bytes=0-0" } });
     assert.equal(object.status, 206);
     assert.equal(object.headers.get("content-type"), "audio/flac");
     assert.equal(
