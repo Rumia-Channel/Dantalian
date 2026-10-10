@@ -34,15 +34,24 @@
 - [x] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
 - [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
-- [ ] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, `/audio/<hash>.<ext>` streams the uploaded bytes, and EPUB sessions are rejected (`worker/tests/wasabi_audio_multipart_e2e.mjs`, requires `WASABI_E2E=1`).
-- [ ] Deployed Cloudflare Worker to Wasabi completion and multipart E2E pass.
+- [x] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, the stream route redirects to the canonical `audio/<hash>.<ext>` object, a repeated finalize is a conflict, and a completed EPUB session is rejected as the wrong kind (`worker/tests/wasabi_audio_multipart_e2e.mjs`, `WASABI_E2E=1`).
+- [x] Deployed develop Worker to Wasabi completion and multipart E2E pass (run 38038598391, "Test develop Wasabi basic and multipart lifecycle").
 - [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
 - [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
 
 ## Verification record
 
-The checked items above record repository, local Wrangler, local live Wasabi, and Cloudflare remote-preview verification completed on 2026-08-13. The remote preview initially failed because the Worker-side authenticated Wasabi `HEAD` request returned HTTP 403 from the endpoint's Cloudflare edge. Wasabi metadata validation now uses a bounded `GET` with `Range: bytes=0-0`, reads the original size from `Content-Range`, and never proxies the object body to the client. Local and remote-preview basic, multipart, and audio object-existence checks pass. A temporary deployed Worker rehearsal was deleted after the public `workers.dev` URL returned HTTP 404 (`error code: 1042`), so the deployed Worker item remains unchecked. Credentials and signed URLs were not printed in verification logs.
+The checked items above record repository, local Wrangler, local live Wasabi, and Cloudflare remote-preview verification completed on 2026-08-13, plus the audio presigned-multipart verification completed on 2026-10-10. The remote preview initially failed because the Worker-side authenticated Wasabi `HEAD` request returned HTTP 403 from the endpoint's Cloudflare edge. Wasabi metadata validation now uses a bounded `GET` with `Range: bytes=0-0`, reads the original size from `Content-Range`, and never proxies the object body to the client. Local and remote-preview basic, multipart, and audio object-existence checks pass.
+
+Audio uploads now leave the Worker out of the media path: the browser requests a
+presigned multipart session, PUTs the parts straight to Wasabi, and the Worker
+only binds the completed object to the track. The develop deployment verified
+that contract against the real bucket (run 38038598391) after the same suite
+passed locally against a stub endpoint. The deployed E2E step writes a TAP
+report that is uploaded as the `<target>-wasabi-e2e` artifact, so a failure can
+be diagnosed without another live run. Credentials and signed URLs were not
+printed in verification logs.
 
 ## External audio processor deployment
 
