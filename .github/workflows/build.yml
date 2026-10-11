@@ -703,6 +703,21 @@ jobs:
       - name: Deploy production Worker
         working-directory: worker
         run: npx wrangler deploy --config wrangler.ci.toml --secrets-file production-secrets.json
+      - name: Smoke check production audio upload routes
+        working-directory: worker
+        env:
+          SERVICE_DOMAIN: ${{ secrets.SERVICE_DOMAIN }}
+        run: |
+          # A route that the browser calls but the Worker does not register returns
+          # a plain 404 before any byte is sent, which is how v0.1.8 broke audio
+          # uploads above 8 MiB. Probe the session route without authentication:
+          # reaching the handler means routing works, and a security response
+          # (401/403) is the expected production outcome.
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --request POST --header 'content-type: application/json' --data '{}' \
+            "https://$SERVICE_DOMAIN/api/cds/1/tracks/1/audio/multipart")"
+          echo "audio multipart route status: $status"
+          test "$status" != "404"
       - name: Resolve workers.dev subdomain
         id: subdomain
         run: |
