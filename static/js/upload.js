@@ -85,18 +85,19 @@ function multipartSessionId(body) {
 
 // アップロード先の URL からオブジェクト種別を決める。Worker はこの種別で
 // オブジェクトキーの接頭辞 (epubs/ か audio/) と許可拡張子を検証する。
+// 判定は js/upload-target.js の純関数に置き、テストで固定している。
 function isAudioUploadTarget(sessionUrl) {
-    return /\/audio(\?|$)/.test(sessionUrl);
+    return uploadTargetIsAudio(sessionUrl);
 }
 
 function multipartObjectKind(sessionUrl) {
-    return isAudioUploadTarget(sessionUrl) ? "audio" : "epub";
+    return uploadTargetObjectKind(sessionUrl);
 }
 
 // 音声のマルチパート経路は finalize でトラックへ結び付けるため、`…/audio` の
 // 下に専用のセッション URL を持つ。
 function audioMultipartSessionUrl(sessionUrl) {
-    return `${sessionUrl}/multipart`;
+    return uploadTargetAudioSessionUrl(sessionUrl);
 }
 
 // クライアントと Worker のデプロイ時期がずれて `…/audio/multipart` が未実装の

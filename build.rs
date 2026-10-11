@@ -35,6 +35,7 @@ fn main() {
         "static/js/utils.js",
         "static/js/searchable-select.js",
         "static/js/settings.js",
+        "static/js/upload-target.js",
         "static/js/upload.js",
         "static/js/audio-preprocessor.js",
         "static/js/register/tabs.js",

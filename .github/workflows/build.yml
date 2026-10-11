@@ -158,6 +158,9 @@ jobs:
           test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null http://127.0.0.1:8793/cdn-cgi/local/scheduled)" = 200
       - name: Test Worker helpers
         run: cargo test --lib
+      - name: Test client upload target classification
+        working-directory: .
+        run: node --test worker/tests/upload_target_unit.mjs
 
   develop:
     name: Deploy develop
