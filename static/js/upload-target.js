@@ -1,14 +1,15 @@
-// アップロード先 URL の種別判定。
+// アップロード先の種別と派生 URL。
 //
 // Worker は `object_kind` でオブジェクトキーの接頭辞 (audio/ か epubs/) と
 // 許可拡張子を検証するため、クライアントの判定が 1 文字でもずれると
-// 「音声なのに epub として検証される」ような 400 になる。純関数として
-// 切り出し、Node のテスト (worker/tests/upload_target_unit.mjs) で固定する。
+// 「音声なのに epub として検証される」ような 400 になる。URL の組み立ても
+// 同様に 404 の原因になるため、すべて純関数としてここに集約し
+// Node のテスト (worker/tests/upload_target_unit.mjs) で固定する。
 //
-// 重要: 音声のマルチパート経路はセッション URL が `…/audio/multipart` に
-// なるため、「`/audio` で終わる」ではなく「`/audio` または `/audio/multipart`
-// で終わる」で判定する。`/api/audio/stream/...` のような読み取り専用ルートは
-// アップロード先ではないので含めない。
+// 基底はトラックの音声 URL (`…/audio`)。派生先は 3 つある。
+//   - セッション: `…/audio/multipart` (init / parts / complete)
+//   - finalize : `…/audio/finalize`   (セッションをトラックへ結び付ける)
+// 後者はセッション URL を基底にしてはいけない (`…/multipart/finalize` は 404)。
 const UPLOAD_AUDIO_PATH_PATTERN = /\/audio(?:\/multipart)?(?:\?|$)/;
 
 function uploadTargetIsAudio(uploadUrl) {
@@ -19,12 +20,22 @@ function uploadTargetObjectKind(uploadUrl) {
     return uploadTargetIsAudio(uploadUrl) ? "audio" : "epub";
 }
 
+function uploadTargetStripSessionSuffix(uploadUrl) {
+    return String(uploadUrl).replace(/\/multipart$/, "");
+}
+
 // マルチパートのセッション URL。finalize でトラックへ結び付ける音声だけが
-// `…/audio/multipart` を持つ。既にセッション URL が渡された場合は二重に
-// 付けない (判定がずれたときに `…/multipart/multipart` を作らないため)。
+// `…/audio/multipart` を持つ。`/api/uploads/multipart/init` のような汎用 EPUB
+// ルートには付けない。既にセッション URL が渡された場合は二重に付けない。
 function uploadTargetAudioSessionUrl(uploadUrl) {
-    const base = String(uploadUrl).replace(/\/multipart$/, "");
+    const base = uploadTargetStripSessionSuffix(uploadUrl);
+    if (/\/uploads\/multipart$/.test(base)) return base;
     return `${base}/multipart`;
+}
+
+// finalize の URL。セッション URL ではなくトラックの音声 URL を基底にする。
+function uploadTargetAudioFinalizeUrl(uploadUrl) {
+    return `${uploadTargetStripSessionSuffix(uploadUrl)}/finalize`;
 }
 
 if (typeof module !== "undefined" && module.exports) {
@@ -32,5 +43,6 @@ if (typeof module !== "undefined" && module.exports) {
         uploadTargetIsAudio,
         uploadTargetObjectKind,
         uploadTargetAudioSessionUrl,
+        uploadTargetAudioFinalizeUrl,
     };
 }

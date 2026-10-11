@@ -100,6 +100,11 @@ function audioMultipartSessionUrl(sessionUrl) {
     return uploadTargetAudioSessionUrl(sessionUrl);
 }
 
+// finalize の基底はセッション URL ではなくトラックの音声 URL。
+function audioFinalizeUrl(uploadUrl) {
+    return uploadTargetAudioFinalizeUrl(uploadUrl);
+}
+
 // クライアントと Worker のデプロイ時期がずれて `…/audio/multipart` が未実装の
 // 場合に true へ。以降は従来の直アップロードへ戻す。本文を送る前の 404 で
 // 判明するので、曲全体を無駄に送らずに済む。
@@ -135,7 +140,9 @@ async function startPresignedMultipartUpload(sessionUrl, file) {
     return { sessionId, partSize };
 }
 
-async function abortPresignedMultipartUpload(upload, sessionUrl) {
+// 中断時の後始末。Worker 側のセッション削除ルートは未実装なので、失敗しても
+// 握りつぶす (送信済みパートは Wasabi 側のライフサイクルで失効する)。
+async function abortPresignedMultipartUpload(upload) {
     try {
         await fetch(`${upload.sessionUrl}/${upload.sessionId}`, { method: "DELETE" });
     } catch {}
@@ -201,7 +208,11 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
 // Worker は本文を受け取らず、セッション管理と検証だけを行う。
 // マルチパート経路が未実装の Worker に当たった場合は null を返し、呼び出し側が
 // 従来の直アップロードへ戻せるようにする。
-async function uploadWithPresignedMultipart(sessionUrl, file) {
+//
+// `uploadUrl` はトラックの音声 URL (`…/audio`)。セッション系は `…/audio/multipart`
+// 配下、finalize は `…/audio/finalize` と、**基底が異なる**ので混同しないこと。
+async function uploadWithPresignedMultipart(uploadUrl, file) {
+    const sessionUrl = audioMultipartSessionUrl(uploadUrl);
     const started = await startPresignedMultipartUpload(sessionUrl, file);
     if (started.routeUnavailable) {
         audioMultipartRouteUnavailable = true;
@@ -212,7 +223,7 @@ async function uploadWithPresignedMultipart(sessionUrl, file) {
         return null;
     }
     if (started.error) return started.error;
-    const upload = { sessionUrl, sessionId: started.sessionId, failedResponse: null };
+    const upload = { sessionUrl, uploadUrl, sessionId: started.sessionId, failedResponse: null };
     const partSize = started.partSize;
     const totalParts = Math.ceil(file.size / partSize);
     const parts = new Array(totalParts);
@@ -238,13 +249,13 @@ async function uploadWithPresignedMultipart(sessionUrl, file) {
             await logUploadFailure(`${sessionUrl}/${upload.sessionId}/complete`, file, completeResponse.clone());
             return completeResponse;
         }
-        return await fetch(`${sessionUrl}/finalize`, {
+        return await fetch(audioFinalizeUrl(uploadUrl), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: upload.sessionId, name: file.name }),
         });
     } catch (error) {
-        await abortPresignedMultipartUpload(upload, sessionUrl);
+        await abortPresignedMultipartUpload(upload);
         if (upload.failedResponse) return upload.failedResponse;
         throw error;
     }
@@ -264,7 +275,8 @@ async function uploadFileWithChunks(url, fieldName, file) {
             !audioMultipartRouteUnavailable
         ) {
             // 大きい音声は Cloudflare を通さず Wasabi へ直接送る。
-            const response = await uploadWithPresignedMultipart(audioMultipartSessionUrl(url), file);
+            // 基底はトラックの音声 URL を渡す (セッション URL ではない)。
+            const response = await uploadWithPresignedMultipart(url, file);
             if (response) return response;
         }
         if (!isAudioUploadTarget(url) && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
@@ -320,4 +332,10 @@ async function uploadFileWithChunks(url, fieldName, file) {
     }
 
     return response;
+}
+
+// ブラウザでは読み込むだけ。テスト (worker/tests/upload_integration_unit.mjs)
+// からは require して、実際のリクエスト URL 列を検証できるようにする。
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { uploadFileWithChunks, audioMultipartSessionUrl, audioFinalizeUrl };
 }
