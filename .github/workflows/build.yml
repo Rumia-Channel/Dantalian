@@ -160,7 +160,7 @@ jobs:
         run: cargo test --lib
       - name: Test client upload target classification
         working-directory: .
-        run: node --test worker/tests/upload_target_unit.mjs
+        run: node --test worker/tests/upload_target_unit.mjs worker/tests/upload_integration_unit.mjs
 
   develop:
     name: Deploy develop
