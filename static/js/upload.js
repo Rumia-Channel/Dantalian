@@ -110,14 +110,16 @@ function audioFinalizeUrl(uploadUrl) {
 // 判明するので、曲全体を無駄に送らずに済む。
 let audioMultipartRouteUnavailable = false;
 
-async function startPresignedMultipartUpload(sessionUrl, file) {
+async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
     const response = await fetch(sessionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             expected_size: file.size,
-            content_type: file.type || "application/octet-stream",
-            object_kind: multipartObjectKind(sessionUrl),
+            content_type: uploadTargetContentType(file.name, file.type),
+            // セッション URL ではなくファイルから用途を決める。`.m4a` を音声として
+            // 送るため、URL 判定だけに頼らない。
+            object_kind: uploadKind ?? multipartObjectKind(sessionUrl),
             file_name: file.name,
         }),
     });
@@ -211,9 +213,9 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
 //
 // `uploadUrl` はトラックの音声 URL (`…/audio`)。セッション系は `…/audio/multipart`
 // 配下、finalize は `…/audio/finalize` と、**基底が異なる**ので混同しないこと。
-async function uploadWithPresignedMultipart(uploadUrl, file) {
+async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
     const sessionUrl = audioMultipartSessionUrl(uploadUrl);
-    const started = await startPresignedMultipartUpload(sessionUrl, file);
+    const started = await startPresignedMultipartUpload(sessionUrl, file, uploadKind);
     if (started.routeUnavailable) {
         audioMultipartRouteUnavailable = true;
         console.warn(
@@ -261,25 +263,36 @@ async function uploadWithPresignedMultipart(uploadUrl, file) {
     }
 }
 
-async function uploadFileWithChunks(url, fieldName, file) {
+// `uploadKind` (`audio` / `epub`) を渡すと、Worker の content_type 検証と
+// 拡張子判定をファイル基準で行える。省略時は URL から推定する。
+async function uploadFileWithChunks(url, fieldName, file, uploadKind) {
+    const kind = uploadKind || (isAudioUploadTarget(url) ? "audio" : "epub");
+    // 音声だけが presigned multipart の受け入れ先 (finalize) を持つ。
+    // カバーや EPUB は Worker の直アップロードのみで、完了後の結び付けが
+    // まだ無い。
+    const presignedEligible = kind === "audio";
     // Worker routes accept a single multipart request up to their direct-upload
     // limit. The native chunk protocol is a different contract and must not be
     // sent to the Worker endpoint as a fake file upload.
     if (await isWorkerRuntime()) {
-        // 音声だけが presigned multipart の受け入れ先 (finalize) を持つ。
-        // カバーや EPUB は Worker の直アップロードのみで、完了後の結び付けが
-        // まだ無いため、上限超過は送信前に明示的に落とす。
         if (
-            isAudioUploadTarget(url) &&
+            presignedEligible &&
             file.size >= PRESIGNED_MULTIPART_MIN_BYTES &&
             !audioMultipartRouteUnavailable
         ) {
             // 大きい音声は Cloudflare を通さず Wasabi へ直接送る。
             // 基底はトラックの音声 URL を渡す (セッション URL ではない)。
-            const response = await uploadWithPresignedMultipart(url, file);
+            const response = await uploadWithPresignedMultipart(url, file, kind);
             if (response) return response;
         }
-        if (!isAudioUploadTarget(url) && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
+        if (!presignedEligible && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
+            const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
+            await logUploadFailure(url, file, response.clone());
+            return response;
+        }
+        // 上限超過の音声は multipart 経路が担当する。ここに来るのは経路が
+        // 使えない (旧 Worker / フォールバック) 場合なので、送信前に落とす。
+        if (presignedEligible && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
             const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
             await logUploadFailure(url, file, response.clone());
             return response;
@@ -296,14 +309,6 @@ async function uploadFileWithChunks(url, fieldName, file) {
         form.append(fieldName, file);
         const response = await fetch(url, { method: "POST", body: form });
         if (!response.ok) await logUploadFailure(url, file, response.clone());
-        return response;
-    }
-
-    if (file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
-        // ネイティブ用チャンクは 90MB 刻みなので通常ここには来ない。Worker の
-        // 直アップロード上限を超える本文を送って 5xx になる前に明示的に落とす。
-        const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
-        await logUploadFailure(url, file, response.clone());
         return response;
     }
 

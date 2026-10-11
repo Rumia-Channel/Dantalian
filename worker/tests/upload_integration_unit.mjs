@@ -12,6 +12,8 @@ globalThis.uploadTargetIsAudio = uploadTarget.uploadTargetIsAudio;
 globalThis.uploadTargetObjectKind = uploadTarget.uploadTargetObjectKind;
 globalThis.uploadTargetAudioSessionUrl = uploadTarget.uploadTargetAudioSessionUrl;
 globalThis.uploadTargetAudioFinalizeUrl = uploadTarget.uploadTargetAudioFinalizeUrl;
+globalThis.uploadTargetContentType = uploadTarget.uploadTargetContentType;
+globalThis.uploadTargetPickUploadKind = uploadTarget.uploadTargetPickUploadKind;
 globalThis.readApiDiagnostic = async (response) => ({
   status: response.status,
   headers: {},
@@ -31,13 +33,52 @@ function fakeFile(size, name, type) {
 function recordedFetch(routes) {
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {
-    calls.push({ url: String(url), method: init.method ?? "GET" });
+    calls.push({ url: String(url), method: init.method ?? "GET", body: init.body });
     const match = routes.find((route) => String(url).startsWith(route.prefix));
     const payload = match ? match.body : { ok: true };
     return new Response(JSON.stringify(payload), { status: match?.status ?? 200 });
   };
   return calls;
 }
+
+function initRequestBody(calls, path) {
+  const call = calls.find((entry) => entry.url === path);
+  assert.ok(call, `no request recorded for ${path}: ${calls.map((c) => c.url).join(", ")}`);
+  return JSON.parse(String(call.body));
+}
+
+test("m4a audio keeps an audio content type and the audio object kind", async () => {
+  const partSize = 8 * 1024 * 1024;
+  const sessionPath = "/api/cds/11/tracks/191/audio/multipart";
+  const calls = recordedFetch([
+    { prefix: "/api/health", body: { runtime: "cloudflare-worker" } },
+    { prefix: `${sessionPath}/`, body: { upload_url: "https://wasabi.test/part", part_number: 1 } },
+    { prefix: sessionPath, body: { id: "b".repeat(32), part_size: partSize, object_key: "audio/x.m4a" } },
+    { prefix: "/api/cds/11/tracks/191/audio/finalize", body: { file_hash: "x" } },
+  ]);
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).startsWith("https://wasabi.test/part")) {
+      calls.push({ url: String(url), method: "PUT" });
+      return new Response("", { status: 200, headers: { etag: "\"etag-1\"" } });
+    }
+    return original(url, init);
+  };
+
+  // Windows のレジストリでは .m4a の MIME が video/mp4 になることがある。
+  const response = await uploadFileWithChunks(
+    "/api/cds/11/tracks/191/audio",
+    "audio",
+    fakeFile(9 * 1024 * 1024, "track.m4a", "video/mp4"),
+    "audio",
+  );
+  assert.equal(response.status, 200);
+
+  const body = initRequestBody(calls, sessionPath);
+  assert.equal(body.object_kind, "audio");
+  assert.equal(body.content_type, "audio/mp4");
+  assert.equal(body.file_name, "track.m4a");
+});
 
 test("large audio uploads post to the browser-shaped multipart URLs", async () => {
   const partSize = 8 * 1024 * 1024;
