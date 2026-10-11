@@ -35,11 +35,17 @@ function makePart(length, seed) {
 
 /// Uploads `bytes` through the presigned multipart contract and returns the
 /// session plus the completed object metadata.
+///
+/// `options.sessionUrl` selects the route shape. The browser posts to the track
+/// scoped `<track audio url>/multipart`, so tests that model the client must
+/// pass it; the default keeps the generic `/api/uploads/multipart` contract.
 export async function uploadAudioMultipart(bytes, options = {}) {
   const fileName = options.fileName ?? "track.flac";
   const contentType = options.contentType ?? "audio/flac";
   const chunkSize = options.partSize ?? partSize;
-  const initialized = await jsonRequest("POST", `${MULTIPART_PATH}/init`, {
+  const sessionUrl = options.sessionUrl ?? null;
+  const initPath = sessionUrl ?? `${MULTIPART_PATH}/init`;
+  const initialized = await jsonRequest("POST", initPath, {
     expected_size: bytes.length,
     content_type: contentType,
     object_kind: "audio",
@@ -51,13 +57,11 @@ export async function uploadAudioMultipart(bytes, options = {}) {
     );
   }
   const sessionId = initialized.body.id;
+  const sessionBase = sessionUrl ? `${sessionUrl}/${sessionId}` : `${MULTIPART_PATH}/${sessionId}`;
   const parts = [];
   let partNumber = 1;
   for (let offset = 0; offset < bytes.length; offset += chunkSize, partNumber += 1) {
-    const signed = await jsonRequest(
-      "POST",
-      `${MULTIPART_PATH}/${sessionId}/parts/${partNumber}/sign`,
-    );
+    const signed = await jsonRequest("POST", `${sessionBase}/parts/${partNumber}/sign`);
     if (signed.response.status !== 200) {
       throw new Error(`audio multipart sign failed: ${signed.response.status}`);
     }
@@ -72,11 +76,7 @@ export async function uploadAudioMultipart(bytes, options = {}) {
     if (!etag) throw new Error(`presigned part ${partNumber} exposed no ETag`);
     parts.push({ part_number: partNumber, etag });
   }
-  const completed = await jsonRequest(
-    "POST",
-    `${MULTIPART_PATH}/${sessionId}/complete`,
-    { parts },
-  );
+  const completed = await jsonRequest("POST", `${sessionBase}/complete`, { parts });
   return {
     sessionId,
     objectKey: initialized.body.object_key,

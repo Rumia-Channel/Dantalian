@@ -26,9 +26,12 @@ test("Wasabi audio multipart finalize attaches the object to a CD track", { skip
 
   try {
     const { bytes } = audioFixture();
+    // The browser posts to the track scoped route, so the contract is exercised
+    // against the same URL shape the client builds.
     const upload = await uploadAudioMultipart(bytes, {
       fileName: "Presigned Track.flac",
       contentType: "audio/flac",
+      sessionUrl: `/api/cds/${cd.id}/tracks/${track.id}/audio/multipart`,
     });
     sessionId = upload.sessionId;
     // The key is `[<prefix>/]audio/<session id>.flac`; the prefix is optional.

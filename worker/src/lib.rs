@@ -144,6 +144,33 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             object_api::delete_book_audio,
         )
         .post_async("/api/cds/:id/tracks/:track_id/audio", object_api::cd_audio)
+        // Presigned audio uploads share the EPUB multipart session contract, but
+        // live under the track URL the browser already knows, so the client only
+        // appends /multipart, /parts/:n/sign, /complete, and /finalize.
+        .post_async(
+            "/api/cds/:id/tracks/:track_id/audio/multipart",
+            multipart_api::init,
+        )
+        .post_async(
+            "/api/books/:id/tracks/:track_id/audio/multipart",
+            multipart_api::init,
+        )
+        .post_async(
+            "/api/cds/:id/tracks/:track_id/audio/multipart/:id/parts/:part_number/sign",
+            multipart_api::sign_part,
+        )
+        .post_async(
+            "/api/books/:id/tracks/:track_id/audio/multipart/:id/parts/:part_number/sign",
+            multipart_api::sign_part,
+        )
+        .post_async(
+            "/api/cds/:id/tracks/:track_id/audio/multipart/:id/complete",
+            multipart_api::complete,
+        )
+        .post_async(
+            "/api/books/:id/tracks/:track_id/audio/multipart/:id/complete",
+            multipart_api::complete,
+        )
         .post_async(
             "/api/cds/:id/tracks/:track_id/audio/finalize",
             track_api::finalize_cd_audio,
