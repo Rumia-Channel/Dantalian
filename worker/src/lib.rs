@@ -47,6 +47,9 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             Response::from_json(&serde_json::json!({
                 "ok": true,
                 "runtime": "cloudflare-worker",
+                // The deployed version is the quickest way to tell a stale Worker
+                // from a client/route mismatch without reading CI logs.
+                "version": env!("CARGO_PKG_VERSION"),
                 "authentication_required": auth::authentication_required(&ctx.env),
             }))
         })
