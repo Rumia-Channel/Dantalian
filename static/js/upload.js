@@ -93,8 +93,19 @@ function multipartObjectKind(sessionUrl) {
     return isAudioUploadTarget(sessionUrl) ? "audio" : "epub";
 }
 
+// 音声のマルチパート経路は finalize でトラックへ結び付けるため、`…/audio` の
+// 下に専用のセッション URL を持つ。
+function audioMultipartSessionUrl(sessionUrl) {
+    return `${sessionUrl}/multipart`;
+}
+
+// クライアントと Worker のデプロイ時期がずれて `…/audio/multipart` が未実装の
+// 場合に true へ。以降は従来の直アップロードへ戻す。本文を送る前の 404 で
+// 判明するので、曲全体を無駄に送らずに済む。
+let audioMultipartRouteUnavailable = false;
+
 async function startPresignedMultipartUpload(sessionUrl, file) {
-    const response = await fetch(`${sessionUrl}/multipart`, {
+    const response = await fetch(sessionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -104,8 +115,11 @@ async function startPresignedMultipartUpload(sessionUrl, file) {
             file_name: file.name,
         }),
     });
+    if (response.status === 404) {
+        return { routeUnavailable: true };
+    }
     if (!response.ok) {
-        await logUploadFailure(`${sessionUrl}/multipart`, file, response.clone());
+        await logUploadFailure(sessionUrl, file, response.clone());
         return { error: response };
     }
     const body = await readUploadJson(response);
@@ -182,10 +196,20 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
     return { part_number: partNumber, etag };
 }
 
-// 音声・EPUB の大容量アップロード: init → パートを並列 PUT → complete → finalize。
+// 音声の大容量アップロード: init → パートを並列 PUT → complete → finalize。
 // Worker は本文を受け取らず、セッション管理と検証だけを行う。
+// マルチパート経路が未実装の Worker に当たった場合は null を返し、呼び出し側が
+// 従来の直アップロードへ戻せるようにする。
 async function uploadWithPresignedMultipart(sessionUrl, file) {
     const started = await startPresignedMultipartUpload(sessionUrl, file);
+    if (started.routeUnavailable) {
+        audioMultipartRouteUnavailable = true;
+        console.warn(
+            "presigned multipart endpoint is unavailable on this Worker; " +
+            "falling back to the Worker direct upload path",
+        );
+        return null;
+    }
     if (started.error) return started.error;
     const upload = { sessionUrl, sessionId: started.sessionId, failedResponse: null };
     const partSize = started.partSize;
@@ -233,9 +257,14 @@ async function uploadFileWithChunks(url, fieldName, file) {
         // 音声だけが presigned multipart の受け入れ先 (finalize) を持つ。
         // カバーや EPUB は Worker の直アップロードのみで、完了後の結び付けが
         // まだ無いため、上限超過は送信前に明示的に落とす。
-        if (isAudioUploadTarget(url) && file.size >= PRESIGNED_MULTIPART_MIN_BYTES) {
+        if (
+            isAudioUploadTarget(url) &&
+            file.size >= PRESIGNED_MULTIPART_MIN_BYTES &&
+            !audioMultipartRouteUnavailable
+        ) {
             // 大きい音声は Cloudflare を通さず Wasabi へ直接送る。
-            return uploadWithPresignedMultipart(url, file);
+            const response = await uploadWithPresignedMultipart(audioMultipartSessionUrl(url), file);
+            if (response) return response;
         }
         if (!isAudioUploadTarget(url) && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
             const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
