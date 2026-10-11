@@ -143,3 +143,73 @@ test("small audio keeps the single direct upload", async () => {
   assert.deepEqual(calls.map((call) => call.url), ["/api/cds/11/tracks/191/audio"]);
   assert.equal(calls.every((call) => call.url.includes("/multipart") === false), true);
 });
+
+// Two uploads started back to back used to mix up their parts and re-render the
+// track list out of order. Each upload must keep its own session and never post
+// another session's part number.
+test("two concurrent uploads keep their own sessions and parts", async () => {
+  const partSize = 8 * 1024 * 1024;
+  const sessions = {
+    a: "1".repeat(32),
+    b: "2".repeat(32),
+  };
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = String(url);
+    calls.push({ url: target, method: init.method ?? "GET", body: init.body });
+    if (target === "/api/health") {
+      return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
+    }
+    if (target.includes("/191/audio/multipart") && init.method === "POST" && !target.includes("/parts/") && !target.includes("/complete")) {
+      return new Response(
+        JSON.stringify({ id: sessions.a, part_size: partSize, object_key: "audio/a.flac" }),
+        { status: 200 },
+      );
+    }
+    if (target.includes("/192/audio/multipart") && init.method === "POST" && !target.includes("/parts/") && !target.includes("/complete")) {
+      return new Response(
+        JSON.stringify({ id: sessions.b, part_size: partSize, object_key: "audio/b.flac" }),
+        { status: 200 },
+      );
+    }
+    if (target.includes("/parts/") && target.includes("/sign")) {
+      return new Response(
+        JSON.stringify({ upload_url: `https://wasabi.test/${target.includes(sessions.a) ? "a" : "b"}`, part_number: 1 }),
+        { status: 200 },
+      );
+    }
+    if (target.startsWith("https://wasabi.test/")) {
+      return new Response("", { status: 200, headers: { etag: "\"etag-1\"" } });
+    }
+    if (target.includes("/finalize")) {
+      return new Response(JSON.stringify({ file_hash: "h" }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ parts: [] }), { status: 200 });
+  };
+
+  const [first, second] = await Promise.all([
+    uploadFileWithChunks("/api/cds/11/tracks/191/audio", "audio", fakeFile(9 * 1024 * 1024, "a.flac", "audio/flac"), "audio"),
+    uploadFileWithChunks("/api/cds/11/tracks/192/audio", "audio", fakeFile(9 * 1024 * 1024, "b.flac", "audio/flac"), "audio"),
+  ]);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+
+  const uploads = calls.filter((call) => call.method === "POST" && call.url.includes("/parts/"));
+  const perTrack = new Map();
+  for (const call of uploads) {
+    const track = call.url.includes("/191/") ? "191" : "192";
+    const session = call.url.split("/multipart/")[1].split("/parts/")[0];
+    perTrack.set(track, new Set([...(perTrack.get(track) ?? []), session]));
+  }
+  assert.deepEqual([...perTrack.get("191")], [sessions.a]);
+  assert.deepEqual([...perTrack.get("192")], [sessions.b]);
+
+  const finalizes = calls.filter((call) => call.url.endsWith("/audio/finalize"));
+  assert.equal(finalizes.length, 2);
+  const firstSession = JSON.parse(String(finalizes[0].body)).session_id;
+  const secondSession = JSON.parse(String(finalizes[1].body)).session_id;
+  assert.deepEqual(
+    [firstSession, secondSession].sort(),
+    [sessions.a, sessions.b].sort(),
+  );
+});

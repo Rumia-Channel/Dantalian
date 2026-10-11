@@ -106,9 +106,19 @@ function audioFinalizeUrl(uploadUrl) {
 }
 
 // クライアントと Worker のデプロイ時期がずれて `…/audio/multipart` が未実装の
-// 場合に true へ。以降は従来の直アップロードへ戻す。本文を送る前の 404 で
-// 判明するので、曲全体を無駄に送らずに済む。
-let audioMultipartRouteUnavailable = false;
+// 場合に、その間だけ従来の直アップロードへ戻す。恒久的に落とすと、一時的な
+// 404 で以降の大容量アップロードが全部 Worker を通ってしまうため、
+// クールダウン付きで扱う。
+const AUDIO_MULTIPART_RETRY_AFTER_MS = 30_000;
+let audioMultipartUnavailableUntil = 0;
+
+function audioMultipartRouteUnavailable() {
+    return Date.now() < audioMultipartUnavailableUntil;
+}
+
+function markAudioMultipartUnavailable() {
+    audioMultipartUnavailableUntil = Date.now() + AUDIO_MULTIPART_RETRY_AFTER_MS;
+}
 
 async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
     const response = await fetch(sessionUrl, {
@@ -217,7 +227,7 @@ async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
     const sessionUrl = audioMultipartSessionUrl(uploadUrl);
     const started = await startPresignedMultipartUpload(sessionUrl, file, uploadKind);
     if (started.routeUnavailable) {
-        audioMultipartRouteUnavailable = true;
+        markAudioMultipartUnavailable();
         console.warn(
             "presigned multipart endpoint is unavailable on this Worker; " +
             "falling back to the Worker direct upload path",
@@ -278,7 +288,7 @@ async function uploadFileWithChunks(url, fieldName, file, uploadKind) {
         if (
             presignedEligible &&
             file.size >= PRESIGNED_MULTIPART_MIN_BYTES &&
-            !audioMultipartRouteUnavailable
+            !audioMultipartRouteUnavailable()
         ) {
             // 大きい音声は Cloudflare を通さず Wasabi へ直接送る。
             // 基底はトラックの音声 URL を渡す (セッション URL ではない)。
