@@ -511,3 +511,63 @@ function playAudio(url, title) {
     player.setAttribute("data-title", title);
     player.play();
 }
+
+// 失敗した API 応答を、原因を特定できる形で取り出す。
+// Worker が返す JSON だけでなく、Cloudflare のエラーページ (503/502) のような
+// HTML 応答も本文ごと保持する。本文は一度しか読めないため、呼び出し側は
+// この戻り値だけを使って表示する。
+const API_DIAGNOSTIC_HEADERS = [
+    "content-type",
+    "cf-ray",
+    "cf-mitigated",
+    "cf-cache-status",
+    "server",
+    "retry-after",
+    "x-dantalian-error",
+];
+
+async function readApiDiagnostic(response) {
+    let body = "";
+    try {
+        body = await response.text();
+    } catch {}
+    const headers = {};
+    for (const name of API_DIAGNOSTIC_HEADERS) {
+        const value = response.headers.get(name);
+        if (value) headers[name] = value;
+    }
+    let json = null;
+    if (body) {
+        try {
+            json = JSON.parse(body);
+        } catch {}
+    }
+    const cloudflareCode = body.match(/Error\s*(\d{4})/)?.[1] || "";
+    const rayId = body.match(/Ray ID:\s*([0-9a-f]+)/i)?.[1] || headers["cf-ray"] || "";
+    return {
+        url: response.url,
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+        body: body.slice(0, 2000),
+        json,
+        cloudflareCode,
+        rayId,
+        serverMessage: (json && typeof json.error === "string" && json.error) || "",
+    };
+}
+
+function describeApiDiagnostic(diagnostic) {
+    const parts = [`status=${diagnostic.status}${diagnostic.statusText ? ` ${diagnostic.statusText}` : ""}`];
+    if (diagnostic.cloudflareCode) parts.push(`cloudflare_error=${diagnostic.cloudflareCode}`);
+    if (diagnostic.rayId) parts.push(`ray=${diagnostic.rayId}`);
+    if (diagnostic.serverMessage) parts.push(`server="${diagnostic.serverMessage}"`);
+    const headerText = Object.entries(diagnostic.headers)
+        .map(([name, value]) => `${name}: ${value}`)
+        .join(", ");
+    if (headerText) parts.push(`headers={${headerText}}`);
+    if (!diagnostic.json && diagnostic.body) {
+        parts.push(`body="${diagnostic.body.replace(/\s+/g, " ").trim().slice(0, 300)}"`);
+    }
+    return parts.join(" ");
+}

@@ -529,7 +529,7 @@ fn source_extension(file_name: &str, file_hash: &str) -> Option<String> {
         })
 }
 
-fn normalize_extension(value: &str) -> Option<String> {
+pub fn normalize_extension(value: &str) -> Option<String> {
     let value = value.trim().trim_start_matches('.').to_ascii_lowercase();
     if value.is_empty()
         || value.len() > 10

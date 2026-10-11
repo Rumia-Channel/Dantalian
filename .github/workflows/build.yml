@@ -356,13 +356,31 @@ jobs:
           WORKER_EXPECT_AUTH_REQUIRED: "true"
         run: node --test tests/auth_contract.mjs
       - name: Test develop Wasabi basic and multipart lifecycle
+        id: wasabi_e2e
+        continue-on-error: true
         working-directory: worker
         env:
           WORKER_BASE_URL: ${{ steps.deploy.outputs.base_url }}
           WORKER_API_TOKEN: ${{ secrets.DANTALIAN_STAGING_API_TOKEN }}
           WASABI_E2E: "1"
           WASABI_TEST_PREFIX: dantalian/develop
-        run: node --test tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs
+        run: |
+          set -o pipefail
+          node --test --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=tap --test-reporter-destination=wasabi-e2e.tap \
+            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs
+      - name: Upload develop Wasabi E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: develop-wasabi-e2e
+          path: worker/wasabi-e2e.tap
+          if-no-files-found: warn
+      - name: Enforce develop Wasabi E2E result
+        if: steps.wasabi_e2e.outcome == 'failure'
+        run: |
+          echo "develop Wasabi E2E failed; see the develop-wasabi-e2e artifact"
+          exit 1
       - name: Clean develop deployment files
         if: always()
         working-directory: worker
@@ -566,12 +584,30 @@ jobs:
           WORKER_EXPECT_AUTH_REQUIRED: "true"
         run: node --test tests/auth_contract.mjs
       - name: Test staging Wasabi basic and multipart lifecycle
+        id: wasabi_e2e
+        continue-on-error: true
         working-directory: worker
         env:
           WORKER_BASE_URL: ${{ steps.deploy.outputs.base_url }}
           WORKER_API_TOKEN: ${{ secrets.DANTALIAN_STAGING_API_TOKEN }}
           WASABI_E2E: "1"
-        run: node --test tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs
+        run: |
+          set -o pipefail
+          node --test --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=tap --test-reporter-destination=wasabi-e2e.tap \
+            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs
+      - name: Upload staging Wasabi E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-wasabi-e2e
+          path: worker/wasabi-e2e.tap
+          if-no-files-found: warn
+      - name: Enforce staging Wasabi E2E result
+        if: steps.wasabi_e2e.outcome == 'failure'
+        run: |
+          echo "staging Wasabi E2E failed; see the staging-wasabi-e2e artifact"
+          exit 1
       - name: Clean staging deployment files
         if: always()
         working-directory: worker

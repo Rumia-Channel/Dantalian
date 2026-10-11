@@ -29,6 +29,9 @@ class PlayerEngine {
         this._playbackWarmup = null;
         this._prefetchedNext = null;
         this._prefetchToken = 0;
+        // 音量状態。iOS では audio.volume が無効なため GainNode 経路を使う (_applyVolume)。
+        this._volume = 1;
+        this._muted = false;
 
         this.audio.addEventListener("timeupdate", () => this._emit("time", this.getPosition()));
         this.audio.addEventListener("loadedmetadata", () => {
@@ -41,7 +44,12 @@ class PlayerEngine {
             });
         });
         this.audio.addEventListener("ended", () => this._emit("ended", this.current()));
-        this.audio.addEventListener("play", () => this._emit("playstate", true));
+        this.audio.addEventListener("play", () => {
+            this._emit("playstate", true);
+            // GainNode 経路では AudioContext が suspend されると全曲無音になるため、
+            // play イベント (通常ユーザー操作起因) のたびに resume を試す。
+            this._resumeVolumeGraph();
+        });
         this.audio.addEventListener("pause", () => this._emit("playstate", false));
         this.audio.addEventListener("error", () => this._handleSourceError());
     }
@@ -675,20 +683,83 @@ class PlayerEngine {
         return this.audio.duration || 0;
     }
 
+    // iOS / iPadOS Safari は HTMLMediaElement.volume が読み取り専用で設定を無視する。
+    // その環境では Web Audio API の GainNode へ経路を切り替える。要素の volume を
+    // 実際に書き戻して確認するランタイム検出なので UA 判定に頼らない。
+    _supportsElementVolume() {
+        if (this._elementVolumeSupported === undefined) {
+            try {
+                this.audio.volume = 0.5;
+                this._elementVolumeSupported = this.audio.volume === 0.5;
+                this.audio.volume = 1;
+            } catch {
+                this._elementVolumeSupported = false;
+            }
+        }
+        return this._elementVolumeSupported;
+    }
+
+    _ensureVolumeGraph() {
+        if (this._volumeGraph !== undefined) return this._volumeGraph;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) {
+            this._volumeGraph = null;
+            return null;
+        }
+        if (this._supportsElementVolume()) {
+            this._volumeGraph = null;
+            return null;
+        }
+        try {
+            const ctx = new Ctx();
+            const source = ctx.createMediaElementSource(this.audio);
+            const gain = ctx.createGain();
+            gain.gain.value = this._muted ? 0 : this._volume;
+            source.connect(gain).connect(ctx.destination);
+            this._volumeGraph = { ctx, gain };
+        } catch {
+            this._volumeGraph = null;
+        }
+        return this._volumeGraph;
+    }
+
+    _resumeVolumeGraph() {
+        const graph = this._volumeGraph;
+        if (graph && graph.ctx.state === "suspended") {
+            graph.ctx.resume().catch(() => {});
+        }
+    }
+
+    _applyVolume() {
+        const level = this._muted ? 0 : this._volume;
+        const graph = this._ensureVolumeGraph();
+        if (graph) {
+            // graph 経路では要素側を最大に保ち、mute/volume を gain で反映する
+            this.audio.volume = 1;
+            graph.gain.gain.value = level;
+            this._resumeVolumeGraph();
+        } else {
+            this.audio.volume = level;
+        }
+    }
+
     setVolume(v) {
-        this.audio.volume = Math.min(Math.max(v, 0), 1);
+        this._volume = Math.min(Math.max(v, 0), 1);
+        this._applyVolume();
     }
 
     get volume() {
-        return this.audio.volume;
+        return this._volume;
     }
 
     get muted() {
-        return this.audio.muted;
+        return this._muted;
     }
 
     toggleMute() {
-        this.audio.muted = !this.audio.muted;
-        return this.audio.muted;
+        this._muted = !this._muted;
+        this.audio.muted = this._muted;
+        this._applyVolume();
+        return this._muted;
     }
 }

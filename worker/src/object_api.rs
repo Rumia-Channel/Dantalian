@@ -93,6 +93,33 @@ fn max_direct_size(kind: ObjectKind) -> usize {
     }
 }
 
+/// The native server reassembles `upload_id`/`part`/`total_parts` chunks in its
+/// own request handler. The Worker has no such contract, so a chunked request
+/// must fail loudly instead of being stored as a complete media object.
+async fn reject_native_chunk_query(req: &Request) -> Result<Option<Response>> {
+    let Ok(url) = req.url() else {
+        return Ok(None);
+    };
+    let chunked = url
+        .query_pairs()
+        .any(|(key, _)| matches!(key.as_ref(), "upload_id" | "part" | "total_parts"));
+    if !chunked {
+        return Ok(None);
+    }
+    worker::console_warn!(
+        "rejected native chunked upload against the Worker contract: {}",
+        url.path()
+    );
+    Ok(Some(
+        Response::from_json(&serde_json::json!({
+            "error": "the Worker endpoint does not accept native chunked uploads",
+            "code": "chunked_upload_unsupported",
+            "hint": "use the presigned multipart upload endpoints for large media",
+        }))
+        .map(|response| response.with_status(400))?,
+    ))
+}
+
 pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let file_hash = match ctx.param("file_hash") {
         Some(value) if !value.is_empty() => value.as_str(),
@@ -140,7 +167,14 @@ pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(config) => config,
         Err(error) => return error_response(AppError::Storage(error.to_string())),
     };
-    let key = match object_key(config.prefix.as_deref(), kind, file_hash, &extension) {
+    // Presigned finalize rows keep only the hash stem in `file_hash`, while
+    // older direct uploads kept `<hash>.<ext>` there. Both must resolve to the
+    // canonical `audio/<stem>.<ext>` object the media migration writes.
+    let object_id = match file_hash.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => file_hash,
+    };
+    let key = match object_key(config.prefix.as_deref(), kind, object_id, &extension) {
         Ok(key) => key,
         Err(error) => return error_response(error),
     };
@@ -249,6 +283,9 @@ async fn upload(
     entity_kind: &str,
     field: &str,
 ) -> Result<Response> {
+    if let Some(response) = reject_native_chunk_query(&req).await? {
+        return Ok(response);
+    }
     let entity_id = match parse_id(&ctx, "id") {
         Ok(value) => value,
         Err(response) => return Ok(response),
