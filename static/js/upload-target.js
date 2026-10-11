@@ -38,11 +38,54 @@ function uploadTargetAudioFinalizeUrl(uploadUrl) {
     return `${uploadTargetStripSessionSuffix(uploadUrl)}/finalize`;
 }
 
+// ブラウザが返す MIME は環境依存で、.m4a が `video/mp4` や空文字になることが
+// ある。Worker は audio/* か application/octet-stream しか受け付けないため、
+// 拡張子から既知の MIME を引き直す。未知の拡張子は申告値に任せる。
+const UPLOAD_EXTENSION_CONTENT_TYPES = {
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    wma: "audio/x-ms-wma",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+    m4a: "audio/mp4",
+    mp4: "audio/mp4",
+    aac: "audio/aac",
+    opus: "audio/ogg",
+    webm: "audio/webm",
+    epub: "application/epub+zip",
+};
+
+// 送信する content_type。ブラウザの申告値は環境依存なので拡張子を優先する。
+function uploadTargetContentType(fileName, reportedType) {
+    const name = String(fileName ?? "");
+    const dot = name.lastIndexOf(".");
+    const extension = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+    return UPLOAD_EXTENSION_CONTENT_TYPES[extension] ?? (reportedType || "application/octet-stream");
+}
+
+// Worker が許可する用途。音声は `audio`、EPUB は `epub`。拡張子だけでは
+// 決まらない (`.mp4` は動画にも音声にもなる) ため、`audioOnly` の文脈
+// (音声トラックのアップロード) では再生できる拡張子を音声として扱う。
+const UPLOAD_AUDIO_EXTENSIONS = ["mp3", "wav", "wma", "flac", "ogg", "m4a", "mp4", "aac", "opus", "webm"];
+
+function uploadTargetPickUploadKind(fileName, reportedType, options = {}) {
+    const name = String(fileName ?? "");
+    const dot = name.lastIndexOf(".");
+    const extension = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+    const type = String(reportedType ?? "").toLowerCase();
+    const isAudio = type.startsWith("audio/") || UPLOAD_AUDIO_EXTENSIONS.includes(extension);
+    // `.mp4`/`.m4a` は動画にもなる。音声専用の入力では音声として送る。
+    if (options.audioOnly && UPLOAD_AUDIO_EXTENSIONS.includes(extension)) return "audio";
+    return isAudio ? "audio" : "epub";
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         uploadTargetIsAudio,
         uploadTargetObjectKind,
         uploadTargetAudioSessionUrl,
         uploadTargetAudioFinalizeUrl,
+        uploadTargetContentType,
+        uploadTargetPickUploadKind,
     };
 }

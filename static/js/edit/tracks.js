@@ -52,15 +52,15 @@ function renderTracksHtml(tracks, editType, parentId) {
                                    <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteTrackAudio('${editType}',${parentId},${t.id})" title="音声を削除">消</button>
                                    <label class="btn btn-xs btn-outline-accent" style="cursor:pointer" title="音声を差し替え">
                                        差替
-                                       <input type="file" accept="audio/mp3,audio/wav,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                       <input type="file" accept="${AUDIO_INPUT_ACCEPT}" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
                                    </label>
                                    <button type="button" class="btn btn-xs btn-ghost" onclick="showTrackMetadata('${editType}',${parentId},${t.id})" title="メタデータ表示">
                                        <span class="material-icons" aria-hidden="true">info</span>
                                    </button>`
-                                : `<label class="btn btn-sm btn-outline-accent" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/flac/ogg/m4a/aac/opus/webm、設定画面の上限まで）">
+                                : `<label class="btn btn-sm btn-outline-accent" style="cursor:pointer" title="音声ファイルを登録（mp3/wav/wma/flac/ogg/m4a/aac/opus/webm、設定画面の上限まで）">
                                        <span class="material-icons" aria-hidden="true">upload</span>
                                        音声
-                                       <input type="file" accept="audio/mp3,audio/wav,audio/wma,audio/flac,audio/ogg,audio/m4a,audio/aac,audio/opus,audio/webm" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
+                                       <input type="file" accept="${AUDIO_INPUT_ACCEPT}" hidden onchange="uploadTrackAudio('${editType}',${parentId},${t.id},this)">
                                    </label>`}
                         </div>
                         <div class="edit-track-reorder">
@@ -233,7 +233,14 @@ async function moveTrack(parentId, trackId, discNumber, direction, editType) {
     loadAndRenderCdTracks(parentId);
 }
 
-const ALLOWED_AUDIO_EXTS = ["mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "webm"];
+const ALLOWED_AUDIO_EXTS = ["mp3", "wav", "wma", "flac", "ogg", "m4a", "aac", "opus", "webm"];
+// ファイル選択の候補は MIME だけでは足りない。Windows のレジストリでは .m4a が
+// audio/mp4 等になるため `audio/m4a` に一致せず、候補から外れてしまう。
+// 拡張子を直接指定して OS の関連付けに依存しないようにする。
+const AUDIO_INPUT_ACCEPT = [
+    ...ALLOWED_AUDIO_EXTS.map((extension) => `.${extension}`),
+    "audio/*",
+].join(",");
 const DEFAULT_AUDIO_MAX_MB = 100;
 const MAX_UPLOAD_SETTING_MB = 4096;
 
@@ -282,7 +289,9 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
         ? `/api/cds/${parentId}/tracks/${trackId}/audio`
         : `/api/books/${parentId}/tracks/${trackId}/audio`;
     try {
-        const res = await uploadFileWithChunks(url, "audio", file);
+        // 音声専用の入力なので、拡張子が `.mp4`/`.m4a` でも音声として送る
+        // (ブラウザの MIME 申告は環境依存で `video/mp4` になることがある)。
+        const res = await uploadFileWithChunks(url, "audio", file, "audio");
         if (res.ok) {
             const body = await res.json().catch(() => ({}));
             const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
