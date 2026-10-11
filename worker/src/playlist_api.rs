@@ -63,7 +63,10 @@ fn name(value: String) -> std::result::Result<String, AppError> {
 async fn load(db: &worker::D1Database, raw_id: i64) -> Result<Option<serde_json::Value>> {
     let id =
         id_type(raw_id, "playlist id").map_err(|error| worker::Error::from(error.to_string()))?;
-    let Some(playlist) = db.prepare("SELECT id,name,description,cover_cd_id,cover_url,created_at,updated_at FROM playlists WHERE id = ?").bind_refs(&id).map_err(db_error)?.first::<PlaylistRow>(None).await.map_err(db_error)? else { return Ok(None); };
+    // `playlists` に cover_url 列は無い。カバーは cover_cd_id が指す CD の
+    // ものを返す (ネイティブ実装と同じ)。ここで playlists.cover_url を選ぶと
+    // D1 が "no such column" で失敗し、一覧が 500 になる。
+    let Some(playlist) = db.prepare("SELECT p.id,p.name,p.description,p.cover_cd_id,c.cover_url,p.created_at,p.updated_at FROM playlists p LEFT JOIN cds c ON c.id = p.cover_cd_id WHERE p.id = ?").bind_refs(&id).map_err(db_error)?.first::<PlaylistRow>(None).await.map_err(db_error)? else { return Ok(None); };
     let tracks = db.prepare("SELECT pt.position, t.id, t.book_id, t.cd_id, t.disc_number, t.track_number, t.title, t.duration, t.file_hash, t.file_name, c.id AS cd_id_value, c.title AS cd_title, c.artist AS cd_artist, c.cover_url AS cd_cover_url FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id LEFT JOIN cds c ON c.id = t.cd_id WHERE pt.playlist_id = ? ORDER BY pt.position, pt.track_id").bind_refs(&id).map_err(db_error)?.all().await.map_err(db_error)?.results::<serde_json::Value>().map_err(db_error)?;
     let mut value =
         serde_json::to_value(playlist).map_err(|error| worker::Error::from(error.to_string()))?;

@@ -371,7 +371,7 @@ jobs:
           set -o pipefail
           node --test --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=tap --test-reporter-destination=wasabi-e2e.tap \
-            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs tests/wasabi_audio_browser_shape_e2e.mjs
+            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs tests/wasabi_audio_browser_shape_e2e.mjs tests/wasabi_playlist_e2e.mjs
       - name: Upload develop Wasabi E2E diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -598,7 +598,7 @@ jobs:
           set -o pipefail
           node --test --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=tap --test-reporter-destination=wasabi-e2e.tap \
-            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs tests/wasabi_audio_browser_shape_e2e.mjs
+            tests/wasabi_e2e.mjs tests/wasabi_multipart_e2e.mjs tests/wasabi_audio_multipart_e2e.mjs tests/wasabi_audio_browser_shape_e2e.mjs tests/wasabi_playlist_e2e.mjs
       - name: Upload staging Wasabi E2E diagnostics
         if: always()
         uses: actions/upload-artifact@v4
