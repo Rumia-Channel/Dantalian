@@ -85,16 +85,49 @@ function renderTracksHtml(tracks, editType, parentId) {
     return html;
 }
 
+// 並行アップロードの競合対策。
+// - 同じトラックへの同時アップロードは 1 本に制限する (後から返った応答が
+//   先の結果を上書きしたり、確認ダイアログが多重に出るのを防ぐ)。
+// - トラック一覧の再描画はトークンで順序を守り、古い応答を捨てる。破棄された
+//   応答で innerHTML を書き換えると、ユーザーが直前に選択したファイルの input が
+//   作り直されて選択が消える。
+const trackUploadsInFlight = new Set();
+const trackListRenderTokens = new Map();
+let trackOperationToken = 0;
+
+function nextTrackOperationToken() {
+    trackOperationToken += 1;
+    return trackOperationToken;
+}
+
+function trackOperationIsCurrent(token) {
+    return token === trackOperationToken;
+}
+
+function trackListRenderToken(listId) {
+    const token = (trackListRenderTokens.get(listId) ?? 0) + 1;
+    trackListRenderTokens.set(listId, token);
+    return token;
+}
+
+function trackListRenderIsCurrent(listId, token) {
+    return trackListRenderTokens.get(listId) === token;
+}
+
 async function loadAndRenderTracks(bookId) {
     const list = document.getElementById("edit-tracks-list");
     if (!list) return;
+    const token = trackListRenderToken("edit-tracks-list");
     try {
         const res = await fetch(`/api/books/${bookId}/tracks`);
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         if (!res.ok) { list.innerHTML = `<p class='series-empty'>トラック読み込み失敗 (HTTP ${res.status})</p>`; return; }
         const tracks = await res.json();
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         list.innerHTML = renderTracksHtml(tracks, "book", bookId);
     } catch (err) {
         console.error("loadAndRenderTracks failed:", err);
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         list.innerHTML = "<p class='series-empty'>トラック読み込みエラー</p>";
     }
 }
@@ -102,18 +135,23 @@ async function loadAndRenderTracks(bookId) {
 async function loadAndRenderCdTracks(cdId) {
     const list = document.getElementById("edit-tracks-list");
     if (!list) return;
+    const token = trackListRenderToken("edit-tracks-list");
     try {
         const res = await fetch(`/api/cds/${cdId}/tracks`);
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         if (!res.ok) {
             const errBody = await res.json().catch(() => ({}));
             console.error("loadAndRenderCdTracks failed:", res.status, errBody);
+            if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
             list.innerHTML = `<p class='series-empty'>トラック読み込み失敗 (HTTP ${res.status})</p>`;
             return;
         }
         const tracks = await res.json();
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         list.innerHTML = renderTracksHtml(tracks, "cd", cdId);
     } catch (err) {
         console.error("loadAndRenderCdTracks failed:", err);
+        if (!trackListRenderIsCurrent("edit-tracks-list", token)) return;
         list.innerHTML = "<p class='series-empty'>トラック読み込みエラー</p>";
     }
 }
@@ -259,21 +297,46 @@ async function getConfiguredAudioMaxMb() {
 }
 
 async function uploadTrackAudio(editType, parentId, trackId, input) {
-    const file = input.files[0];
-    input.value = "";
+    // 先にファイルを掴んでから input を空にする。逆順にすると、素早く 2 回
+    // change が来たときに 2 回目が空の FileList を読み、例外も出ずに
+    // 選択が黙って消える。
+    const file = input.files && input.files[0];
     if (!file) return;
+    input.value = "";
 
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
-    if (!ALLOWED_AUDIO_EXTS.includes(ext)) {
-        alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
+    // 同じトラックへの並行アップロードは 1 本に制限する。並行させると
+    // 後から返った応答が先の結果を上書きし、長さやメタデータの確認が
+    // どのアップロードのものか分からなくなる。
+    const uploadKey = `${editType}:${parentId}:${trackId}`;
+    if (trackUploadsInFlight.has(uploadKey)) {
+        alert("この曲は既にアップロード中です。完了を待ってからやり直してください。");
         return;
     }
-    const maxAudioMb = await getConfiguredAudioMaxMb();
-    const maxAudioBytes = maxAudioMb * 1024 * 1024;
-    if (file.size > maxAudioBytes) {
-        alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
-        return;
+    // 検証より前に予約する。検証中に 2 回目の change が来ても二重送信しない。
+    trackUploadsInFlight.add(uploadKey);
+
+    try {
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        if (!ALLOWED_AUDIO_EXTS.includes(ext)) {
+            alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
+            return;
+        }
+        const maxAudioMb = await getConfiguredAudioMaxMb();
+        const maxAudioBytes = maxAudioMb * 1024 * 1024;
+        if (file.size > maxAudioBytes) {
+            alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
+            return;
+        }
+        // このアップロードより新しい操作が始まったら、確認ダイアログや反映を
+        // 中断する (別のアップロードの結果を混ぜない)。
+        const operationToken = nextTrackOperationToken();
+        await runTrackAudioUpload(editType, parentId, trackId, file, operationToken);
+    } finally {
+        trackUploadsInFlight.delete(uploadKey);
     }
+}
+
+async function runTrackAudioUpload(editType, parentId, trackId, file, operationToken) {
     let browserMetadata = null;
     if (typeof preprocessAudioInBrowser === "function" && typeof isWorkerRuntime === "function") {
         try {
@@ -284,6 +347,7 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             console.warn("Browser audio preprocessing unavailable:", error);
         }
     }
+    if (!trackOperationIsCurrent(operationToken)) return;
 
     const url = editType === "cd"
         ? `/api/cds/${parentId}/tracks/${trackId}/audio`
@@ -296,6 +360,8 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             const body = await res.json().catch(() => ({}));
             const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
             await reloadFn(parentId);
+            // 以降はユーザー操作を挟むため、別の操作が始まっていたら中断する。
+            if (!trackOperationIsCurrent(operationToken)) return;
             if (body.file_hash) {
                 await offerToApplyAudioDuration(
                     editType,
@@ -304,7 +370,9 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                     body.file_hash,
                     reloadFn,
                     browserMetadata?.duration_seconds,
+                    operationToken,
                 );
+                if (!trackOperationIsCurrent(operationToken)) return;
             }
             let metadataSaved = Boolean(body.metadata);
             if (browserMetadata && !body.metadata) {
@@ -315,9 +383,12 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                     console.error("Worker audio metadata save failed:", error);
                     alert("音声メタデータのD1保存に失敗しました。解析結果は表示します。");
                 }
+                if (!trackOperationIsCurrent(operationToken)) return;
             }
             if (body.metadata) {
-                await showExtractedMetadataModal(editType, parentId, trackId, body.metadata, reloadFn);
+                await showExtractedMetadataModal(
+                    editType, parentId, trackId, body.metadata, reloadFn, true, operationToken,
+                );
             } else if (browserMetadata) {
                 await showExtractedMetadataModal(
                     editType,
@@ -326,6 +397,7 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                     browserMetadata,
                     reloadFn,
                     metadataSaved,
+                    operationToken,
                 );
             }
             // CD とオーディオブックは同じ cds レコードを更新するため、
@@ -664,6 +736,7 @@ async function offerToApplyAudioDuration(
     fileHash,
     reloadFn,
     knownSeconds = null,
+    operationToken = null,
 ) {
     const parsedKnownSeconds = Number(knownSeconds);
     const secs = Number.isFinite(parsedKnownSeconds) && parsedKnownSeconds > 0
@@ -671,6 +744,8 @@ async function offerToApplyAudioDuration(
         : await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
     const formatted = secondsToMmSs(secs);
     if (!formatted) return;
+    // 長さの取得中に別の操作が始まっていたら、確認も反映もしない。
+    if (operationToken !== null && !trackOperationIsCurrent(operationToken)) return;
     const ok = await showConfirm({
         message: `音声ファイルの長さ ${formatted} をトラックの長さに設定しますか？`,
         okLabel: "設定する",
@@ -678,6 +753,7 @@ async function offerToApplyAudioDuration(
         okClass: "btn btn-sm btn-outline-accent",
     });
     if (!ok) return;
+    if (operationToken !== null && !trackOperationIsCurrent(operationToken)) return;
     await saveTrackField(parentId, trackId, "duration", formatted, editType);
     await reloadFn(parentId);
 }
@@ -689,6 +765,7 @@ async function showExtractedMetadataModal(
     meta,
     reloadFn,
     allowApply = true,
+    operationToken = null,
 ) {
     if (!meta || typeof meta !== "object") return;
     const fields = [
@@ -735,6 +812,12 @@ async function showExtractedMetadataModal(
         const applyBtn = overlay.querySelector("#meta-modal-apply-title");
         if (applyBtn && allowApply && meta.title && !isCd) {
             applyBtn.addEventListener("click", async () => {
+                // 表示中に別のアップロードや編集が始まっていたら、古い結果を
+                // 反映しない (取り違え防止)。
+                if (operationToken !== null && !trackOperationIsCurrent(operationToken)) {
+                    close();
+                    return;
+                }
                 await saveTrackField(parentId, trackId, "title", meta.title, editType);
                 close();
                 await reloadFn(parentId);

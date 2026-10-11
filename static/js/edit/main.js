@@ -47,6 +47,11 @@ async function renderBookEdit(id) {
         editContent.innerHTML = '<p class="empty-state">書籍が見つかりません</p>';
         return;
     }
+    // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する
+    // (アップロード中は進めない。対象が変わればトークンが進む)。
+    if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
+        nextTrackOperationToken();
+    }
     let book;
     try {
         const response = await fetch(`/api/books/${id}`);
@@ -669,6 +674,10 @@ async function renderCdEdit(cdId) {
     if (!cd) {
         editContent.innerHTML = '<p class="empty-state">CDが見つかりません</p>';
         return;
+    }
+    // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する。
+    if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
+        nextTrackOperationToken();
     }
 
     // タグ由来のアルバム情報を取得(cd 側の編集値とは別に出し、仮入力/参考表示に使う)
