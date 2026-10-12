@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [Rumia-Channel/bibi の commit `2ade2106f112bd9310f68c02b5102139dc4e7137`](https://github.com/Rumia-Channel/bibi/commit/2ade2106f112bd9310f68c02b5102139dc4e7137)。`develop` の移動する先端ではなく、この SHA を固定する。既存の `v2.0.0` タグには本書の新 API は含まれない。2.1.0 の master 統合・タグ作成・Release 公開とは別の変更である。
+Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [Rumia-Channel/bibi の commit `bd64a508a5db11412c66eeb530c50f6f21f21196`](https://github.com/Rumia-Channel/bibi/commit/bd64a508a5db11412c66eeb530c50f6f21f21196)。`develop` の移動する先端ではなく、この SHA を固定する。既存の `v2.0.0` タグには本書の新 API は含まれない。2.1.0 の master 統合・タグ作成・Release 公開とは別の変更である。
 
 - **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -31,7 +31,7 @@ Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [
 ```sh
 git clone https://github.com/Rumia-Channel/bibi.git bibi-import
 cd bibi-import
-git checkout --detach 2ade2106f112bd9310f68c02b5102139dc4e7137
+git checkout --detach bd64a508a5db11412c66eeb530c50f6f21f21196
 bun install --frozen-lockfile
 bun run build
 bun run verify:dist
@@ -40,7 +40,7 @@ bun run test:browser
 bun run archive
 ```
 
-確認環境は Bun 1.4.2 / Node.js 24.21.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使う。
+確認環境は Bun 1.4.2 / Node.js 24.21.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
 取り込むのは `__dist/bibi/` 全体、または ZIP の `Bibi-v2.1.0/bibi/` 全体。配下の相対関係を維持し `/vendor/bibi/` で配信する。デモ・サンプル本は不要。Jo だけ、reader JS だけを抜き出す配布は不可。
 
@@ -173,7 +173,7 @@ console.log(Result.requestedLocation, Result.position);
 - 対応形式: linear spine の `/6/<偶数>!/4/...` point CFI と UTF-16 文字 offset。長い段落の途中に復元できる。P は original linear item と element の位置で、段落内の文字位置までは表さない。
 - 両方あれば CFI 優先。無効な CFI を P にすり替えたり範囲外を末尾に clamp したりしない。
 - range CFI、nested indirect CFI、nonlinear spine、存在しないノード・文字 offset は対象外/失敗。CFI 全仕様への対応を意味しない。
-- lazy item は live restore 時にロードしてから解決する。挿絵が隣接本文へ移されても元の spine の CFI を維持する。
+- lazy item は live restore 時にロードしてから解決する。挿絵が隣接本文へ移されても元の spine の CFI を維持する。右の挿絵と左の後続本文が同じ表示ページに並ぶ場合も、DOM の読み順で画像・本文を一緒に走査し、先頭の挿絵ではなく後続本文の位置を誤って返さない。
 - 実際の返却位置は表示ページの先頭になることがあり、要求文字位置と数値が完全一致するとは限らない。復元結果と操作可能状態を確認する。
 
 初期優先順は **明示 location/従来 URL destination → 端末 Automark → 本の先頭**。`location` は JSON を URLSearchParams に渡す。従来の `p/epubcfi/nav/iipp/edge` を新しい保存形式に置き換えなくても開けるが、ホスト保存は新 API の canonical location を使う。明示位置が無効なら `state.initialRestore.ok:false` と error を通知して先頭を表示する。`initialRestore.position` には実際の位置が入る。明示位置を使わない通常起動では initialRestore は null。
@@ -216,7 +216,9 @@ linear spine item 数を N、0-based item index を i とする。
 
 ## 7. 確認済み範囲と残るホスト受け入れ
 
-Bibi の配布 JS/CSS のみを使った Chromium の 12 シナリオを確認済み: UTF-16 文字復元、フォント/resize、目次・型付き Jo 移動・実スクロール、明示初期位置と失敗、複数 iframe/source/session、user/file と同一書誌 ID の分離、拡張子なし入力と配置/preset 変更、lazy spine、挿絵と元 CFI、固定レイアウト、cookie 認証、署名相当の CORS/Range、atEnd と読み込み失敗。CI に同じ確認を追加した。
+Bibi の配布 JS/CSS のみを使った Chromium の 12 シナリオを確認済み: UTF-16 文字復元、フォント/resize、目次・型付き Jo 移動・実スクロール、明示初期位置と失敗、複数 iframe/source/session、user/file と同一書誌 ID の分離、拡張子なし入力と配置/preset 変更、lazy spine、挿絵と元 CFI、固定レイアウト、cookie 認証、署名相当の CORS/Range、atEnd と読み込み失敗。挿絵の確認は「右に縦長挿絵・左に本文の文字全体が表示され、resize 後も元の挿絵 CFI を維持する」を条件とし、次ページの端が少し見えただけでは成功としない。CI に同じ確認を追加した。
+
+Windows の native Chromium と、固定 SHA の [Linux CI](https://github.com/Rumia-Channel/bibi/actions/runs/38291995676) の両方で成功した。Linux CI でも frozen install、39 unit tests、audit、配布物の build/manifest 検証、12 browser scenarios が成功している。develop の検証であり、2.1.0 Release の公開を意味しない。
 
 指定された実 EPUB でも公開 API の ready、位置取得、離れた元 spine への復元と実際の本文表示を確認した。開発サーバーでも native Chromium で standalone ZIP Worker により固定レイアウト本が操作可能になった。unit suite は 39 件成功、audit は既知脆弱性 0。同一入力から作った完全 ZIP 2 本はバイト単位で一致し、別 timezone/ファイル時刻の再現性もテストする。
 
