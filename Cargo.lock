@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "dantalian"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "aws-sdk-s3",
  "axum",

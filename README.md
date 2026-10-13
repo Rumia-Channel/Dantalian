@@ -222,8 +222,8 @@ node --test worker/tests/reliability_contract.mjs
 
 EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.1.0** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
 
-- 一覧・本一覧・シリーズ内の本をクリックすると、同じタブの `/reader/?book=<id>` で登録済み EPUB を開きます。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」からも読書画面へ移動できます。CD・オーディオブックのクリック動作は変更していません。
-- 読書画面には元の一覧への戻りリンク、書籍情報へのリンク、現在の進捗率を表示します。Bibi の目次・ページ送り・キーボード・スライダーを使用できます。
+- 一覧・本一覧・シリーズ内の本をクリックすると、同じタブの `/reader/?book=<id>` で書籍情報を確認し、`/vendor/bibi/` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。CD・オーディオブックのクリック動作は変更していません。
+- 起動ページを `location.replace` で置き換えるため、一覧から開いた後はブラウザの「戻る」で直接元の一覧に戻れます。目次・ページ送り・表示設定・スライダーは Bibi 自身の UI を使用します。API ログインは共通の `static/js/auth.js` が担当し、起動時の書籍 API と同一 origin の EPUB 配信に既存の認証を引き継ぎます。
 - EPUB 未登録の場合は登録案内を表示します。PDF は Bibi で開かず、ダウンロードを案内します。
 - 再開位置は Bibi がブラウザ内に保存します。書籍 ID・ファイル版で分離しますが、サーバーへの位置保存、端末間同期、読了状態の自動更新は未接続です。
 
