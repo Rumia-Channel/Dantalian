@@ -86,7 +86,7 @@ impl Db {
         track_id: i64,
         m: &TrackMetadata,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         upsert_track_metadata_conn(&conn, track_id, m)
     }
 
@@ -94,7 +94,7 @@ impl Db {
         &self,
         track_id: i64,
     ) -> Result<Option<TrackMetadata>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT title, artist, album, album_artist, track_number, track_total,
                     disc_number, disc_total, year, genre, composer, publisher, label,
@@ -140,7 +140,7 @@ impl Db {
         &self,
         track_id: i64,
     ) -> Result<Option<TrackMetadataResponse>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let cd_id: Option<i64> = conn
             .query_row(
                 "SELECT cd_id FROM tracks WHERE id = ?1",
@@ -281,7 +281,7 @@ impl Db {
         &self,
         cd_id: i64,
     ) -> Result<crate::db_models::AlbumTagConsensus, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT tm.album, tm.album_artist, tm.artist, tm.publisher, tm.label,
                     tm.year, tm.genre, tm.composer, tm.lyrics
@@ -343,7 +343,7 @@ impl Db {
     }
 
     pub fn delete_track_metadata(&self, track_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "DELETE FROM track_metadata WHERE track_id = ?1",
             params![track_id],

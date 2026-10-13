@@ -216,6 +216,12 @@ nav a {
     transition: background 0.2s, color 0.2s;
 }
 
+.nav-book-label {
+    display: inline-block;
+    width: 2em;
+    text-align: center;
+}
+
 nav a:hover {
     background: rgba(255, 255, 255, 0.12);
     color: var(--color-text-primary);

@@ -3,7 +3,7 @@ use rusqlite::params;
 
 impl Db {
     pub fn create_series(&self, name: &str) -> Result<Series, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute("INSERT INTO series (name) VALUES (?1)", params![name])?;
         let id = conn.last_insert_rowid();
         Ok(Series {
@@ -13,7 +13,7 @@ impl Db {
     }
 
     pub fn list_series(&self) -> Result<Vec<Series>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare("SELECT id, name FROM series ORDER BY name")?;
         let rows = stmt.query_map([], |row| {
             Ok(Series {
@@ -25,7 +25,7 @@ impl Db {
     }
 
     pub fn rename_series(&self, id: i64, name: &str) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE series SET name = ?1 WHERE id = ?2",
             params![name, id],
@@ -34,13 +34,13 @@ impl Db {
     }
 
     pub fn delete_series(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM series WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
 
     pub fn create_grand_series(&self, name: &str) -> Result<GrandSeries, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute("INSERT INTO grand_series (name) VALUES (?1)", params![name])?;
         let id = conn.last_insert_rowid();
         Ok(GrandSeries {
@@ -50,7 +50,7 @@ impl Db {
     }
 
     pub fn list_grand_series(&self) -> Result<Vec<GrandSeriesWithItems>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT gs.id, gs.name, gsi.item_type, gsi.item_id,
                     COALESCE(s.name, b.title, c.title) AS item_name
@@ -61,8 +61,7 @@ impl Db {
              LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
              ORDER BY gs.id, gsi.rowid",
         )?;
-        let mut map: std::collections::HashMap<i64, GrandSeriesWithItems> =
-            std::collections::HashMap::new();
+        let mut result: Vec<GrandSeriesWithItems> = Vec::new();
         let rows = stmt.query_map([], |row| {
             let gs_id: i64 = row.get(0)?;
             let gs_name: String = row.get(1)?;
@@ -73,11 +72,16 @@ impl Db {
         })?;
         for row in rows {
             let (gs_id, gs_name, item_type, item_id, item_name) = row?;
-            let entry = map.entry(gs_id).or_insert_with(|| GrandSeriesWithItems {
-                id: gs_id,
-                name: gs_name,
-                items: Vec::new(),
-            });
+            if result.last().is_none_or(|entry| entry.id != gs_id) {
+                result.push(GrandSeriesWithItems {
+                    id: gs_id,
+                    name: gs_name,
+                    items: Vec::new(),
+                });
+            }
+            let entry = result
+                .last_mut()
+                .expect("ordered query always creates a group");
             if let (Some(it), Some(iid), Some(iname)) = (item_type, item_id, item_name) {
                 entry.items.push(GrandSeriesItemInfo {
                     item_type: it,
@@ -86,11 +90,11 @@ impl Db {
                 });
             }
         }
-        Ok(map.into_values().collect())
+        Ok(result)
     }
 
     pub fn rename_grand_series(&self, id: i64, name: &str) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE grand_series SET name = ?1 WHERE id = ?2",
             params![name, id],
@@ -99,7 +103,7 @@ impl Db {
     }
 
     pub fn delete_grand_series(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM grand_series WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -110,7 +114,20 @@ impl Db {
         item_type: &str,
         item_id: i64,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
+        let valid: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM grand_series WHERE id=?1) AND
+             CASE ?2
+               WHEN 'series' THEN EXISTS(SELECT 1 FROM series WHERE id=?3)
+               WHEN 'book' THEN EXISTS(SELECT 1 FROM books WHERE id=?3)
+               WHEN 'cd' THEN EXISTS(SELECT 1 FROM cds WHERE id=?3)
+               ELSE 0 END",
+            params![grand_series_id, item_type, item_id],
+            |row| row.get(0),
+        )?;
+        if !valid {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         conn.execute(
             "INSERT OR IGNORE INTO grand_series_items (grand_series_id, item_type, item_id) VALUES (?1, ?2, ?3)",
             params![grand_series_id, item_type, item_id],
@@ -124,7 +141,7 @@ impl Db {
         item_type: &str,
         item_id: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "DELETE FROM grand_series_items WHERE grand_series_id = ?1 AND item_type = ?2 AND item_id = ?3",
             params![grand_series_id, item_type, item_id],

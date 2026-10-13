@@ -35,7 +35,11 @@ pub async fn update(
 ) -> Result<StatusCode, ApiError> {
     let service = BorrowerService::new(NativeBorrowerRepository::new(state.db));
     service
-        .update(id, request.name.as_deref(), request.notes.as_deref())
+        .update(
+            id,
+            request.name.as_deref(),
+            request.notes.as_ref().map(|notes| notes.as_deref()),
+        )
         .await
         .map(|()| StatusCode::NO_CONTENT)
         .map_err(error_response)

@@ -66,7 +66,7 @@ pub async fn rename(
             Json(serde_json::json!({"error": "Name is required"})),
         ));
     }
-    state
+    let renamed = state
         .db
         .rename_grand_series(id, req.name.trim())
         .map_err(|e| {
@@ -75,6 +75,12 @@ pub async fn rename(
                 Json(serde_json::json!({"error": e.to_string()})),
             )
         })?;
+    if !renamed {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Grand series not found"})),
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -98,10 +104,10 @@ pub async fn add_item(
     Path(id): Path<i64>,
     Json(req): Json<AddGrandSeriesItemRequest>,
 ) -> Result<StatusCode, ApiError> {
-    if req.item_type != "series" && req.item_type != "book" && req.item_type != "cd" {
+    if !matches!(req.item_type.as_str(), "series" | "book" | "cd") || req.item_id <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "item_type must be 'series', 'book', or 'cd'"})),
+            Json(serde_json::json!({"error": "Invalid grand series item"})),
         ));
     }
     state
@@ -109,7 +115,11 @@ pub async fn add_item(
         .add_grand_series_item(id, &req.item_type, req.item_id)
         .map_err(|e| {
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
                 Json(serde_json::json!({"error": e.to_string()})),
             )
         })?;

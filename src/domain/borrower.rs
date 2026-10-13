@@ -1,3 +1,4 @@
+use super::patch::deserialize_nullable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -16,5 +17,6 @@ pub struct CreateBorrower {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct UpdateBorrower {
     pub name: Option<String>,
-    pub notes: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub notes: Option<Option<String>>,
 }

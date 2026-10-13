@@ -221,7 +221,7 @@ musicGrid.addEventListener("click", (e) => {
         }
         if (e.target.closest("[data-playlist-action=\"delete\"]")) {
             e.stopPropagation();
-            confirmDeletePlaylist(playlistId).catch((err) => console.error("deletePlaylist failed:", err));
+            confirmDeletePlaylist(playlistId).catch((err) => window.alert(err.message || "プレイリストの削除に失敗しました"));
             return;
         }
         openPlaylist(playlistId, Boolean(e.target.closest(".music-album-play-btn")));
@@ -232,6 +232,7 @@ musicGrid.addEventListener("click", (e) => {
 });
 musicGrid.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target.closest("button, a, input, select, textarea")) return;
     const groupHeader = e.target.closest(".author-group-header");
     if (groupHeader) return; // ボタンのデフォルト動作に任せてクリック扱いにする
     const card = e.target.closest(".music-album");

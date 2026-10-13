@@ -7,7 +7,7 @@ impl Db {
         name: &str,
         notes: Option<&str>,
     ) -> Result<Borrower, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO borrowers (name, notes) VALUES (?1, ?2)",
             params![name, notes],
@@ -21,7 +21,7 @@ impl Db {
     }
 
     pub fn list_borrowers(&self) -> Result<Vec<Borrower>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare("SELECT id, name, notes FROM borrowers ORDER BY name")?;
         let rows = stmt.query_map([], |row| {
             Ok(Borrower {
@@ -37,18 +37,18 @@ impl Db {
         &self,
         id: i64,
         name: Option<&str>,
-        notes: Option<&str>,
+        notes: Option<Option<&str>>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
-            "UPDATE borrowers SET name = COALESCE(?1, name), notes = ?2 WHERE id = ?3",
-            params![name, notes, id],
+            "UPDATE borrowers SET name = COALESCE(?1, name), notes = CASE WHEN ?2 THEN ?3 ELSE notes END WHERE id = ?4",
+            params![name, notes.is_some(), notes.flatten(), id],
         )?;
         Ok(affected > 0)
     }
 
     pub fn delete_borrower(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM borrowers WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }

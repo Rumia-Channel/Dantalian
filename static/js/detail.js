@@ -1,3 +1,5 @@
+let detailRevision = 0;
+
 // href 用 URL サニタイザ: http/https/相対パスのみ許可し javascript: 等を遮断
 function safeUrl(url) {
     const s = String(url == null ? "" : url).trim();
@@ -6,8 +8,10 @@ function safeUrl(url) {
 }
 
 function showGrandSeriesModal(gsId) {
+    detailRevision += 1;
     const gs = allGrandSeries.find((g) => g.id === gsId);
     if (!gs) return;
+    const catalogueItems = getAllItems();
 
     let contentHtml = "";
     const individualBooks = [];
@@ -16,18 +20,16 @@ function showGrandSeriesModal(gsId) {
     for (const item of gs.items) {
         if (item.item_type === "series") {
             const series = allSeries.find((s) => s.id === item.item_id);
-            const sBooks = allBooks.filter((b) => b.series_id === item.item_id);
-            const sCds = (allCds || []).filter((c) => c.series_id === item.item_id);
-            const sItems = [...sBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b)),
-                ...(sCds.map((c) => ({ sourceType: "cd", originalId: c.id, id: c.id, title: c.title, cover_url: c.cover_url })))];
+            const sItems = catalogueItems.filter((book) => book.series_id === item.item_id);
+            if (sItems.length === 0) continue;
             const sorted = typeof sortBookList === "function" ? sortBookList(sItems) : sItems;
             seriesSections.push({ series, sortedBooks: sorted });
         } else if (item.item_type === "book") {
-            const book = allBooks.find((b) => b.id === item.item_id);
-            if (book) individualBooks.push(Object.assign({ sourceType: "book", originalId: book.id }, book));
+            const book = catalogueItems.find((book) => book.sourceType === "book" && book.originalId === item.item_id);
+            if (book) individualBooks.push(book);
         } else if (item.item_type === "cd") {
-            const cd = (allCds || []).find((c) => c.id === item.item_id);
-            if (cd) individualBooks.push({ sourceType: "cd", originalId: cd.id, id: cd.id, title: cd.title, cover_url: cd.cover_url });
+            const cd = catalogueItems.find((cd) => cd.sourceType === "cd" && cd.originalId === item.item_id);
+            if (cd) individualBooks.push(cd);
         }
     }
 
@@ -37,7 +39,7 @@ function showGrandSeriesModal(gsId) {
             <div class="gs-modal-section-title">${escapeHtml(series ? series.name : "")}</div>
             <div class="series-modal-grid">
                 ${sortedBooks.map((b) => `
-                    <div class="series-modal-item" onclick="${b.sourceType === 'cd' ? `showCdDetail(${b.originalId})` : `showDetail(${b.id})`}">
+                    <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
                         ${b.cover_url
                             ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
                             : '<div class="book-cover-placeholder">No Image</div>'}
@@ -55,7 +57,7 @@ function showGrandSeriesModal(gsId) {
             <div class="gs-modal-section-title">個別アイテム</div>
             <div class="series-modal-grid">
                 ${sortedIndividuals.map((b) => `
-                    <div class="series-modal-item" onclick="${b.sourceType === 'cd' ? `showCdDetail(${b.originalId})` : `showDetail(${b.id})`}">
+                    <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
                         ${b.cover_url
                             ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
                             : '<div class="book-cover-placeholder">No Image</div>'}
@@ -75,18 +77,14 @@ function showGrandSeriesModal(gsId) {
 }
 
 function showSeriesModal(seriesId) {
+    detailRevision += 1;
     const series = allSeries.find((s) => s.id === seriesId);
     if (!series) return;
-    const sBooks = allBooks.filter((b) => b.series_id === seriesId);
-    const sCds = (allCds || []).filter((c) => c.series_id === seriesId);
-    const sItems = [
-        ...sBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b)),
-        ...sCds.map((c) => ({ sourceType: "cd", originalId: c.id, id: c.id, title: c.title, cover_url: c.cover_url })),
-    ];
+    const sItems = getAllItems().filter((book) => book.series_id === seriesId);
     const sortedItems = typeof sortBookList === "function" ? sortBookList(sItems) : sItems;
 
     const volumesHtml = sortedItems.map((b) => `
-        <div class="series-modal-item" onclick="${b.sourceType === 'cd' ? `showCdDetail(${b.originalId})` : `showDetail(${b.id})`}">
+        <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
             ${
                 b.cover_url
                     ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
@@ -105,6 +103,7 @@ function showSeriesModal(seriesId) {
 }
 
 async function showDetail(id) {
+    const revision = ++detailRevision;
     const summary = allBooks.find((b) => b.id === id);
     if (!summary) return;
     let book = summary;
@@ -120,19 +119,22 @@ async function showDetail(id) {
         : null;
     const currentGrandSeries = findBookGrandSeries(book.id);
 
+    const render = (copies, tracks) => {
+        if (revision === detailRevision) renderDetail(book, copies, currentSeries, currentGrandSeries, tracks);
+    };
     fetch(`/api/books/${book.id}/copies`)
         .then((r) => r.json())
         .then((copies) => {
             if (book.media_type === "cd" || book.media_type === "audiobook") {
                 fetch(`/api/books/${book.id}/tracks`)
                     .then((r) => r.json())
-                    .then((tracks) => renderDetail(book, copies, currentSeries, currentGrandSeries, tracks))
-                    .catch(() => renderDetail(book, copies, currentSeries, currentGrandSeries, []));
+                    .then((tracks) => render(copies, tracks))
+                    .catch(() => render(copies, []));
             } else {
-                renderDetail(book, copies, currentSeries, currentGrandSeries, []);
+                render(copies, []);
             }
         })
-        .catch(() => renderDetail(book, [], currentSeries, currentGrandSeries, []));
+        .catch(() => render([], []));
 }
 
 function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
@@ -257,7 +259,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                 book.epub_file_hash
                     ? `<div class="detail-epub-info">
                         <span class="detail-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                        <a class="btn btn-xs btn-outline-accent detail-epub-open" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
+                        <a class="btn btn-xs btn-outline-accent detail-epub-open" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
                         <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
                     </div>`
                     : `<div class="detail-epub-empty">ファイル未登録</div>`
@@ -308,6 +310,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
 
 function closeDetail(e) {
     if (e && e.target !== detailOverlay) return;
+    detailRevision += 1;
     detailOverlay.classList.add("hidden");
 }
 
@@ -373,7 +376,7 @@ async function deleteBook(id) {
     try {
         const res = await fetch(`/api/books/${id}`, { method: "DELETE" });
         if (res.ok) {
-            detailOverlay.classList.add("hidden");
+            closeDetail();
             await loadSeries();
             await loadGrandSeries();
             await loadBooks();
@@ -402,6 +405,7 @@ function renderChildrenInDetail(bookId) {
 }
 
 function showCdDetail(cdId) {
+    const revision = ++detailRevision;
     const rawCd = (allCds || []).find((c) => c.id === cdId);
     if (!rawCd) return;
     const cd = Object.assign({ sourceType: "cd", originalId: cdId }, rawCd);
@@ -409,8 +413,12 @@ function showCdDetail(cdId) {
 
     fetch(`/api/cds/${cdId}/tracks`)
         .then((r) => r.json())
-        .then((tracks) => renderCdDetail(cd, currentSeries, tracks))
-        .catch(() => renderCdDetail(cd, currentSeries, []));
+        .then((tracks) => {
+            if (revision === detailRevision) renderCdDetail(cd, currentSeries, tracks);
+        })
+        .catch(() => {
+            if (revision === detailRevision) renderCdDetail(cd, currentSeries, []);
+        });
 }
 
 function renderCdDetail(cd, currentSeries, tracks) {
@@ -569,7 +577,7 @@ async function deleteCd(id) {
     try {
         const res = await fetch(`/api/cds/${id}`, { method: "DELETE" });
         if (res.ok) {
-            detailOverlay.classList.add("hidden");
+            closeDetail();
             await loadCds();
             renderItems();
         }
@@ -577,5 +585,5 @@ async function deleteCd(id) {
 }
 
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") detailOverlay.classList.add("hidden");
+    if (e.key === "Escape") closeDetail();
 });

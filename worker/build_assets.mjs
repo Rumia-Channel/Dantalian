@@ -32,6 +32,7 @@ function run(command, args) {
     });
 }
 
+await run(process.execPath, [join(projectDir, "scripts", "import_bibi.mjs"), "--verify"]);
 await run(process.execPath, [join(projectDir, "scripts", "build_audio_preprocessor.mjs")]);
 
 async function filesUnder(directory) {
@@ -65,6 +66,7 @@ if (previousAssetVersion.trim() === assetVersion && await readFile(join(outputDi
 }
 
 await mkdir(outputDir, { recursive: true });
+await rm(join(outputDir, "vendor", "bibi"), { recursive: true, force: true });
 await cp(sourceDir, outputDir, { recursive: true });
 await cp(join(projectDir, "LICENSE"), join(outputDir, "LICENSE"));
 await cp(join(projectDir, "NOTICE"), join(outputDir, "NOTICE"));

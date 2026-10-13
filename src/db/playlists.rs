@@ -78,9 +78,61 @@ fn list_playlist_tracks_with_conn(
     rows.collect()
 }
 
+fn append_tracks(conn: &Connection, playlist_id: i64, track_ids: &[i64]) -> rusqlite::Result<bool> {
+    let mut position: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = ?1",
+        params![playlist_id],
+        |row| row.get(0),
+    )?;
+    let mut seen = HashSet::with_capacity(track_ids.len());
+    for &track_id in track_ids {
+        if !seen.insert(track_id) {
+            continue;
+        }
+        let valid: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tracks t JOIN cds c ON c.id = t.cd_id
+                           WHERE t.id = ?1 AND t.file_hash IS NOT NULL AND t.file_hash <> '')",
+            params![track_id],
+            |row| row.get(0),
+        )?;
+        if !valid {
+            return Ok(false);
+        }
+        let inserted = conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, ?3)
+             ON CONFLICT(playlist_id, track_id) DO NOTHING",
+            params![playlist_id, track_id, position],
+        )?;
+        position += inserted as i64;
+    }
+    Ok(true)
+}
+
+fn touch_playlist(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    Ok(conn.execute(
+        "UPDATE playlists SET updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )? > 0)
+}
+
+fn compact_positions(conn: &Connection, playlist_id: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "WITH ordered AS MATERIALIZED (
+             SELECT track_id, ROW_NUMBER() OVER (ORDER BY position, rowid) - 1 AS position
+             FROM playlist_tracks WHERE playlist_id = ?1
+         )
+         UPDATE playlist_tracks SET position = (
+             SELECT position FROM ordered WHERE ordered.track_id = playlist_tracks.track_id
+         ) WHERE playlist_id = ?1",
+        params![playlist_id],
+    )?;
+    Ok(())
+}
+
 impl Db {
     pub fn list_playlists(&self) -> Result<Vec<PlaylistWithTracks>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!("{} ORDER BY p.id DESC", playlist_select_sql()))?;
         let playlists = stmt
             .query_map([], row_to_playlist)?
@@ -98,7 +150,7 @@ impl Db {
         &self,
         id: i64,
     ) -> Result<Option<PlaylistWithTracks>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!("{} WHERE p.id = ?1", playlist_select_sql()))?;
         let playlist = stmt
             .query_map(params![id], row_to_playlist)?
@@ -117,31 +169,27 @@ impl Db {
         name: &str,
         description: Option<&str>,
         cover_cd_id: Option<i64>,
-    ) -> Result<Playlist, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        track_ids: &[i64],
+    ) -> Result<Option<Playlist>, rusqlite::Error> {
+        let mut conn = self.0.lock();
+        let tx = conn.transaction()?;
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        conn.execute(
+        tx.execute(
             "INSERT INTO playlists (name, description, cover_cd_id, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?4)",
             params![name, description, cover_cd_id, now],
         )?;
-        let id = conn.last_insert_rowid();
-        Ok(Playlist {
-            id,
-            name: name.to_string(),
-            description: description.map(str::to_string),
-            cover_cd_id,
-            cover_url: cover_cd_id.and_then(|cd_id| {
-                conn.query_row(
-                    "SELECT cover_url FROM cds WHERE id = ?1",
-                    params![cd_id],
-                    |row| row.get(0),
-                )
-                .ok()
-            }),
-            created_at: Some(now.clone()),
-            updated_at: Some(now),
-        })
+        let id = tx.last_insert_rowid();
+        if !append_tracks(&tx, id, track_ids)? {
+            return Ok(None);
+        }
+        let playlist = tx.query_row(
+            &format!("{} WHERE p.id = ?1", playlist_select_sql()),
+            params![id],
+            row_to_playlist,
+        )?;
+        tx.commit()?;
+        Ok(Some(playlist))
     }
 
     pub fn update_playlist(
@@ -151,7 +199,7 @@ impl Db {
         description: Option<&str>,
         cover_cd_id: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
             "UPDATE playlists
@@ -170,7 +218,7 @@ impl Db {
         cover_cd_id: Option<i64>,
         track_ids: &[i64],
     ) -> Result<bool, rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = tx.execute(
@@ -187,67 +235,30 @@ impl Db {
             "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
             params![id],
         )?;
-        let mut seen = HashSet::new();
-        let mut position = 0i64;
-        for track_id in track_ids {
-            if !seen.insert(*track_id) {
-                continue;
-            }
-            let valid: bool = tx.query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM tracks
-                     WHERE id = ?1 AND cd_id IS NOT NULL AND file_hash IS NOT NULL
-                 )",
-                params![track_id],
-                |row| row.get(0),
-            )?;
-            if !valid {
-                return Ok(false);
-            }
-            tx.execute(
-                "INSERT INTO playlist_tracks (playlist_id, track_id, position)
-                 VALUES (?1, ?2, ?3)",
-                params![id, track_id, position],
-            )?;
-            position += 1;
+        if !append_tracks(&tx, id, track_ids)? {
+            return Ok(false);
         }
         tx.commit()?;
         Ok(true)
     }
 
     pub fn delete_playlist(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM playlists WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
 
-    pub fn add_playlist_track(
+    pub fn add_playlist_tracks(
         &self,
         playlist_id: i64,
-        track_id: i64,
+        track_ids: &[i64],
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
-        let valid: bool = conn.query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM tracks
-                 WHERE id = ?1 AND cd_id IS NOT NULL AND file_hash IS NOT NULL
-             ) AND EXISTS(SELECT 1 FROM playlists WHERE id = ?2)",
-            params![track_id, playlist_id],
-            |row| row.get(0),
-        )?;
-        if !valid {
+        let mut conn = self.0.lock();
+        let tx = conn.transaction()?;
+        if !touch_playlist(&tx, playlist_id)? || !append_tracks(&tx, playlist_id, track_ids)? {
             return Ok(false);
         }
-        let position: i64 = conn.query_row(
-            "SELECT COALESCE(MAX(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = ?1",
-            params![playlist_id],
-            |row| row.get(0),
-        )?;
-        conn.execute(
-            "INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position)
-             VALUES (?1, ?2, ?3)",
-            params![playlist_id, track_id, position],
-        )?;
+        tx.commit()?;
         Ok(true)
     }
 
@@ -256,27 +267,40 @@ impl Db {
         playlist_id: i64,
         track_id: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
-        let removed_position: Option<i64> = conn
-            .query_row(
-                "SELECT position FROM playlist_tracks WHERE playlist_id = ?1 AND track_id = ?2",
-                params![playlist_id, track_id],
-                |row| row.get(0),
-            )
-            .ok();
-        let affected = conn.execute(
+        let mut conn = self.0.lock();
+        let tx = conn.transaction()?;
+        let affected = tx.execute(
             "DELETE FROM playlist_tracks WHERE playlist_id = ?1 AND track_id = ?2",
             params![playlist_id, track_id],
         )?;
-        if let Some(position) = removed_position {
-            conn.execute(
-                "UPDATE playlist_tracks
-                 SET position = position - 1
-                 WHERE playlist_id = ?1 AND position > ?2",
-                params![playlist_id, position],
+        if affected == 0 {
+            return Ok(false);
+        }
+        compact_positions(&tx, playlist_id)?;
+        touch_playlist(&tx, playlist_id)?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    pub fn remove_playlist_tracks(
+        &self,
+        playlist_id: i64,
+        track_ids: &[i64],
+    ) -> Result<bool, rusqlite::Error> {
+        let mut conn = self.0.lock();
+        let tx = conn.transaction()?;
+        if !touch_playlist(&tx, playlist_id)? {
+            return Ok(false);
+        }
+        for track_id in track_ids {
+            tx.execute(
+                "DELETE FROM playlist_tracks WHERE playlist_id = ?1 AND track_id = ?2",
+                params![playlist_id, track_id],
             )?;
         }
-        Ok(affected > 0)
+        compact_positions(&tx, playlist_id)?;
+        tx.commit()?;
+        Ok(true)
     }
 
     pub fn set_playlist_tracks(
@@ -284,14 +308,9 @@ impl Db {
         playlist_id: i64,
         track_ids: &[i64],
     ) -> Result<bool, rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
-        let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM playlists WHERE id = ?1)",
-            params![playlist_id],
-            |row| row.get(0),
-        )?;
-        if !exists {
+        if !touch_playlist(&tx, playlist_id)? {
             return Ok(false);
         }
 
@@ -299,29 +318,8 @@ impl Db {
             "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
             params![playlist_id],
         )?;
-        let mut seen = HashSet::new();
-        let mut position = 0i64;
-        for track_id in track_ids {
-            if !seen.insert(*track_id) {
-                continue;
-            }
-            let valid: bool = tx.query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM tracks
-                     WHERE id = ?1 AND cd_id IS NOT NULL AND file_hash IS NOT NULL
-                 )",
-                params![track_id],
-                |row| row.get(0),
-            )?;
-            if !valid {
-                return Ok(false);
-            }
-            tx.execute(
-                "INSERT INTO playlist_tracks (playlist_id, track_id, position)
-                 VALUES (?1, ?2, ?3)",
-                params![playlist_id, track_id, position],
-            )?;
-            position += 1;
+        if !append_tracks(&tx, playlist_id, track_ids)? {
+            return Ok(false);
         }
         tx.commit()?;
         Ok(true)
@@ -395,12 +393,19 @@ mod tests {
             .expect("third audio");
 
         let playlist = db
-            .insert_playlist("Favorites", Some("Test playlist"), Some(cd.id))
-            .expect("playlist");
+            .insert_playlist("Favorites", Some("Test playlist"), Some(cd.id), &[])
+            .expect("playlist")
+            .expect("valid tracks");
         assert_eq!(playlist.cover_url.as_deref(), Some("test-cover.jpg"));
-        assert!(db.add_playlist_track(playlist.id, track.id).unwrap());
-        assert!(db.add_playlist_track(playlist.id, second_track.id).unwrap());
-        assert!(db.add_playlist_track(playlist.id, third_track.id).unwrap());
+        assert!(db.add_playlist_tracks(playlist.id, &[track.id]).unwrap());
+        assert!(
+            db.add_playlist_tracks(playlist.id, &[second_track.id])
+                .unwrap()
+        );
+        assert!(
+            db.add_playlist_tracks(playlist.id, &[third_track.id])
+                .unwrap()
+        );
         let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
         assert_eq!(loaded.tracks.len(), 3);
         assert_eq!(
@@ -468,5 +473,63 @@ mod tests {
         assert_eq!(loaded.tracks[0].cd.id, cd.id);
         assert!(db.remove_playlist_track(playlist.id, track.id).unwrap());
         assert!(db.delete_playlist(playlist.id).unwrap());
+    }
+
+    #[test]
+    fn failed_mutations_roll_back_metadata_and_tracks_and_appends_keep_dense_order() {
+        let db = Db::new(":memory:").unwrap();
+        db.0.lock().execute_batch(
+            "INSERT INTO cds(title) VALUES ('Album');
+             INSERT INTO tracks(cd_id,track_number,title,file_hash) VALUES (1,1,'First','hash-1'),(1,2,'Second','hash-2');"
+        ).unwrap();
+        let playlist = db
+            .insert_playlist("Keep name", Some("Keep description"), Some(1), &[1])
+            .unwrap()
+            .unwrap();
+        assert!(
+            !db.update_playlist_with_tracks(playlist.id, "Must not commit", None, None, &[2, 999])
+                .unwrap()
+        );
+        assert!(!db.add_playlist_tracks(playlist.id, &[2, 999]).unwrap());
+        let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
+        assert_eq!(loaded.playlist.name, "Keep name");
+        assert_eq!(
+            loaded.playlist.description.as_deref(),
+            Some("Keep description")
+        );
+        assert_eq!(loaded.playlist.cover_cd_id, Some(1));
+        assert_eq!(
+            loaded
+                .tracks
+                .iter()
+                .map(|entry| (entry.position, entry.track.id))
+                .collect::<Vec<_>>(),
+            [(0, 1)]
+        );
+        assert!(
+            db.insert_playlist("Rejected", None, None, &[1, 999])
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            db.list_playlists()
+                .unwrap()
+                .iter()
+                .map(|item| item.playlist.id)
+                .collect::<Vec<_>>(),
+            [playlist.id]
+        );
+        assert!(db.add_playlist_tracks(playlist.id, &[1, 2, 2]).unwrap());
+        assert!(db.remove_playlist_tracks(playlist.id, &[1]).unwrap());
+        assert!(db.add_playlist_tracks(playlist.id, &[2, 1]).unwrap());
+        let loaded = db.find_playlist_by_id(playlist.id).unwrap().unwrap();
+        assert_eq!(
+            loaded
+                .tracks
+                .iter()
+                .map(|entry| (entry.position, entry.track.id))
+                .collect::<Vec<_>>(),
+            [(0, 2), (1, 1)]
+        );
     }
 }

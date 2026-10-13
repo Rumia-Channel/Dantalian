@@ -1,17 +1,20 @@
-let currentView = localStorage.getItem("dantalian_view") || "author";
-let currentSort = localStorage.getItem("dantalian_sort") || "id";
+const isBooksCatalogue = document.body.dataset.catalogue === "books";
+const catalogueStoragePrefix = isBooksCatalogue ? "dantalian_books" : "dantalian";
+const catalogueSearchKey = isBooksCatalogue ? "dantalian_books_search" : "dantalian_book_search";
+let currentView = localStorage.getItem(`${catalogueStoragePrefix}_view`) || "author";
+let currentSort = localStorage.getItem(`${catalogueStoragePrefix}_sort`) || "id";
 const storedTypeFilter = localStorage.getItem("dantalian_type_filter");
-let currentTypeFilter = ["all", "book", "cd", "audiobook"].includes(storedTypeFilter)
+let currentTypeFilter = !isBooksCatalogue && ["all", "book", "cd", "audiobook"].includes(storedTypeFilter)
     ? storedTypeFilter
     : "all";
 const authorBookGrid = document.getElementById("book-grid");
 const bookSearchInput = document.getElementById("book-search-input");
 const bookSearchClear = document.getElementById("book-search-clear");
-let currentSearchQuery = localStorage.getItem("dantalian_book_search") || "";
+let currentSearchQuery = localStorage.getItem(catalogueSearchKey) || "";
 
 function loadCollapsedAuthorGroups() {
     try {
-        const saved = JSON.parse(localStorage.getItem("dantalian_collapsed_author_groups") || "[]");
+        const saved = JSON.parse(localStorage.getItem(`${catalogueStoragePrefix}_collapsed_author_groups`) || "[]");
         return Array.isArray(saved) ? saved : [];
     } catch {
         return [];
@@ -21,7 +24,7 @@ function loadCollapsedAuthorGroups() {
 const collapsedAuthorGroups = new Set(loadCollapsedAuthorGroups());
 
 function saveCollapsedAuthorGroups() {
-    localStorage.setItem("dantalian_collapsed_author_groups", JSON.stringify([...collapsedAuthorGroups]));
+    localStorage.setItem(`${catalogueStoragePrefix}_collapsed_author_groups`, JSON.stringify([...collapsedAuthorGroups]));
 }
 
 function normalizeCd(cd) {
@@ -61,8 +64,11 @@ function normalizeCd(cd) {
 }
 
 function getAllItems() {
-    let items = allBooks.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b));
-    if (allCds && allCds.length > 0) {
+    const books = isBooksCatalogue
+        ? allBooks.filter((book) => book.media_type !== "cd" && book.media_type !== "audiobook")
+        : allBooks;
+    let items = books.map((b) => Object.assign({ sourceType: "book", originalId: b.id }, b));
+    if (!isBooksCatalogue && allCds && allCds.length > 0) {
         items = items.concat(allCds.map(normalizeCd));
     }
     return items;
@@ -74,7 +80,7 @@ document.querySelectorAll(".view-tab").forEach((tab) => {
         tab.classList.add("active");
         document.querySelectorAll(".view-tab").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
         currentView = tab.dataset.view;
-        localStorage.setItem("dantalian_view", currentView);
+        localStorage.setItem(`${catalogueStoragePrefix}_view`, currentView);
         renderItems();
     });
 });
@@ -83,7 +89,7 @@ document.getElementById("sort-buttons").addEventListener("click", (e) => {
     const btn = e.target.closest(".width-btn");
     if (!btn) return;
     currentSort = btn.dataset.sort;
-    localStorage.setItem("dantalian_sort", currentSort);
+    localStorage.setItem(`${catalogueStoragePrefix}_sort`, currentSort);
     document.querySelectorAll("#sort-buttons .width-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.sort === currentSort);
     });
@@ -95,7 +101,7 @@ bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
 
 bookSearchInput.addEventListener("input", () => {
     currentSearchQuery = bookSearchInput.value.trim();
-    localStorage.setItem("dantalian_book_search", currentSearchQuery);
+    localStorage.setItem(catalogueSearchKey, currentSearchQuery);
     bookSearchClear.classList.toggle("hidden", currentSearchQuery.length === 0);
     renderItems();
 });
@@ -103,7 +109,7 @@ bookSearchInput.addEventListener("input", () => {
 bookSearchClear.addEventListener("click", () => {
     bookSearchInput.value = "";
     currentSearchQuery = "";
-    localStorage.removeItem("dantalian_book_search");
+    localStorage.removeItem(catalogueSearchKey);
     bookSearchClear.classList.add("hidden");
     renderItems();
     bookSearchInput.focus();
@@ -328,12 +334,16 @@ function renderBookCard(item) {
     const mediaType = item.media_type || "book";
     const mediaBadges = { cd: "CD", audiobook: "AB" };
     const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
-    const clickHandler = item.sourceType === "cd" ? `showCdDetail(${item.originalId})` : `showDetail(${item.id})`;
+    const readsBook = isCatalogueBook(item);
+    const clickHandler = catalogueItemClickHandler(item);
+    const cardOpening = readsBook
+        ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(bookReaderUrl(item.id))}" aria-label="${escapeAttr(item.title)}を読む">`
+        : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">`;
     const authorLabel = item.sourceType === "book"
         ? getBookAuthorLabel(item)
         : (item.authors || []).map((author) => author.name).join(", ");
     return `
-    <div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+    ${cardOpening}
         ${
             item.cover_url
                 ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
@@ -345,6 +355,7 @@ function renderBookCard(item) {
             ${authorLabel ? `<div class="book-author">${escapeHtml(authorLabel)}</div>` : ""}
             ${item.publisher ? `<div class="book-meta">${escapeHtml(item.publisher)}</div>` : ""}
         </div>
+    ${readsBook ? `</a><button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
     </div>`;
 }
 
@@ -486,9 +497,14 @@ function renderGrandSeriesCard(gs, books) {
             : '<div class="book-cover-placeholder"></div>'
     ).join("");
 
-    const seriesCount = gs.items.filter((it) => it.item_type === "series").length;
-    const directBookCount = gs.items.filter((it) => it.item_type === "book").length;
-    const directCdCount = gs.items.filter((it) => it.item_type === "cd").length;
+    const memberships = isBooksCatalogue
+        ? gs.items.filter((item) => books.some((book) =>
+            (item.item_type === "book" && book.originalId === item.item_id)
+            || (item.item_type === "series" && book.series_id === item.item_id)))
+        : gs.items;
+    const seriesCount = memberships.filter((it) => it.item_type === "series").length;
+    const directBookCount = memberships.filter((it) => it.item_type === "book").length;
+    const directCdCount = memberships.filter((it) => it.item_type === "cd").length;
     const subInfo = [];
     if (seriesCount > 0) subInfo.push(`${seriesCount}シリーズ`);
     if (directBookCount > 0) subInfo.push(`${directBookCount}冊`);
@@ -636,7 +652,9 @@ function renderItemsByAuthor(items) {
 function renderItems() {
     const allItems = getAllItems();
     if (allItems.length === 0) {
-        bookGrid.innerHTML = '<p class="empty-state">ISBN/JANで書籍またはCDを登録してください</p>';
+        bookGrid.innerHTML = `<p class="empty-state">${isBooksCatalogue
+            ? "ISBN/ISDNで本を登録してください"
+            : "ISBN/JANで書籍またはCDを登録してください"}</p>`;
         bookCount.textContent = "(0件)";
         return;
     }
@@ -672,6 +690,7 @@ function renderItems() {
 (function initViewTabs() {
     document.querySelectorAll(".view-tab").forEach((tab) => {
         tab.classList.toggle("active", tab.dataset.view === currentView);
+        tab.setAttribute("aria-selected", String(tab.dataset.view === currentView));
     });
 })();
 
@@ -681,7 +700,7 @@ function renderItems() {
     });
 })();
 
-document.getElementById("type-filter-buttons").addEventListener("click", (e) => {
+document.getElementById("type-filter-buttons")?.addEventListener("click", (e) => {
     const btn = e.target.closest(".width-btn");
     if (!btn) return;
     currentTypeFilter = btn.dataset.type;

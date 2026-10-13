@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - 本</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ASSET_VERSION">
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+    <meta name="theme-color" content="#08090f">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Dantalian">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/auth.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/book-card.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/series.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/detail.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/settings.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/responsive.css?v=ASSET_VERSION">
+</head>
+<body data-active-nav="books" data-catalogue="books">
+    <div id="app">
+        <section class="booklist">
+            <div class="booklist-header">
+                <h2>本 <span id="book-count"></span></h2>
+                <div class="view-tabs" role="tablist" aria-label="本の表示">
+                    <button class="view-tab active" role="tab" aria-selected="true" data-view="author">著者別</button>
+                    <button class="view-tab" role="tab" aria-selected="false" data-view="grid">一覧</button>
+                </div>
+            </div>
+            <div class="book-search">
+                <input type="search" id="book-search-input" placeholder="検索" autocomplete="off" aria-label="本を検索">
+                <button type="button" id="book-search-clear" class="book-search-clear" aria-label="検索をクリア">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
+            </div>
+            <div id="book-grid"></div>
+        </section>
+        <div id="detail-overlay" class="detail-overlay hidden" onclick="closeDetail(event)">
+            <div class="detail-modal" onclick="event.stopPropagation()">
+                <button class="detail-close" onclick="closeDetail()" aria-label="閉じる">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
+                <div id="detail-content"></div>
+            </div>
+        </div>
+    </div>
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
+    <script src="/js/pwa.js?v=ASSET_VERSION"></script>
+    <script src="/js/catalogue-controls.js?v=ASSET_VERSION"></script>
+    <script src="/js/utils.js?v=ASSET_VERSION"></script>
+    <script src="/js/book-links.js?v=ASSET_VERSION"></script>
+    <script src="/js/searchable-select.js?v=ASSET_VERSION"></script>
+    <script src="/js/settings.js?v=ASSET_VERSION"></script>
+    <script src="/js/book-grid.js?v=ASSET_VERSION"></script>
+    <script src="/js/detail.js?v=ASSET_VERSION"></script>
+    <script src="/js/app.js?v=ASSET_VERSION"></script>
+</body>
+</html>

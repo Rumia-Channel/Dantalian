@@ -42,7 +42,11 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     };
     let service = BorrowerService::new(D1BorrowerRepository::new(ctx.d1("DB")?));
     service
-        .update(id, request.name.as_deref(), request.notes.as_deref())
+        .update(
+            id,
+            request.name.as_deref(),
+            request.notes.as_ref().map(|notes| notes.as_deref()),
+        )
         .await
         .map_or_else(error_response, |_| {
             Response::empty().map(|response| response.with_status(204))

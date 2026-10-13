@@ -47,7 +47,7 @@ impl Db {
         name: &str,
         transcription: Option<&str>,
     ) -> Result<i64, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
 
         if let Some(nid) = ndl_id {
             let mut stmt = conn.prepare("SELECT id FROM authors WHERE ndl_id = ?1")?;
@@ -95,7 +95,7 @@ impl Db {
     }
 
     pub fn get_author_by_id(&self, id: i64) -> Result<Option<Author>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt =
             conn.prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![id], Self::row_to_author)?;
@@ -106,7 +106,7 @@ impl Db {
     }
 
     pub fn get_author_by_ndl_id(&self, ndl_id: &str) -> Result<Option<Author>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt =
             conn.prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE ndl_id = ?1")?;
         let mut rows = stmt.query_map(params![ndl_id], Self::row_to_author)?;
@@ -134,7 +134,7 @@ impl Db {
             return Ok(0);
         }
         let placeholders = dupes.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let survivor_exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM authors WHERE id = ?1)",
             params![survivor_id],
@@ -202,7 +202,7 @@ impl Db {
         transcription: Option<&str>,
         ndl_id: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE authors SET name=?1, transcription=?2, ndl_id=?3 WHERE id=?4",
             params![name, transcription, ndl_id, id],
@@ -211,7 +211,7 @@ impl Db {
     }
 
     pub fn delete_author(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM authors WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -222,7 +222,7 @@ impl Db {
         transcription: Option<&str>,
         ndl_id: Option<&str>,
     ) -> Result<Author, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO authors (ndl_id, name, transcription) VALUES (?1, ?2, ?3)",
             params![ndl_id, name, transcription],
@@ -237,7 +237,7 @@ impl Db {
     }
 
     pub fn list_authors(&self) -> Result<Vec<Author>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt =
             conn.prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")?;
         let rows = stmt.query_map([], Self::row_to_author)?;

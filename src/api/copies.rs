@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::db::{CopyWithStatus, LendingRecord, NewLendingRecord};
+use crate::domain::patch::deserialize_nullable;
 use axum::{
     Json,
     extract::{Path, State},
@@ -19,8 +20,10 @@ pub struct CreateCopyRequest {
 #[derive(Deserialize)]
 pub struct UpdateCopyRequest {
     pub copy_type: Option<String>,
-    pub location: Option<String>,
-    pub notes: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub location: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub notes: Option<Option<String>>,
 }
 
 pub async fn list_copies(
@@ -50,12 +53,31 @@ pub async fn create_copy(
     Path(book_id): Path<i64>,
     Json(req): Json<CreateCopyRequest>,
 ) -> Result<(StatusCode, Json<crate::db::Copy>), ApiError> {
-    let copy_type = req
-        .copy_type
-        .clone()
-        .unwrap_or_else(|| "physical".to_string());
-    let location = req.location.clone();
-    let notes = req.notes.clone();
+    let copy_type = req.copy_type.unwrap_or_else(|| "physical".to_string());
+    let location = req.location;
+    let notes = req.notes;
+    if !matches!(copy_type.as_str(), "physical" | "ebook") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error":"Invalid copy type"})),
+        ));
+    }
+    if state
+        .db
+        .find_by_id(book_id)
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error":error.to_string()})),
+            )
+        })?
+        .is_none()
+    {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error":"Book not found"})),
+        ));
+    }
     let db = state.db.clone();
     let copy = tokio::task::spawn_blocking(move || {
         db.insert_copy(book_id, &copy_type, location.as_deref(), notes.as_deref())
@@ -81,16 +103,25 @@ pub async fn update_copy(
     Path(id): Path<i64>,
     Json(req): Json<UpdateCopyRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let copy_type = req.copy_type.clone();
-    let location = req.location.clone();
-    let notes = req.notes.clone();
+    let copy_type = req.copy_type;
+    let location = req.location;
+    let notes = req.notes;
+    if copy_type
+        .as_deref()
+        .is_some_and(|value| !matches!(value, "physical" | "ebook"))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error":"Invalid copy type"})),
+        ));
+    }
     let db = state.db.clone();
     let ok = tokio::task::spawn_blocking(move || {
         db.update_copy(
             id,
             copy_type.as_deref(),
-            location.as_deref(),
-            notes.as_deref(),
+            location.as_ref().map(|value| value.as_deref()),
+            notes.as_ref().map(|value| value.as_deref()),
         )
     })
     .await
@@ -151,11 +182,11 @@ pub async fn lend_copy(
     Json(req): Json<NewLendingRecord>,
 ) -> Result<StatusCode, ApiError> {
     let borrower_id = req.borrower_id;
-    let due_date = req.due_date.clone();
-    let notes = req.notes.clone();
+    let due_date = req.due_date;
+    let notes = req.notes;
     let db = state.db.clone();
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    tokio::task::spawn_blocking(move || {
+    let lent = tokio::task::spawn_blocking(move || {
         db.lend_copy(
             id,
             borrower_id,
@@ -172,19 +203,23 @@ pub async fn lend_copy(
         )
     })?
     .map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("InvalidType") {
-            (
-                StatusCode::CONFLICT,
-                Json(serde_json::json!({"error": "Copy is already lent"})),
-            )
-        } else {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": msg})),
-            )
-        }
+        let status = match &e {
+            rusqlite::Error::QueryReturnedNoRows => StatusCode::NOT_FOUND,
+            rusqlite::Error::SqliteFailure(code, _)
+                if code.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                StatusCode::BAD_REQUEST
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(serde_json::json!({"error":e.to_string()})))
     })?;
+    if !lent {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":"Copy is already lent"})),
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

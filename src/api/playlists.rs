@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::db::PlaylistWithTracks;
+use crate::domain::patch::deserialize_nullable;
 use axum::{
     Json,
     extract::{Path, State},
@@ -14,12 +15,16 @@ pub struct CreatePlaylistRequest {
     pub name: String,
     pub description: Option<String>,
     pub cover_cd_id: Option<i64>,
+    #[serde(default)]
+    pub track_ids: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdatePlaylistRequest {
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
     pub description: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
     pub cover_cd_id: Option<Option<i64>>,
     pub track_ids: Option<Vec<i64>>,
 }
@@ -31,7 +36,8 @@ pub struct SetPlaylistTracksRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct AddPlaylistTrackRequest {
-    pub track_id: i64,
+    pub track_id: Option<i64>,
+    pub track_ids: Option<Vec<i64>>,
 }
 
 fn error(status: StatusCode, message: impl Into<String>) -> ApiError {
@@ -39,6 +45,9 @@ fn error(status: StatusCode, message: impl Into<String>) -> ApiError {
 }
 
 async fn load_playlist(state: &AppState, id: i64) -> Result<PlaylistWithTracks, ApiError> {
+    if id <= 0 {
+        return Err(error(StatusCode::BAD_REQUEST, "Invalid playlist id"));
+    }
     state
         .db
         .find_playlist_by_id(id)
@@ -55,6 +64,13 @@ fn validate_name(name: &str) -> Result<String, ApiError> {
         return Err(error(StatusCode::BAD_REQUEST, "Playlist name is too long"));
     }
     Ok(name.to_string())
+}
+
+fn validate_track_ids(ids: &[i64]) -> Result<(), ApiError> {
+    if ids.iter().any(|&id| id <= 0) {
+        return Err(error(StatusCode::BAD_REQUEST, "Invalid track id"));
+    }
+    Ok(())
 }
 
 fn validate_cover(state: &AppState, cover_cd_id: Option<i64>) -> Result<(), ApiError> {
@@ -95,10 +111,22 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<PlaylistWithTracks>), ApiError> {
     let name = validate_name(&body.name)?;
     validate_cover(&state, body.cover_cd_id)?;
+    validate_track_ids(&body.track_ids)?;
     let playlist = state
         .db
-        .insert_playlist(&name, body.description.as_deref(), body.cover_cd_id)
-        .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .insert_playlist(
+            &name,
+            body.description.as_deref(),
+            body.cover_cd_id,
+            &body.track_ids,
+        )
+        .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            error(
+                StatusCode::BAD_REQUEST,
+                "Playlist contains an invalid audio track",
+            )
+        })?;
     let result = load_playlist(&state, playlist.id).await?;
     Ok((StatusCode::CREATED, Json(result)))
 }
@@ -109,6 +137,9 @@ pub async fn update(
     Json(body): Json<UpdatePlaylistRequest>,
 ) -> Result<Json<PlaylistWithTracks>, ApiError> {
     let existing = load_playlist(&state, id).await?;
+    if let Some(ids) = &body.track_ids {
+        validate_track_ids(ids)?;
+    }
     let name = match body.name {
         Some(name) => validate_name(&name)?,
         None => existing.playlist.name,
@@ -130,7 +161,11 @@ pub async fn update(
     }
     .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !updated {
-        return Err(error(StatusCode::NOT_FOUND, "Playlist not found"));
+        load_playlist(&state, id).await?;
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "Playlist contains an invalid audio track",
+        ));
     }
     Ok(Json(load_playlist(&state, id).await?))
 }
@@ -139,6 +174,9 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
+    if id <= 0 {
+        return Err(error(StatusCode::BAD_REQUEST, "Invalid playlist id"));
+    }
     let deleted = state
         .db
         .delete_playlist(id)
@@ -156,11 +194,13 @@ pub async fn set_tracks(
     Json(body): Json<SetPlaylistTracksRequest>,
 ) -> Result<Json<PlaylistWithTracks>, ApiError> {
     load_playlist(&state, id).await?;
+    validate_track_ids(&body.track_ids)?;
     let updated = state
         .db
         .set_playlist_tracks(id, &body.track_ids)
         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !updated {
+        load_playlist(&state, id).await?;
         return Err(error(
             StatusCode::BAD_REQUEST,
             "Playlist contains an invalid audio track",
@@ -175,11 +215,23 @@ pub async fn add_track(
     Json(body): Json<AddPlaylistTrackRequest>,
 ) -> Result<Json<PlaylistWithTracks>, ApiError> {
     load_playlist(&state, id).await?;
+    let track_ids = match (&body.track_id, &body.track_ids) {
+        (Some(id), None) => std::slice::from_ref(id),
+        (None, Some(ids)) => ids.as_slice(),
+        _ => {
+            return Err(error(
+                StatusCode::BAD_REQUEST,
+                "Specify track_id or track_ids",
+            ));
+        }
+    };
+    validate_track_ids(track_ids)?;
     let added = state
         .db
-        .add_playlist_track(id, body.track_id)
+        .add_playlist_tracks(id, track_ids)
         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !added {
+        load_playlist(&state, id).await?;
         return Err(error(StatusCode::BAD_REQUEST, "Audio track not found"));
     }
     Ok(Json(load_playlist(&state, id).await?))
@@ -190,12 +242,30 @@ pub async fn remove_track(
     Path((id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<PlaylistWithTracks>, ApiError> {
     load_playlist(&state, id).await?;
+    validate_track_ids(&[track_id])?;
     let removed = state
         .db
         .remove_playlist_track(id, track_id)
         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !removed {
         return Err(error(StatusCode::NOT_FOUND, "Playlist track not found"));
+    }
+    Ok(Json(load_playlist(&state, id).await?))
+}
+
+pub async fn remove_tracks(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<SetPlaylistTracksRequest>,
+) -> Result<Json<PlaylistWithTracks>, ApiError> {
+    load_playlist(&state, id).await?;
+    validate_track_ids(&body.track_ids)?;
+    let removed = state
+        .db
+        .remove_playlist_tracks(id, &body.track_ids)
+        .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !removed {
+        return Err(error(StatusCode::NOT_FOUND, "Playlist not found"));
     }
     Ok(Json(load_playlist(&state, id).await?))
 }

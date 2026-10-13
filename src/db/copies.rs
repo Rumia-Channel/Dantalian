@@ -9,7 +9,7 @@ impl Db {
         location: Option<&str>,
         notes: Option<&str>,
     ) -> Result<Copy, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO copies (book_id, copy_type, location, notes) VALUES (?1, ?2, ?3, ?4)",
             params![book_id, copy_type, location, notes],
@@ -25,7 +25,7 @@ impl Db {
     }
 
     pub fn list_copies(&self, book_id: i64) -> Result<Vec<CopyWithStatus>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT c.id, c.book_id, c.copy_type, c.location, c.notes,
                     b.name AS lent_to, lh.lent_date, lh.due_date
@@ -56,25 +56,34 @@ impl Db {
         &self,
         id: i64,
         copy_type: Option<&str>,
-        location: Option<&str>,
-        notes: Option<&str>,
+        location: Option<Option<&str>>,
+        notes: Option<Option<&str>>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
-            "UPDATE copies SET copy_type = COALESCE(?1, copy_type), location = ?2, notes = ?3 WHERE id = ?4",
-            params![copy_type, location, notes, id],
+            "UPDATE copies SET copy_type = COALESCE(?1, copy_type),
+             location = CASE WHEN ?2 THEN ?3 ELSE location END,
+             notes = CASE WHEN ?4 THEN ?5 ELSE notes END WHERE id = ?6",
+            params![
+                copy_type,
+                location.is_some(),
+                location.flatten(),
+                notes.is_some(),
+                notes.flatten(),
+                id
+            ],
         )?;
         Ok(affected > 0)
     }
 
     pub fn delete_copy(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM copies WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
 
     pub fn get_book_copy_counts(&self, book_id: i64) -> Result<(i64, i64), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT COUNT(*), COALESCE(SUM(CASE WHEN lh.returned_date IS NULL AND lh.id IS NOT NULL THEN 1 ELSE 0 END), 0)
              FROM copies c
@@ -91,27 +100,30 @@ impl Db {
         lent_date: &str,
         due_date: Option<&str>,
         notes: Option<&str>,
-    ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+    ) -> Result<bool, rusqlite::Error> {
+        let conn = self.0.lock();
+        conn.query_row(
+            "SELECT id FROM copies WHERE id=?1",
+            params![copy_id],
+            |row| row.get::<_, i64>(0),
+        )?;
         let existing = conn.query_row(
             "SELECT COUNT(*) FROM lending_history WHERE copy_id = ?1 AND returned_date IS NULL",
             params![copy_id],
             |row| row.get::<_, i64>(0),
         )?;
         if existing > 0 {
-            return Err(rusqlite::Error::from(
-                rusqlite::types::FromSqlError::InvalidType,
-            ));
+            return Ok(false);
         }
         conn.execute(
             "INSERT INTO lending_history (copy_id, borrower_id, lent_date, due_date, notes) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![copy_id, borrower_id, lent_date, due_date, notes],
         )?;
-        Ok(())
+        Ok(true)
     }
 
     pub fn return_copy(&self, copy_id: i64, returned_date: &str) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE lending_history SET returned_date = ?1 WHERE copy_id = ?2 AND returned_date IS NULL",
             params![returned_date, copy_id],
@@ -120,7 +132,7 @@ impl Db {
     }
 
     pub fn get_lending_history(&self, copy_id: i64) -> Result<Vec<LendingRecord>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT lh.id, lh.copy_id, lh.borrower_id, b.name, lh.lent_date, lh.due_date, lh.returned_date, lh.notes
              FROM lending_history lh

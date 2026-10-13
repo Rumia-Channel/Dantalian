@@ -242,6 +242,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .delete_async("/api/playlists/:id", playlist_api::delete)
         .put_async("/api/playlists/:id/tracks", playlist_api::set_tracks)
         .post_async("/api/playlists/:id/tracks", playlist_api::add_track)
+        .delete_async("/api/playlists/:id/tracks", playlist_api::remove_tracks)
         .delete_async(
             "/api/playlists/:id/tracks/:track_id",
             playlist_api::remove_track,

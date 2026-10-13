@@ -3,7 +3,7 @@ use rusqlite::params;
 
 impl Db {
     pub fn insert_track(&self, book_id: i64, track: &NewTrack) -> Result<Track, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (?1, NULL, ?2, ?3, ?4, ?5)",
             params![book_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
@@ -27,7 +27,7 @@ impl Db {
         cd_id: i64,
         track: &NewTrack,
     ) -> Result<Track, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO tracks (book_id, cd_id, disc_number, track_number, title, duration) VALUES (NULL, ?1, ?2, ?3, ?4, ?5)",
             params![cd_id, track.disc_number.unwrap_or(1), track.track_number, track.title, track.duration],
@@ -51,7 +51,7 @@ impl Db {
         book_id: i64,
         tracks: &[NewTrack],
     ) -> Result<Vec<Track>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut result = Vec::new();
         for track in tracks {
             conn.execute(
@@ -79,7 +79,7 @@ impl Db {
         cd_id: i64,
         tracks: &[NewTrack],
     ) -> Result<Vec<Track>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut result = Vec::new();
         for track in tracks {
             conn.execute(
@@ -103,7 +103,7 @@ impl Db {
     }
 
     pub fn list_tracks(&self, book_id: i64) -> Result<Vec<Track>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE book_id = ?1 ORDER BY disc_number, track_number",
         )?;
@@ -124,7 +124,7 @@ impl Db {
     }
 
     pub fn find_track_by_id(&self, id: i64) -> Result<Option<Track>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE id = ?1",
         )?;
@@ -148,7 +148,7 @@ impl Db {
     }
 
     pub fn list_tracks_for_cd(&self, cd_id: i64) -> Result<Vec<Track>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE cd_id = ?1 ORDER BY disc_number, track_number",
         )?;
@@ -169,7 +169,7 @@ impl Db {
     }
 
     pub fn list_audio_encoding_sources(&self) -> Result<Vec<(String, String)>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT file_hash, file_name FROM tracks WHERE file_hash IS NOT NULL AND file_name IS NOT NULL ORDER BY id",
         )?;
@@ -183,7 +183,7 @@ impl Db {
         title: Option<&str>,
         duration: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE tracks SET title = COALESCE(?1, title), duration = COALESCE(?2, duration) WHERE id = ?3",
             params![title, duration, id],
@@ -197,7 +197,7 @@ impl Db {
         file_hash: Option<&str>,
         file_name: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE tracks SET file_hash = ?1, file_name = ?2 WHERE id = ?3",
             params![file_hash, file_name, id],
@@ -206,7 +206,7 @@ impl Db {
     }
 
     pub fn delete_track(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM tracks WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -217,7 +217,7 @@ impl Db {
         disc_number: i64,
         track_number: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE tracks SET disc_number = ?1, track_number = ?2 WHERE id = ?3",
             params![disc_number, track_number, id],
@@ -226,13 +226,13 @@ impl Db {
     }
 
     pub fn delete_tracks_by_book(&self, book_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute("DELETE FROM tracks WHERE book_id = ?1", params![book_id])?;
         Ok(())
     }
 
     pub fn delete_tracks_by_cd(&self, cd_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute("DELETE FROM tracks WHERE cd_id = ?1", params![cd_id])?;
         Ok(())
     }

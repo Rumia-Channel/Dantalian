@@ -12,6 +12,7 @@ pub(crate) mod playlists;
 pub(crate) mod series;
 pub(crate) mod settings;
 pub(crate) mod storage_locations;
+pub(crate) mod track_access;
 pub(crate) mod tracks;
 pub(crate) mod upload_chunks;
 
@@ -120,7 +121,9 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route(
             "/playlists/{id}/tracks",
-            put(playlists::set_tracks).post(playlists::add_track),
+            put(playlists::set_tracks)
+                .post(playlists::add_track)
+                .delete(playlists::remove_tracks),
         )
         .route(
             "/playlists/{id}/tracks/{track_id}",

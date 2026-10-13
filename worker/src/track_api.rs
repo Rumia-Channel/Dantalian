@@ -1,3 +1,5 @@
+mod metadata_update;
+
 use serde::{Deserialize, Serialize};
 use worker::{D1Type, Date, Request, Response, Result, RouteContext};
 
@@ -459,154 +461,12 @@ pub async fn get_cd_track_metadata(_req: Request, ctx: RouteContext<()>) -> Resu
     get_metadata_for(&ctx, "cd_id").await
 }
 
-async fn put_metadata_for(
-    mut req: Request,
-    ctx: RouteContext<()>,
-    parent_column: &str,
-) -> Result<Response> {
-    let parent_raw = match parse_id(&ctx, "id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let track_raw = match parse_id(&ctx, "track_id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let parent_id = match id_type(parent_raw, "parent id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let track_id = match id_type(track_raw, "track id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let body = match req.json::<serde_json::Value>().await {
-        Ok(value) => value,
-        Err(error) => return Ok(bad_request(format!("invalid JSON: {error}"))),
-    };
-    let db = ctx.d1("DB")?;
-    let exists = db
-        .prepare(&format!(
-            "SELECT id FROM tracks WHERE id = ? AND {parent_column} = ?"
-        ))
-        .bind_refs([&track_id, &parent_id])
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?
-        .is_some();
-    if !exists {
-        return error_response(AppError::NotFound);
-    }
-    let custom_json = match custom_metadata_value(&body) {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let values = [
-        track_id,
-        text_value(&body, "title"),
-        text_value(&body, "artist"),
-        text_value(&body, "album"),
-        text_value(&body, "album_artist"),
-        int_value(&body, "track_number"),
-        int_value(&body, "track_total"),
-        int_value(&body, "disc_number"),
-        int_value(&body, "disc_total"),
-        int_value(&body, "year"),
-        text_value(&body, "genre"),
-        text_value(&body, "composer"),
-        text_value(&body, "publisher"),
-        text_value(&body, "label"),
-        text_value(&body, "encoder"),
-        text_value(&body, "comment"),
-        text_value(&body, "lyrics"),
-        real_value(&body, "replay_gain_track_gain_db"),
-        real_value(&body, "replay_gain_track_peak"),
-        real_value(&body, "replay_gain_album_gain_db"),
-        real_value(&body, "replay_gain_album_peak"),
-        text_value(&body, "file_type"),
-        int_value(&body, "raw_size_bytes"),
-        D1Type::Text(&custom_json),
-    ];
-    db.prepare(
-        "INSERT INTO track_metadata
-         (track_id,title,artist,album,album_artist,track_number,track_total,disc_number,disc_total,
-          year,genre,composer,publisher,label,encoder,comment,lyrics,replay_gain_track_gain_db,
-          replay_gain_track_peak,replay_gain_album_gain_db,replay_gain_album_peak,file_type,raw_size_bytes,custom_json)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(track_id) DO UPDATE SET
-          title=COALESCE(excluded.title,track_metadata.title),
-          artist=COALESCE(excluded.artist,track_metadata.artist),
-          album=COALESCE(excluded.album,track_metadata.album),
-          album_artist=COALESCE(excluded.album_artist,track_metadata.album_artist),
-          track_number=COALESCE(excluded.track_number,track_metadata.track_number),
-          track_total=COALESCE(excluded.track_total,track_metadata.track_total),
-          disc_number=COALESCE(excluded.disc_number,track_metadata.disc_number),
-          disc_total=COALESCE(excluded.disc_total,track_metadata.disc_total),
-          year=COALESCE(excluded.year,track_metadata.year),
-          genre=COALESCE(excluded.genre,track_metadata.genre),
-          composer=COALESCE(excluded.composer,track_metadata.composer),
-          publisher=COALESCE(excluded.publisher,track_metadata.publisher),
-          label=COALESCE(excluded.label,track_metadata.label),
-          encoder=COALESCE(excluded.encoder,track_metadata.encoder),
-          comment=COALESCE(excluded.comment,track_metadata.comment),
-          lyrics=COALESCE(excluded.lyrics,track_metadata.lyrics),
-          replay_gain_track_gain_db=COALESCE(excluded.replay_gain_track_gain_db,track_metadata.replay_gain_track_gain_db),
-          replay_gain_track_peak=COALESCE(excluded.replay_gain_track_peak,track_metadata.replay_gain_track_peak),
-          replay_gain_album_gain_db=COALESCE(excluded.replay_gain_album_gain_db,track_metadata.replay_gain_album_gain_db),
-          replay_gain_album_peak=COALESCE(excluded.replay_gain_album_peak,track_metadata.replay_gain_album_peak),
-          file_type=COALESCE(excluded.file_type,track_metadata.file_type),
-          raw_size_bytes=COALESCE(excluded.raw_size_bytes,track_metadata.raw_size_bytes),
-          custom_json=CASE WHEN excluded.custom_json <> '{}' THEN excluded.custom_json ELSE track_metadata.custom_json END,
-          updated_at=CURRENT_TIMESTAMP",
-    )
-    .bind_refs(values.iter())
-    .map_err(db_error)?
-    .run()
-    .await
-    .map_err(db_error)?;
-    let track_id =
-        id_type(track_raw, "track id").map_err(|error| worker::Error::from(error.to_string()))?;
-    if let Some(artists) = body.get("artists").and_then(|value| value.as_array()) {
-        db.prepare("DELETE FROM track_authors WHERE track_id = ?")
-            .bind_refs(&track_id)
-            .map_err(db_error)?
-            .run()
-            .await
-            .map_err(db_error)?;
-        for (sort_order, author_id) in artists
-            .iter()
-            .filter_map(|value| value.as_i64())
-            .enumerate()
-        {
-            let author_id = match id_type(author_id, "author id") {
-                Ok(value) => value,
-                Err(error) => return error_response(error),
-            };
-            db.prepare(
-                "INSERT OR IGNORE INTO track_authors (track_id, author_id, sort_order)
-                 VALUES (?, ?, ?)",
-            )
-            .bind_refs([
-                &track_id,
-                &author_id,
-                &D1Type::Integer(i32::try_from(sort_order).unwrap_or(i32::MAX)),
-            ])
-            .map_err(db_error)?
-            .run()
-            .await
-            .map_err(db_error)?;
-        }
-    }
-    Ok(Response::empty()?.with_status(204))
-}
-
 pub async fn put_book_metadata(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    put_metadata_for(req, ctx, "book_id").await
+    metadata_update::put(req, ctx, "book_id").await
 }
 
 pub async fn put_cd_track_metadata(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    put_metadata_for(req, ctx, "cd_id").await
+    metadata_update::put(req, ctx, "cd_id").await
 }
 
 pub async fn get_cd_metadata(_req: Request, ctx: RouteContext<()>) -> Result<Response> {

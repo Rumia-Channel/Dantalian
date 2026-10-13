@@ -1,8 +1,42 @@
 use super::Db;
+use parking_lot::Mutex;
 use rusqlite::{Connection, params};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 12;
+const SCHEMA_VERSION: u32 = 13;
+
+const GRAND_SERIES_INTEGRITY_SQL: &str = r#"
+DELETE FROM grand_series_items
+WHERE (item_type = 'series' AND NOT EXISTS (SELECT 1 FROM series WHERE id = item_id))
+   OR (item_type = 'book' AND NOT EXISTS (SELECT 1 FROM books WHERE id = item_id))
+   OR (item_type = 'cd' AND NOT EXISTS (SELECT 1 FROM cds WHERE id = item_id));
+CREATE TRIGGER IF NOT EXISTS grand_series_delete_series AFTER DELETE ON series
+BEGIN
+    DELETE FROM grand_series_items WHERE item_type = 'series' AND item_id = OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS grand_series_delete_book AFTER DELETE ON books
+BEGIN
+    DELETE FROM grand_series_items WHERE item_type = 'book' AND item_id = OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS grand_series_delete_cd AFTER DELETE ON cds
+BEGIN
+    DELETE FROM grand_series_items WHERE item_type = 'cd' AND item_id = OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS grand_series_validate_insert BEFORE INSERT ON grand_series_items
+WHEN (NEW.item_type = 'series' AND NOT EXISTS (SELECT 1 FROM series WHERE id = NEW.item_id))
+  OR (NEW.item_type = 'book' AND NOT EXISTS (SELECT 1 FROM books WHERE id = NEW.item_id))
+  OR (NEW.item_type = 'cd' AND NOT EXISTS (SELECT 1 FROM cds WHERE id = NEW.item_id))
+BEGIN
+    SELECT RAISE(ABORT, 'Grand series item not found');
+END;
+CREATE TRIGGER IF NOT EXISTS grand_series_validate_update BEFORE UPDATE OF item_type, item_id ON grand_series_items
+WHEN (NEW.item_type = 'series' AND NOT EXISTS (SELECT 1 FROM series WHERE id = NEW.item_id))
+  OR (NEW.item_type = 'book' AND NOT EXISTS (SELECT 1 FROM books WHERE id = NEW.item_id))
+  OR (NEW.item_type = 'cd' AND NOT EXISTS (SELECT 1 FROM cds WHERE id = NEW.item_id))
+BEGIN
+    SELECT RAISE(ABORT, 'Grand series item not found');
+END;
+"#;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS series (
@@ -246,32 +280,6 @@ CREATE TABLE IF NOT EXISTS track_authors (
 );
 CREATE INDEX IF NOT EXISTS idx_ta_track ON track_authors(track_id);
 CREATE INDEX IF NOT EXISTS idx_ta_author ON track_authors(author_id);
-"#;
-
-const DROP_ALL_SQL: &str = r#"
-DROP TABLE IF EXISTS playlist_tracks;
-DROP TABLE IF EXISTS playlists;
-DROP TABLE IF EXISTS cd_metadata;
-DROP TABLE IF EXISTS track_metadata;
-DROP TABLE IF EXISTS cd_authors;
-DROP TABLE IF EXISTS tracks;
-DROP TABLE IF EXISTS cds;
-DROP TABLE IF EXISTS track_metadata;
-DROP TABLE IF EXISTS cd_authors;
-DROP TABLE IF EXISTS tracks;
-DROP TABLE IF EXISTS cds;
-DROP TABLE IF EXISTS lending_history;
-DROP TABLE IF EXISTS borrowers;
-DROP TABLE IF EXISTS copies;
-DROP TABLE IF EXISTS book_authors;
-DROP TABLE IF EXISTS books;
-DROP TABLE IF EXISTS labels;
-DROP TABLE IF EXISTS storage_locations;
-DROP TABLE IF EXISTS authors;
-DROP TABLE IF EXISTS grand_series_items;
-DROP TABLE IF EXISTS grand_series;
-DROP TABLE IF EXISTS series;
-DROP TABLE IF EXISTS settings;
 "#;
 
 const MIGRATE_V1_TO_V2_SQL: &str = r#"
@@ -534,6 +542,7 @@ impl Db {
         if current_version == 0 {
             conn.execute_batch(SCHEMA_SQL)?;
             ensure_track_metadata_columns(&conn)?;
+            conn.execute_batch(GRAND_SERIES_INTEGRITY_SQL)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema initialized");
         } else if current_version < SCHEMA_VERSION {
@@ -572,19 +581,19 @@ impl Db {
             if current_version < 12 {
                 migrate_publish_dates(&conn)?;
             }
+            if current_version < 13 {
+                conn.execute_batch(GRAND_SERIES_INTEGRITY_SQL)?;
+            }
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
         } else if current_version > SCHEMA_VERSION {
-            tracing::warn!(
-                current = current_version,
-                target = SCHEMA_VERSION,
-                "Database schema newer than expected; dropping all tables and recreating"
-            );
-            conn.execute_batch(DROP_ALL_SQL)?;
-            conn.execute_batch(SCHEMA_SQL)?;
-            ensure_track_metadata_columns(&conn)?;
-            conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+                Some(format!(
+                    "Database schema {current_version} is newer than supported schema {SCHEMA_VERSION}; refusing to modify it"
+                )),
+            ));
         }
 
         Ok(Self(Arc::new(Mutex::new(conn))))
@@ -612,7 +621,7 @@ mod tests {
 
         let db = Db::new(&path_str).expect("create database");
         {
-            let conn = db.0.lock().unwrap();
+            let conn = db.0.lock();
             conn.execute(
                 "INSERT INTO books (title, publish_date) VALUES (?1, ?2)",
                 params!["legacy book", "2007.1"],
@@ -629,7 +638,7 @@ mod tests {
         drop(db);
 
         let migrated = Db::new(&path_str).expect("migrate database");
-        let conn = migrated.0.lock().unwrap();
+        let conn = migrated.0.lock();
         let book_date: String = conn
             .query_row(
                 "SELECT publish_date FROM books WHERE title = 'legacy book'",
@@ -644,16 +653,104 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read migrated cd date");
-        let version: u32 = conn
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .expect("read schema version");
 
         assert_eq!(book_date, "2007-01-NN");
         assert_eq!(cd_date, "2026-02-13");
-        assert_eq!(version, 12);
 
         drop(conn);
         drop(migrated);
         let _ = std::fs::remove_file(path);
+    }
+
+    fn temporary_path(label: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "dantalian-{label}-{}-{suffix}.db",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn newer_schema_is_rejected_without_erasing_data() {
+        let path = temporary_path("newer-schema");
+        let db = Db::new(path.to_str().unwrap()).unwrap();
+        let future_version = super::SCHEMA_VERSION + 1;
+        {
+            let conn = db.0.lock();
+            conn.execute("INSERT INTO books(title) VALUES ('Keep this book')", [])
+                .unwrap();
+            conn.pragma_update(None, "user_version", future_version)
+                .unwrap();
+        }
+        drop(db);
+        assert!(Db::new(path.to_str().unwrap()).is_err());
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT title FROM books", [], |row| row.get::<_, String>(0))
+                .unwrap(),
+            "Keep this book"
+        );
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+                .unwrap(),
+            future_version
+        );
+        drop(conn);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn migration_prunes_dead_members_and_deletion_cleans_polymorphic_links() {
+        let path = temporary_path("grand-series");
+        let db = Db::new(path.to_str().unwrap()).unwrap();
+        {
+            let conn = db.0.lock();
+            conn.execute_batch(
+                "DROP TRIGGER grand_series_validate_insert;
+                 INSERT INTO grand_series(name) VALUES ('Group');
+                 INSERT INTO books(title) VALUES ('Book');
+                 INSERT INTO series(name) VALUES ('Series');
+                 INSERT INTO cds(title) VALUES ('Album');
+                 INSERT INTO grand_series_items VALUES (1,'book',1),(1,'series',1),(1,'cd',1),(1,'book',999);
+                 PRAGMA user_version=12;"
+            ).unwrap();
+        }
+        drop(db);
+        let migrated = Db::new(path.to_str().unwrap()).unwrap();
+        assert_eq!(migrated.list_grand_series().unwrap()[0].items.len(), 3);
+        {
+            let conn = migrated.0.lock();
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM grand_series_items", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                3
+            );
+            assert!(
+                conn.execute("INSERT INTO grand_series_items VALUES (1,'cd',999)", [])
+                    .is_err()
+            );
+            conn.execute("DELETE FROM books WHERE id=1", []).unwrap();
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM grand_series_items", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            conn.execute("DELETE FROM cds WHERE id=1", []).unwrap();
+            conn.execute("DELETE FROM series WHERE id=1", []).unwrap();
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM grand_series_items", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        assert!(migrated.list_grand_series().unwrap()[0].items.is_empty());
+        drop(migrated);
+        std::fs::remove_file(path).unwrap();
     }
 }

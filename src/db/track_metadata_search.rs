@@ -21,7 +21,7 @@ impl Db {
         year: Option<i64>,
         limit: i64,
     ) -> Result<Vec<MetadataSearchResult>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut sql = String::from(
             "SELECT t.id, t.cd_id, t.book_id, t.title,
                     COALESCE(tm.artist, cdm.artist, cds.artist) AS artist,

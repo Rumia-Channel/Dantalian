@@ -95,7 +95,7 @@ class PlayerEngine {
         if (nextPosition >= this.playOrder.length) {
             if (this.repeatMode !== "queue") return null;
             if (this.shuffle) return null;
-            nextPosition = this.playOrder.length > 1 ? 1 : 0;
+            nextPosition = 0;
         }
         return this.playOrder[nextPosition];
     }
@@ -541,7 +541,7 @@ class PlayerEngine {
             }
             if (this.repeatMode === "queue" || !fromEnd) {
                 this._rebuildPlayOrder(this.index);
-                nextPosition = this.playOrder.length > 1 ? 1 : 0;
+                nextPosition = this.shuffle && this.playOrder.length > 1 ? 1 : 0;
             } else {
                 this._finishQueue();
                 return false;

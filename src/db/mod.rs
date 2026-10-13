@@ -13,11 +13,13 @@ pub mod storage_locations;
 pub mod track_authors;
 pub mod track_metadata;
 pub mod track_metadata_search;
+mod track_metadata_update;
 pub mod tracks;
 
 pub use crate::db_models::*;
+use parking_lot::Mutex;
 use rusqlite::Connection;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Db(pub Arc<Mutex<Connection>>);
