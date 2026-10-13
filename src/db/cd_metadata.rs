@@ -75,7 +75,7 @@ pub(crate) fn upsert_cd_metadata_conn(
 
 impl Db {
     pub fn upsert_cd_metadata(&self, cd_id: i64, m: &CdMetadata) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         upsert_cd_metadata_conn(&conn, cd_id, m)
     }
 
@@ -90,7 +90,7 @@ impl Db {
         cd_id: i64,
         incoming: &CdMetadata,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let existing = get_cd_metadata_conn(&conn, cd_id)?.unwrap_or_default();
         let merged = CdMetadata {
             cd_id,
@@ -115,12 +115,12 @@ impl Db {
     }
 
     pub fn get_cd_metadata(&self, cd_id: i64) -> Result<Option<CdMetadata>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         get_cd_metadata_conn(&conn, cd_id)
     }
 
     pub fn delete_cd_metadata(&self, cd_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute("DELETE FROM cd_metadata WHERE cd_id = ?1", params![cd_id])?;
         Ok(())
     }

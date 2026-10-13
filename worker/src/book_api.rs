@@ -1,3 +1,6 @@
+mod update;
+pub use update::{set_series, update};
+
 use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
@@ -561,7 +564,9 @@ async fn register(
         .run()
         .await
         .map_err(db_error)?;
-    apply_book_fields(&db, &book_id, &body).await?;
+    if let Some(statement) = update::fields_statement(&db, &book_id, &body)? {
+        statement.run().await.map_err(db_error)?;
+    }
     insert_ndl_authors(&db, &book_id, &body).await?;
     if let Some(author_ids) = body.get("author_ids").and_then(|value| value.as_array()) {
         for author_id in author_ids.iter().filter_map(|value| value.as_i64()) {
@@ -771,100 +776,6 @@ async fn insert_ndl_authors(
     Ok(())
 }
 
-const BOOK_MUTABLE_COLUMNS: &[&str] = &[
-    "isbn",
-    "isdn",
-    "jan",
-    "title",
-    "publisher",
-    "publish_date",
-    "description",
-    "cover_url",
-    "series_id",
-    "series_number",
-    "media_type",
-    "title_transcription",
-    "series_title",
-    "series_title_transcription",
-    "alternative",
-    "alternative_transcription",
-    "volume",
-    "volume_transcription",
-    "price",
-    "extent",
-    "jpno",
-    "ndl_url",
-    "reading_status",
-    "storage_location_id",
-    "label_id",
-    "disc_count",
-    "artist",
-    "label",
-    "catalog_number",
-];
-
-async fn apply_book_fields(
-    db: &worker::D1Database,
-    id: &D1Type<'_>,
-    body: &serde_json::Value,
-) -> Result<()> {
-    let mut assignments = Vec::new();
-    let mut values = Vec::new();
-    for column in BOOK_MUTABLE_COLUMNS {
-        if let Some(value) = body.get(*column) {
-            assignments.push(format!("{column} = ?"));
-            values.push(value_for(Some(value)));
-        }
-    }
-    if assignments.is_empty() {
-        return Ok(());
-    }
-    let sql = format!(
-        "UPDATE books SET {}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        assignments.join(", ")
-    );
-    let mut refs = values.iter().collect::<Vec<_>>();
-    refs.push(id);
-    db.prepare(&sql)
-        .bind_refs(refs)
-        .map_err(db_error)?
-        .run()
-        .await
-        .map_err(db_error)?;
-    Ok(())
-}
-
-async fn update_grand_series(
-    db: &worker::D1Database,
-    book_id: &D1Type<'_>,
-    body: &serde_json::Value,
-) -> Result<()> {
-    let Some(value) = body.get("grand_series_id") else {
-        return Ok(());
-    };
-    db.prepare("DELETE FROM grand_series_items WHERE item_type = 'book' AND item_id = ?")
-        .bind_refs(book_id)
-        .map_err(db_error)?
-        .run()
-        .await
-        .map_err(db_error)?;
-    let Some(grand_series_id) = value.as_i64().filter(|value| *value > 0) else {
-        return Ok(());
-    };
-    let grand_series_id = id_type(grand_series_id, "grand_series id")
-        .map_err(|error| worker::Error::from(error.to_string()))?;
-    db.prepare(
-        "INSERT OR IGNORE INTO grand_series_items (grand_series_id, item_type, item_id)
-         VALUES (?, 'book', ?)",
-    )
-    .bind_refs([&grand_series_id, book_id])
-    .map_err(db_error)?
-    .run()
-    .await
-    .map_err(db_error)?;
-    Ok(())
-}
-
 fn normalize_identifier(value: &str) -> String {
     value.replace(['-', ' ', '　'], "")
 }
@@ -891,74 +802,6 @@ fn value_for<'a>(value: Option<&'a serde_json::Value>) -> D1Type<'a> {
             .unwrap_or(D1Type::Null),
         None => D1Type::Null,
     }
-}
-pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let raw = match parse_id(&ctx, "id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let id = match id_type(raw, "book id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let db = ctx.d1("DB")?;
-    if load(&db, raw).await?.is_none() {
-        return error_response(AppError::NotFound);
-    }
-    let body = match req.json::<serde_json::Value>().await {
-        Ok(value) => value,
-        Err(error) => return Ok(bad_request(format!("invalid JSON: {error}"))),
-    };
-    apply_book_fields(&db, &id, &body).await?;
-    update_grand_series(&db, &id, &body).await?;
-    Ok(Response::empty()?.with_status(204))
-}
-
-pub async fn set_series(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let raw = match parse_id(&ctx, "id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let id = match id_type(raw, "book id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let body = match parse_json::<serde_json::Value>(&mut req).await {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let db = ctx.d1("DB")?;
-    let current = match load(&db, raw).await? {
-        Some(book) => book,
-        None => return error_response(AppError::NotFound),
-    };
-    let series = body
-        .get("series_id")
-        .map(|value| value_for(Some(value)))
-        .unwrap_or_else(|| {
-            current
-                .series_id
-                .map(|value| D1Type::Integer(i32::try_from(value).unwrap_or(i32::MAX)))
-                .unwrap_or(D1Type::Null)
-        });
-    let number = body
-        .get("series_number")
-        .map(|value| value_for(Some(value)))
-        .unwrap_or_else(|| {
-            current
-                .series_number
-                .map(|value| D1Type::Integer(i32::try_from(value).unwrap_or(i32::MAX)))
-                .unwrap_or(D1Type::Null)
-        });
-    db.prepare(
-        "UPDATE books SET series_id=?,series_number=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-    )
-    .bind_refs([&series, &number, &id])
-    .map_err(db_error)?
-    .run()
-    .await
-    .map_err(db_error)?;
-    Ok(Response::empty()?.with_status(204))
 }
 
 pub async fn delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -1097,13 +940,9 @@ pub async fn author_order(mut req: Request, ctx: RouteContext<()>) -> Result<Res
 
 #[cfg(test)]
 mod tests {
-    use super::{BOOK_MUTABLE_COLUMNS, set_amazon_metadata};
+    use super::set_amazon_metadata;
     use dantalian::amazon::AmazonInfo;
     use serde_json::json;
-    #[test]
-    fn book_field_updates_persist_cover_urls() {
-        assert!(BOOK_MUTABLE_COLUMNS.contains(&"cover_url"));
-    }
 
     #[test]
     fn amazon_metadata_overrides_ndl_description_and_date() {

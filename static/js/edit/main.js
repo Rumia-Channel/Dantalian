@@ -307,7 +307,7 @@ async function renderBookEdit(id) {
                         book.epub_file_hash
                             ? `<div class="edit-epub-current">
                                 <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                                <a class="btn btn-xs btn-ghost" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" target="_blank" rel="noopener">開く</a>
+                                <a class="btn btn-xs btn-ghost" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
                             </div>`
                             : `<div class="edit-epub-empty">ファイル未登録</div>`
                     }
@@ -511,8 +511,14 @@ async function saveBook(e, bookId) {
         });
         if (res.ok) {
             window.location.href = "/";
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert(`書籍情報の保存に失敗しました（HTTP ${res.status}）: ${data.error || "不明なエラー"}`);
         }
-    } catch {}
+    } catch (err) {
+        console.error("saveBook failed:", err);
+        alert("書籍情報の保存中に通信エラーが発生しました。");
+    }
 }
 
 // ブラウザ→Wasabi 直送 (presigned multipart) の例外は、応答が読めないことが

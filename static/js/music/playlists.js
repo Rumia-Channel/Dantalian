@@ -1,21 +1,41 @@
 let allPlaylists = [];
 let playlistLoadError = null;
+let playlistLoadRevision = 0;
+
+function storePlaylist(playlist) {
+    playlistLoadRevision += 1;
+    playlistLoadError = null;
+    allPlaylists = [playlist, ...allPlaylists.filter((item) => item.id !== playlist.id)]
+        .sort((a, b) => b.id - a.id);
+    if (window.musicPlayer?.refreshPlaylist) window.musicPlayer.refreshPlaylist(playlist);
+    if (typeof renderGrid === "function") renderGrid();
+}
+
+function setPlaylistPickerBusy(modal, busy) {
+    modal.dataset.busy = String(busy);
+    modal.querySelectorAll("button, input, select").forEach((control) => { control.disabled = busy; });
+}
 
 function getPlaylists() {
     return allPlaylists;
 }
 
 async function loadPlaylists() {
+    const revision = ++playlistLoadRevision;
     try {
         const res = await fetch("/api/playlists");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        allPlaylists = await res.json();
-        playlistLoadError = null;
+        const playlists = await res.json();
+        if (revision === playlistLoadRevision) {
+            allPlaylists = playlists;
+            playlistLoadError = null;
+        }
         return true;
     } catch (err) {
         console.error("loadPlaylists failed:", err);
-        allPlaylists = [];
-        playlistLoadError = err instanceof Error ? err.message : String(err);
+        if (revision === playlistLoadRevision) {
+            playlistLoadError = err instanceof Error ? err.message : String(err);
+        }
         return false;
     }
 }
@@ -63,25 +83,20 @@ async function playlistRequest(url, options) {
 
 async function deletePlaylistById(id) {
     await playlistRequest(`/api/playlists/${id}`, { method: "DELETE" });
-    await loadPlaylists();
+    playlistLoadRevision += 1;
+    allPlaylists = allPlaylists.filter((playlist) => playlist.id !== Number(id));
+    if (window.musicPlayer?.removePlaylist) window.musicPlayer.removePlaylist(Number(id));
     if (typeof renderGrid === "function") renderGrid();
 }
 
 async function removePlaylistTracksById(playlistId, trackIds) {
     const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
-    const playlist = allPlaylists.find((item) => item.id === Number(playlistId));
-    if (!playlist) throw new Error("プレイリストが見つかりません");
-    const removeSet = new Set(ids);
-    const trackIdsAfter = (playlist.tracks || [])
-        .map((entry) => Number(entry.track?.id))
-        .filter((trackId) => Number.isFinite(trackId) && !removeSet.has(trackId));
-    await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
-        method: "PUT",
+    const playlist = await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ track_ids: trackIdsAfter }),
+        body: JSON.stringify({ track_ids: ids }),
     });
-    await loadPlaylists();
-    if (typeof renderGrid === "function") renderGrid();
+    storePlaylist(playlist);
 }
 
 async function confirmDeletePlaylist(id) {
@@ -192,6 +207,7 @@ function ensurePlaylistPicker() {
     document.body.appendChild(modal);
 
     modal.addEventListener("click", async (event) => {
+        if (modal.dataset.busy === "true") return;
         if (event.target === modal || event.target.closest("[data-playlist-picker-close]")) {
             modal.hidden = true;
             return;
@@ -199,27 +215,27 @@ function ensurePlaylistPicker() {
         const button = event.target.closest("[data-playlist-id]");
         if (!button || button.disabled) return;
         const ids = playlistTrackIdsFromModal(modal);
-        button.disabled = true;
+        setPlaylistPickerBusy(modal, true);
         setPlaylistPickerStatus(modal, "追加中...");
         try {
             await addTrackIdsToPlaylist(Number(button.dataset.playlistId), ids);
-            await loadPlaylists();
+            setPlaylistPickerStatus(modal, "");
             modal.hidden = true;
-            if (typeof renderGrid === "function") renderGrid();
         } catch (err) {
-            button.disabled = false;
             setPlaylistPickerStatus(modal, err.message || "追加に失敗しました", true);
+        } finally {
+            setPlaylistPickerBusy(modal, false);
         }
     });
 
     modal.querySelector("[data-playlist-picker-form]").addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (modal.dataset.busy === "true") return;
         const form = event.currentTarget;
         const name = form.querySelector("[data-playlist-picker-name]").value.trim();
         const coverValue = form.querySelector("[data-playlist-picker-cover]").value;
-        const submit = form.querySelector("button[type=submit]");
         if (!name) return;
-        submit.disabled = true;
+        setPlaylistPickerBusy(modal, true);
         setPlaylistPickerStatus(modal, "作成中...");
         try {
             const playlist = await playlistRequest("/api/playlists", {
@@ -229,16 +245,15 @@ function ensurePlaylistPicker() {
                     name,
                     description: null,
                     cover_cd_id: coverValue ? Number(coverValue) : null,
+                    track_ids: playlistTrackIdsFromModal(modal),
                 }),
             });
-            await addTrackIdsToPlaylist(playlist.id, playlistTrackIdsFromModal(modal));
-            await loadPlaylists();
+            storePlaylist(playlist);
             modal.hidden = true;
-            if (typeof renderGrid === "function") renderGrid();
         } catch (err) {
             setPlaylistPickerStatus(modal, err.message || "作成に失敗しました", true);
         } finally {
-            submit.disabled = false;
+            setPlaylistPickerBusy(modal, false);
         }
     });
 
@@ -246,30 +261,32 @@ function ensurePlaylistPicker() {
 }
 
 async function addTrackIdsToPlaylist(playlistId, trackIds) {
-    const playlist = allPlaylists.find((item) => item.id === Number(playlistId));
-    const existing = (playlist?.tracks || [])
-        .map((entry) => Number(entry.track?.id))
-        .filter(Number.isFinite);
-    const next = [...new Set([...existing, ...trackIds.map(Number).filter(Number.isFinite)])];
-    await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
-        method: "PUT",
+    const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
+    const playlist = await playlistRequest(`/api/playlists/${playlistId}/tracks`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ track_ids: next }),
+        body: JSON.stringify({ track_ids: ids }),
     });
+    storePlaylist(playlist);
+    return playlist;
 }
 
 async function openPlaylistPicker({ trackIds, defaultCoverCdId = null } = {}) {
     const ids = [...new Set((trackIds || []).map(Number).filter(Number.isFinite))];
     if (ids.length === 0) return;
+    const existingModal = document.getElementById("player-playlist-modal");
+    if (existingModal?.dataset.busy === "true") return;
     if (allPlaylists.length === 0) await loadPlaylists();
 
     const modal = ensurePlaylistPicker();
     modal.dataset.trackIds = JSON.stringify(ids);
+    setPlaylistPickerBusy(modal, false);
     modal.querySelector("[data-playlist-picker-target]").textContent = `${ids.length} 曲を追加します`;
     renderPlaylistPickerOptions(modal);
     renderPlaylistPickerCovers(modal, defaultCoverCdId == null ? null : Number(defaultCoverCdId));
     setPlaylistPickerStatus(modal, "");
     modal.hidden = false;
+    if (playlistLoadError) setPlaylistPickerStatus(modal, `一覧を取得できませんでした: ${playlistLoadError}`, true);
     modal.querySelector("[data-playlist-picker-name]").focus();
 }
 

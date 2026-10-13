@@ -29,7 +29,7 @@ async function renderCopiesSection(bookId) {
                 ${isLent
                     ? `<button type="button" class="btn btn-xs btn-outline-accent" onclick="returnCopy(${c.id}, ${bookId})">返却</button>`
                     : `<button type="button" class="btn btn-xs btn-outline-warning" onclick="showLendForm(${c.id}, ${bookId})">貸出</button>`}
-                <button type="button" class="btn btn-xs btn-ghost" onclick="editCopyDialog(${c.id}, ${c.copy_type}, ${JSON.stringify(c.location).replace(/"/g, '&quot;')}, ${JSON.stringify(c.notes).replace(/"/g, '&quot;')}, ${bookId})">編集</button>
+                <button type="button" class="btn btn-xs btn-ghost" onclick="editCopyDialog(${c.id}, ${escapeAttr(JSON.stringify(c.location))}, ${escapeAttr(JSON.stringify(c.notes))}, ${bookId})">編集</button>
                 <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteCopy(${c.id}, ${bookId})">削除</button>
             </div>
         </div>`;
@@ -60,7 +60,7 @@ async function addCopy(bookId) {
     } catch {}
 }
 
-async function editCopyDialog(copyId, copyType, location, notes, bookId) {
+async function editCopyDialog(copyId, location, notes, bookId) {
     const newLocation = prompt("場所", location || "");
     if (newLocation === null) return;
     const newNotes = prompt("メモ", notes || "");

@@ -52,15 +52,16 @@ impl BorrowerRepository for D1BorrowerRepository {
         &self,
         id: i64,
         name: Option<&str>,
-        notes: Option<&str>,
+        notes: Option<Option<&str>>,
     ) -> Result<(), AppError> {
         let name = name.map(D1Type::Text).unwrap_or(D1Type::Null);
-        let notes = notes.map(D1Type::Text).unwrap_or(D1Type::Null);
+        let notes_present = D1Type::Integer(i32::from(notes.is_some()));
+        let notes = notes.flatten().map(D1Type::Text).unwrap_or(D1Type::Null);
         let id = Self::bind_id(id)?;
         let result = self
             .db
-            .prepare("UPDATE borrowers SET name = COALESCE(?, name), notes = ? WHERE id = ?")
-            .bind_refs([&name, &notes, &id])
+            .prepare("UPDATE borrowers SET name = COALESCE(?, name), notes = CASE WHEN ? THEN ? ELSE notes END WHERE id = ?")
+            .bind_refs([&name, &notes_present, &notes, &id])
             .map_err(Self::map_error)?
             .run()
             .await

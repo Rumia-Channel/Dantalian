@@ -1,3 +1,4 @@
+use super::track_access::{TrackParent, require_track};
 use crate::AppState;
 use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use crate::db::{CdInfo, CdWithTracks, NewCd, NewTrack};
@@ -692,8 +693,9 @@ pub async fn list_cd_tracks(
 
 pub async fn get_cd_track_metadata(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    require_track(&state, TrackParent::Cd(cd_id), track_id).await?;
     let db = state.db.clone();
     let join_result =
         tokio::task::spawn_blocking(move || db.get_track_metadata_with_cd_inheritance(track_id))
@@ -721,83 +723,10 @@ pub async fn get_cd_track_metadata(
 
 pub async fn put_cd_track_metadata(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
-    // The track modal only sends the user-editable fields; preserve everything the
-    // audio extraction produced (artist/album/cover/ReplayGain/file info/...).
-    let db = state.db.clone();
-    let existing = match tokio::task::spawn_blocking(move || db.get_track_metadata(track_id)).await
-    {
-        Ok(Ok(m)) => m,
-        Ok(Err(e)) => {
-            tracing::error!(track_id, "track_metadata read failed: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-        Err(e) => {
-            tracing::error!(track_id, "track_metadata task failed: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-    let mut merged = crate::external::audio_meta::TrackMetadata::from_json(&body);
-    if let Some(ex) = existing {
-        merged.artist = ex.artist;
-        merged.album = ex.album;
-        merged.album_artist = ex.album_artist;
-        merged.year = ex.year;
-        merged.genre = ex.genre;
-        merged.composer = ex.composer;
-        merged.publisher = ex.publisher;
-        merged.label = ex.label;
-        // 歌詞はモーダルで編集可能なので、body に含まれるときはそちらを優先する。
-        if body.get("lyrics").is_none() {
-            merged.lyrics = ex.lyrics;
-        }
-        merged.cover_mime = ex.cover_mime;
-        merged.cover_data = ex.cover_data;
-        merged.replay_gain_track_gain_db = ex.replay_gain_track_gain_db;
-        merged.replay_gain_track_peak = ex.replay_gain_track_peak;
-        merged.replay_gain_album_gain_db = ex.replay_gain_album_gain_db;
-        merged.replay_gain_album_peak = ex.replay_gain_album_peak;
-        merged.file_type = ex.file_type;
-        merged.raw_size_bytes = ex.raw_size_bytes;
-    }
-    let db = state.db.clone();
-    let join_result =
-        tokio::task::spawn_blocking(move || db.upsert_track_metadata(track_id, &merged)).await;
-    if let Err(e) = join_result.as_ref() {
-        tracing::error!(track_id, "track_metadata task failed: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-    if let Err(e) = join_result.as_ref().unwrap().as_ref() {
-        tracing::error!(track_id, "track_metadata upsert failed: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    if let Some(artists_v) = body.get("artists") {
-        // フロントは作者IDの配列を送る (例: [3, 7])
-        let ids: Vec<i64> = if let Some(arr) = artists_v.as_array() {
-            arr.iter().filter_map(|v| v.as_i64()).collect()
-        } else {
-            Vec::new()
-        };
-        let db = state.db.clone();
-        let assign = tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
-            db.replace_track_authors(track_id, &ids)?;
-            Ok(())
-        })
-        .await;
-        if let Err(e) = assign.as_ref() {
-            tracing::error!(track_id, "track authors assign task failed: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-        if let Err(e) = assign.as_ref().unwrap().as_ref() {
-            tracing::error!(track_id, "track authors assign failed: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    Ok(Json("ok".into()))
+    super::track_access::patch_metadata(&state, TrackParent::Cd(cd_id), track_id, body).await
 }
 
 pub async fn get_cd_metadata(
@@ -874,6 +803,7 @@ pub async fn update_cd_track(
     Path((cd_id, track_id)): Path<(i64, i64)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
+    require_track(&state, TrackParent::Cd(cd_id), track_id).await?;
     if let Some(swap_track_id) = body.get("swap_track_id").and_then(|v| v.as_i64()) {
         let swapped = tokio::task::spawn_blocking({
             let db = state.db.clone();
@@ -900,12 +830,15 @@ pub async fn update_cd_track(
         return Err(StatusCode::BAD_REQUEST);
     }
     let db = state.db.clone();
-    tokio::task::spawn_blocking(move || {
+    let updated = tokio::task::spawn_blocking(move || {
         db.update_track(track_id, title.as_deref(), duration.as_deref())
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !updated {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     if let Some(disc) = body.get("disc_number").and_then(|v| v.as_i64()) {
         let tn = body
@@ -927,6 +860,27 @@ pub async fn add_cd_track(
     Path(cd_id): Path<i64>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::db_models::Track>, StatusCode> {
+    if state
+        .db
+        .find_cd_by_id(cd_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .is_none()
+    {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    if body
+        .get("title")
+        .and_then(|v| v.as_str())
+        .is_none_or(|title| title.trim().is_empty())
+        || body
+            .get("disc_number")
+            .is_some_and(|v| v.as_i64().is_none_or(|n| n <= 0))
+        || body
+            .get("track_number")
+            .is_some_and(|v| v.as_i64().is_none_or(|n| n <= 0))
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let track = crate::db_models::NewTrack {
         disc_number: body["disc_number"].as_i64().or(Some(1)),
         track_number: body["track_number"].as_i64().unwrap_or(1),
@@ -943,8 +897,9 @@ pub async fn add_cd_track(
 
 pub async fn delete_cd_track(
     State(state): State<AppState>,
-    Path((_cd_id, track_id)): Path<(i64, i64)>,
+    Path((cd_id, track_id)): Path<(i64, i64)>,
 ) -> Result<StatusCode, StatusCode> {
+    require_track(&state, TrackParent::Cd(cd_id), track_id).await?;
     let db = state.db.clone();
     let deleted = tokio::task::spawn_blocking(move || db.delete_track(track_id))
         .await

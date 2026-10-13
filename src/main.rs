@@ -1,5 +1,7 @@
 #![cfg(feature = "native")]
 
+mod epub;
+
 use axum::{Router, response::Html};
 use dantalian::db::Db;
 use dantalian::{AppState, api, audio_encoding, backup, media_sync};
@@ -20,6 +22,14 @@ fn serve_html(path: &str) -> Html<String> {
 
 async fn serve_index() -> Html<String> {
     serve_html("static/index.html")
+}
+
+async fn serve_books() -> Html<String> {
+    serve_html("static/books/index.html")
+}
+
+async fn serve_reader() -> Html<String> {
+    serve_html("static/reader/index.html")
 }
 
 async fn serve_register() -> Html<String> {
@@ -175,6 +185,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/", axum::routing::get(serve_index))
+        .route("/books", axum::routing::get(serve_books))
+        .route("/books/", axum::routing::get(serve_books))
+        .route("/reader", axum::routing::get(serve_reader))
+        .route("/reader/", axum::routing::get(serve_reader))
         .route("/register", axum::routing::get(serve_register))
         .route("/register/", axum::routing::get(serve_register))
         .route("/manage", axum::routing::get(serve_manage))
@@ -192,7 +206,7 @@ async fn main() {
         .nest("/api", api::routes())
         .nest_service("/images", ServeDir::new(images_dir_arc.as_ref()))
         .nest_service("/audio", ServeDir::new(audio_dir_arc.as_ref()))
-        .nest_service("/epubs", ServeDir::new(epubs_dir_arc.as_ref()))
+        .nest("/epubs", epub::routes(epubs_dir_arc).with_state(()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
         .with_state(state);
 

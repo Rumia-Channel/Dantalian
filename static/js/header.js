@@ -9,6 +9,7 @@
         '<h1 class="header-brand"><a href="/">Dantalian</a></h1>' +
         '<nav>' +
             '<a href="/" id="nav-home">一覧</a>' +
+            '<a href="/books/" id="nav-books"><span class="nav-book-label">本</span></a>' +
             '<a href="/music/" id="nav-music">音楽</a>' +
             '<a href="/register/" id="nav-register">登録</a>' +
             '<a href="/manage/" id="nav-manage">管理</a>' +

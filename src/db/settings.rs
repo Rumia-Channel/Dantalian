@@ -3,7 +3,7 @@ use rusqlite::params;
 
 impl Db {
     pub fn get_setting(&self, key: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.query_row(
             "SELECT value FROM settings WHERE key = ?1",
             params![key],
@@ -13,7 +13,7 @@ impl Db {
     }
 
     pub fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn
             .prepare("SELECT key, value FROM settings ORDER BY key")
             .unwrap();
@@ -29,7 +29,7 @@ impl Db {
         &self,
         settings: &std::collections::HashMap<String, String>,
     ) -> Result<(), rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         for (key, value) in settings {
             tx.execute(

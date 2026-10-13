@@ -547,10 +547,6 @@ async function submitManualBook(e) {
             }
         }
 
-        statusEl.textContent = coverUploadFailed
-            ? `「${data.book.title}」を登録しましたが、カバー画像のアップロードに失敗しました`
-            : `「${data.book.title}」を登録しました`;
-        statusEl.className = coverUploadFailed ? "error" : "success";
         manualBookCoverFile = null;
         manualCdCoverFile = null;
         manualCoverPreview = null;
@@ -560,12 +556,12 @@ async function submitManualBook(e) {
         manualAuthorSelect = null;
         manualSeriesSelect = null;
         manualGrandSeriesSelect = null;
-        form.reset();
-        const preview = document.getElementById("manual-cover-preview");
-        if (preview) preview.hidden = true;
-        const fname = document.getElementById("manual-cover-filename");
-        if (fname) fname.textContent = "";
-        renderManualAuthorList();
+        await renderManualForm();
+        const resultEl = document.getElementById("manual-register-status");
+        resultEl.textContent = coverUploadFailed
+            ? `「${data.book.title}」を登録しましたが、カバー画像のアップロードに失敗しました`
+            : `「${data.book.title}」を登録しました`;
+        resultEl.className = coverUploadFailed ? "error" : "success";
     } catch (err) {
         statusEl.textContent = "通信エラーが発生しました";
         statusEl.className = "error";
@@ -634,17 +630,20 @@ async function submitManualCd(e) {
         }
 
         const registeredTitle = data.cd?.title || data.title;
-        statusEl.textContent = coverUploadFailed
-            ? `「${registeredTitle}」を登録しましたが、カバー画像のアップロードに失敗しました`
-            : `「${registeredTitle}」を登録しました`;
-        statusEl.className = coverUploadFailed ? "error" : "success";
         manualBookCoverFile = null;
         manualCdCoverFile = null;
         manualCoverPreview = null;
         manualAuthorIds = [];
         manualCdTracks = [];
         manualRendered = false;
-        renderManualForm();
+        await renderManualForm();
+        document.getElementById("manual-media-type").value = "cd";
+        syncManualMediaTypeFields();
+        const resultEl = document.getElementById("manual-cd-register-status");
+        resultEl.textContent = coverUploadFailed
+            ? `「${registeredTitle}」を登録しましたが、カバー画像のアップロードに失敗しました`
+            : `「${registeredTitle}」を登録しました`;
+        resultEl.className = coverUploadFailed ? "error" : "success";
     } catch (err) {
         statusEl.textContent = "通信エラーが発生しました";
         statusEl.className = "error";

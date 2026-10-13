@@ -51,7 +51,7 @@ impl Db {
     }
 
     pub fn insert_cd(&self, cd: &NewCd) -> Result<Cd, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let media_type = cd.media_type.clone().unwrap_or_else(|| "cd".to_string());
         let changes = conn.execute(
@@ -106,7 +106,7 @@ impl Db {
         album_metadata: Option<&CdMetadata>,
         grand_series_id: Option<i64>,
     ) -> Result<Cd, rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let media_type = cd.media_type.clone().unwrap_or_else(|| "cd".to_string());
@@ -180,7 +180,7 @@ impl Db {
     }
 
     pub fn find_by_cd_jan(&self, jan: &str) -> Result<Option<Cd>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id FROM cds WHERE jan = ?1",
         )?;
@@ -192,7 +192,7 @@ impl Db {
     }
 
     pub fn list_cds(&self) -> Result<Vec<Cd>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id FROM cds ORDER BY id DESC",
         )?;
@@ -201,7 +201,7 @@ impl Db {
     }
 
     pub fn find_cd_by_id(&self, id: i64) -> Result<Option<Cd>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id FROM cds WHERE id = ?1",
         )?;
@@ -213,7 +213,7 @@ impl Db {
     }
 
     pub fn delete_cd(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM cds WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -235,7 +235,7 @@ impl Db {
         media_type: Option<&str>,
         series_id: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         update_cd_conn(
             &conn,
             id,
@@ -273,7 +273,7 @@ impl Db {
         series_id: Option<i64>,
         metadata: Option<&CdMetadata>,
     ) -> Result<bool, rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         let affected = update_cd_conn(
             &tx,
@@ -304,7 +304,7 @@ impl Db {
         id: i64,
         cover_url: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE cds SET cover_url = ?1 WHERE id = ?2",
             params![cover_url, id],
@@ -313,7 +313,7 @@ impl Db {
     }
 
     pub fn find_cds_by_parent_book(&self, book_id: i64) -> Result<Vec<Cd>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id FROM cds WHERE parent_book_id = ?1",
         )?;
@@ -322,7 +322,7 @@ impl Db {
     }
 
     pub fn add_cd_author(&self, cd_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT OR IGNORE INTO cd_authors (cd_id, author_id) VALUES (?1, ?2)",
             params![cd_id, author_id],
@@ -331,7 +331,7 @@ impl Db {
     }
 
     pub fn remove_cd_author(&self, cd_id: i64, author_id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "DELETE FROM cd_authors WHERE cd_id = ?1 AND author_id = ?2",
             params![cd_id, author_id],
@@ -340,7 +340,7 @@ impl Db {
     }
 
     pub fn get_cd_authors(&self, cd_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT a.id, a.ndl_id, a.name, a.transcription, ca.sort_order
              FROM authors a
@@ -366,7 +366,7 @@ impl Db {
         author_id: i64,
         sort_order: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE cd_authors SET sort_order = ?1 WHERE cd_id = ?2 AND author_id = ?3",
             params![sort_order, cd_id, author_id],
@@ -383,7 +383,7 @@ impl Db {
         if first_track_id == second_track_id {
             return Ok(false);
         }
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         let load = |track_id: i64| {
             tx.query_row(

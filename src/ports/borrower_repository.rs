@@ -15,7 +15,7 @@ pub trait BorrowerRepository {
         &self,
         id: i64,
         name: Option<&str>,
-        notes: Option<&str>,
+        notes: Option<Option<&str>>,
     ) -> impl Future<Output = Result<(), AppError>>;
 
     fn delete(&self, id: i64) -> impl Future<Output = Result<(), AppError>>;

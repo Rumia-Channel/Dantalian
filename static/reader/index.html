@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dantalian - 読書</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/auth.css?v=ASSET_VERSION">
+    <link rel="stylesheet" href="/css/reader.css?v=ASSET_VERSION">
+</head>
+<body class="reader-page" data-active-nav="books">
+    <main id="app">
+        <div class="reader-toolbar" aria-label="読書画面">
+            <a id="reader-back" class="btn btn-sm btn-ghost" href="/books/">本一覧に戻る</a>
+            <h2 id="reader-title">読書</h2>
+            <output id="reader-progress" aria-label="読書進捗"></output>
+            <a id="reader-edit" class="btn btn-sm btn-ghost hidden">書籍情報</a>
+        </div>
+        <section class="reader-viewport" aria-label="本の本文">
+            <div id="reader-frame"></div>
+            <div id="reader-status" role="status" aria-live="polite">
+                <p id="reader-status-message">本を読み込んでいます…</p>
+                <a id="reader-download" class="btn btn-sm btn-outline-accent hidden">ファイルをダウンロード</a>
+            </div>
+        </section>
+    </main>
+    <script src="/js/header.js?v=ASSET_VERSION"></script>
+    <script src="/vendor/bibi/and/jo.js?v=ASSET_VERSION"></script>
+    <script src="/js/reader.js?v=ASSET_VERSION"></script>
+</body>
+</html>

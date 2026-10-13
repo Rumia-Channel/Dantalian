@@ -60,7 +60,7 @@ impl Db {
     }
 
     pub fn insert_book(&self, book: &NewBook) -> Result<Book, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let media_type = book
             .media_type
@@ -153,7 +153,7 @@ impl Db {
     }
 
     pub fn add_book_author(&self, book_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT OR IGNORE INTO book_authors (book_id, author_id) VALUES (?1, ?2)",
             params![book_id, author_id],
@@ -162,7 +162,7 @@ impl Db {
     }
 
     pub fn get_book_authors(&self, book_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT a.id, a.ndl_id, a.name, a.transcription, ba.sort_order
              FROM authors a
@@ -188,7 +188,7 @@ impl Db {
         author_id: i64,
         sort_order: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE book_authors SET sort_order = ?1 WHERE book_id = ?2 AND author_id = ?3",
             params![sort_order, book_id, author_id],
@@ -197,7 +197,7 @@ impl Db {
     }
 
     pub fn list_books(&self) -> Result<Vec<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books ORDER BY id DESC",
             BOOK_SELECT_COLUMNS
@@ -213,7 +213,7 @@ impl Db {
         limit: usize,
         before_id: Option<i64>,
     ) -> Result<Vec<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books WHERE (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?1",
             BOOK_SELECT_COLUMNS
@@ -223,7 +223,7 @@ impl Db {
     }
 
     pub fn find_by_isbn(&self, isbn: &str) -> Result<Option<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books WHERE isbn = ?1",
             BOOK_SELECT_COLUMNS
@@ -236,7 +236,7 @@ impl Db {
     }
 
     pub fn find_by_isdn(&self, isdn: &str) -> Result<Option<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books WHERE isdn = ?1",
             BOOK_SELECT_COLUMNS
@@ -249,7 +249,7 @@ impl Db {
     }
 
     pub fn find_by_id(&self, id: i64) -> Result<Option<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books WHERE id = ?1",
             BOOK_SELECT_COLUMNS
@@ -262,7 +262,7 @@ impl Db {
     }
 
     pub fn find_by_jan(&self, jan: &str) -> Result<Option<Book>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {} FROM books WHERE jan = ?1",
             BOOK_SELECT_COLUMNS
@@ -275,7 +275,7 @@ impl Db {
     }
 
     pub fn delete_book(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
@@ -286,7 +286,7 @@ impl Db {
         series_id: Option<i64>,
         series_number: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE books SET series_id = ?1, series_number = ?2 WHERE id = ?3",
             params![series_id, series_number, book_id],
@@ -341,10 +341,12 @@ impl Db {
         reading_status: Option<&str>,
         storage_location_id: Option<i64>,
         label_id: Option<i64>,
+        grand_series_id: Option<Option<i64>>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
+        let tx = conn.transaction()?;
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        let affected = conn.execute(
+        let affected = tx.execute(
             "UPDATE books SET isbn=?1, isdn=?2, jan=?3, title=?4, publisher=?5, publish_date=?6, description=?7,
              title_transcription=?8, series_title=?9, series_title_transcription=?10,
              alternative=?11, alternative_transcription=?12, volume=?13, volume_transcription=?14,
@@ -354,12 +356,12 @@ impl Db {
              isdn_genre_code=?26, isdn_genre_name=?27, isdn_genre_user=?28, isdn_c_code=?29,
              isdn_author=?30, isdn_shape=?31, isdn_contents=?32, isdn_barcode2=?33,
              isdn_sample_image_url=?34, isdn_useroption=?35, isdn_external_links=?36,
-             media_type=COALESCE(?37, media_type),
-             catalog_number=COALESCE(?38, catalog_number),
-             artist=COALESCE(?39, artist),
-             label=COALESCE(?40, label),
-             disc_count=COALESCE(?41, disc_count),
-             reading_status=COALESCE(?42, reading_status),
+             media_type=?37,
+             catalog_number=?38,
+             artist=?39,
+             label=?40,
+             disc_count=?41,
+             reading_status=?42,
              storage_location_id=?43,
              label_id=?44,
              updated_at=?45
@@ -379,6 +381,22 @@ impl Db {
                 id,
             ],
         )?;
+        if affected == 0 {
+            return Ok(false);
+        }
+        if let Some(grand_series_id) = grand_series_id {
+            tx.execute(
+                "DELETE FROM grand_series_items WHERE item_type='book' AND item_id=?1",
+                params![id],
+            )?;
+            if let Some(grand_series_id) = grand_series_id {
+                tx.execute(
+                    "INSERT INTO grand_series_items(grand_series_id,item_type,item_id) VALUES (?1,'book',?2)",
+                    params![grand_series_id,id],
+                )?;
+            }
+        }
+        tx.commit()?;
         Ok(affected > 0)
     }
 
@@ -387,7 +405,7 @@ impl Db {
         id: i64,
         cover_url: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE books SET cover_url = ?1 WHERE id = ?2",
             params![cover_url, id],
@@ -401,7 +419,7 @@ impl Db {
         file_hash: Option<&str>,
         file_name: Option<&str>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
             "UPDATE books SET epub_file_hash = ?1, epub_file_name = ?2, updated_at = ?3 WHERE id = ?4",
@@ -411,7 +429,7 @@ impl Db {
     }
 
     pub fn set_book_label(&self, id: i64, label_id: Option<i64>) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let affected = conn.execute(
             "UPDATE books SET label_id = ?1, updated_at = ?2 WHERE id = ?3",
@@ -421,7 +439,7 @@ impl Db {
     }
 
     pub fn count_books_by_epub_hash(&self, hash: &str) -> Result<i64, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let n: i64 = conn.query_row(
             "SELECT COUNT(*) FROM books WHERE epub_file_hash = ?1",
             params![hash],
@@ -434,7 +452,7 @@ impl Db {
         &self,
         book_id: i64,
     ) -> Result<Option<GrandSeries>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT gs.id, gs.name FROM grand_series gs
              JOIN grand_series_items gsi ON gs.id = gsi.grand_series_id
@@ -456,7 +474,7 @@ impl Db {
         &self,
         series_id: i64,
     ) -> Result<Option<GrandSeries>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT gs.id, gs.name FROM grand_series gs
              JOIN grand_series_items gsi ON gs.id = gsi.grand_series_id
@@ -479,7 +497,7 @@ impl Db {
         book_id: i64,
         author_id: i64,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "DELETE FROM book_authors WHERE book_id = ?1 AND author_id = ?2",
             params![book_id, author_id],
@@ -488,7 +506,7 @@ impl Db {
     }
 
     pub fn backup_to_file(&self, dst_path: &str) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut dst = Connection::open(dst_path)?;
         let backup = rusqlite::backup::Backup::new(&conn, &mut dst)?;
         backup.run_to_completion(5, std::time::Duration::from_millis(250), None)?;

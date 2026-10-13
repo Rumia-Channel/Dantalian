@@ -4,7 +4,7 @@ use rusqlite::params;
 
 impl Db {
     pub fn add_track_author(&self, track_id: i64, author_id: i64) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let sort_order: i64 = conn
             .query_row(
                 "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM track_authors WHERE track_id = ?1",
@@ -24,7 +24,7 @@ impl Db {
         track_id: i64,
         author_id: i64,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "DELETE FROM track_authors WHERE track_id = ?1 AND author_id = ?2",
             params![track_id, author_id],
@@ -38,7 +38,7 @@ impl Db {
         author_id: i64,
         sort_order: i64,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "UPDATE track_authors SET sort_order = ?1 WHERE track_id = ?2 AND author_id = ?3",
             params![sort_order, track_id, author_id],
@@ -47,7 +47,7 @@ impl Db {
     }
 
     pub fn list_track_authors(&self, track_id: i64) -> Result<Vec<BookAuthor>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT a.id, a.name, a.transcription, a.ndl_id, ta.sort_order
              FROM track_authors ta
@@ -71,29 +71,8 @@ impl Db {
         Ok(result)
     }
 
-    pub fn replace_track_authors(
-        &self,
-        track_id: i64,
-        author_ids: &[i64],
-    ) -> Result<(), rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
-        let tx = conn.transaction()?;
-        tx.execute(
-            "DELETE FROM track_authors WHERE track_id = ?1",
-            params![track_id],
-        )?;
-        for (i, aid) in author_ids.iter().enumerate() {
-            tx.execute(
-                "INSERT OR IGNORE INTO track_authors (track_id, author_id, sort_order) VALUES (?1, ?2, ?3)",
-                params![track_id, aid, i as i64],
-            )?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
     pub fn ensure_authors_for_names(&self, names: &[String]) -> Result<Vec<i64>, rusqlite::Error> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock();
         let tx = conn.transaction()?;
         let mut ids = Vec::with_capacity(names.len());
         for name in names {

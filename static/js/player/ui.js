@@ -394,15 +394,21 @@ function createPlayerUI(rootEl) {
         if (url) {
             el["cover-img"].src = url; el["cover-img"].alt = cd.title || "";
             el["cover-img"].style.display = "block"; el["cover-fallback"].style.display = "none";
-            el["mini-cover"].src = url; el["mini-cover"].style.display = "block";
-            el["mini-cover-fallback"].style.display = "none";
         } else {
             el["cover-img"].removeAttribute("src"); el["cover-img"].style.display = "none";
             el["cover-fallback"].style.display = "flex";
+        }
+        setAmbient(url);
+    }
+    function paintMiniCover(cd) {
+        const url = coverUrl(cd);
+        if (url) {
+            el["mini-cover"].src = url; el["mini-cover"].style.display = "block";
+            el["mini-cover-fallback"].style.display = "none";
+        } else {
             el["mini-cover"].removeAttribute("src"); el["mini-cover"].style.display = "none";
             el["mini-cover-fallback"].style.display = "flex";
         }
-        setAmbient(url);
     }
 
     function renderResumeButton() {
@@ -650,7 +656,7 @@ function createPlayerUI(rootEl) {
         if (entry && entry.album) currentCd = entry.album;
         el["mini-title"].textContent = t ? t.title : "—";
         el["mini-artist"].textContent = currentCd ? (getCdArtistName(currentCd) || currentCd.title) : "";
-        if (currentCd) paintCover(currentCd);
+        if (currentCd) paintMiniCover(currentCd);
         const playing = engine.isPlaying;
         el["mini-play-icon"].textContent = playing ? "pause" : "play_arrow";
         renderQueue();
@@ -969,8 +975,15 @@ function createPlayerUI(rootEl) {
         renderMini();
         renderQueue();
         updateMediaSession();
-        if (fullVisible && viewMode === "live") { viewTrackId = t.id; renderView(); }
-        else if (fullVisible && viewMode === "idle") { renderView(); }
+        if (fullVisible && viewMode === "live") {
+            viewCd = currentCd;
+            viewTrackId = t.id;
+            renderView();
+        } else if (fullVisible) {
+            viewMode = computeViewMode();
+            if (viewMode === "live") viewTrackId = t.id;
+            renderView();
+        }
     });
     engine.on("queuechange", () => renderQueue());
     engine.on("empty", () => {

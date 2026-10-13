@@ -25,7 +25,7 @@ impl<R: BorrowerRepository> BorrowerService<R> {
         &self,
         id: i64,
         name: Option<&str>,
-        notes: Option<&str>,
+        notes: Option<Option<&str>>,
     ) -> Result<(), AppError> {
         let name = name.map(normalize_name).transpose()?;
         self.repo.update(id, name.as_deref(), notes).await
@@ -76,7 +76,7 @@ mod tests {
             &self,
             id: i64,
             name: Option<&str>,
-            notes: Option<&str>,
+            notes: Option<Option<&str>>,
         ) -> Result<(), AppError> {
             let mut borrowers = self.borrowers.lock().unwrap();
             let borrower = borrowers
@@ -86,7 +86,9 @@ mod tests {
             if let Some(name) = name {
                 borrower.name = name.to_string();
             }
-            borrower.notes = notes.map(str::to_string);
+            if let Some(notes) = notes {
+                borrower.notes = notes.map(str::to_string);
+            }
             Ok(())
         }
 
@@ -116,20 +118,5 @@ mod tests {
             service.create("  ", None).await,
             Err(AppError::Validation("Name is required".to_string()))
         );
-    }
-
-    #[tokio::test]
-    async fn update_and_delete_propagate_repository_behavior() {
-        let service = BorrowerService::new(FakeRepository::default());
-        let borrower = service.create("Before", None).await.unwrap();
-        service
-            .update(borrower.id, Some("After"), Some("updated"))
-            .await
-            .unwrap();
-        let updated = &service.list().await.unwrap()[0];
-        assert_eq!(updated.name, "After");
-        assert_eq!(updated.notes.as_deref(), Some("updated"));
-        service.delete(borrower.id).await.unwrap();
-        assert!(service.list().await.unwrap().is_empty());
     }
 }

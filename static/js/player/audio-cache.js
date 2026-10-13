@@ -121,7 +121,7 @@ function audioCacheUsesCompressedVariant(track) {
 
 function audioCacheRecordIsUsable(track, record) {
     if (!isAudioCacheBlob(record?.blob)) return false;
-    if (!audioCacheUsesCompressedVariant(track)) return true;
+    if (!audioCacheUsesCompressedVariant(track)) return record.format === "original";
     return record.format === "opus" || record.format === "aac";
 }
 
@@ -195,6 +195,9 @@ function audioCacheCandidates(track, playability = null) {
     const fileHash = String(track?.file_hash || "");
     if (!fileHash) return [];
     const extension = audioCacheExtension(track);
+    if (!audioCacheUsesCompressedVariant(track)) {
+        return [{ format: "original", mime: "application/octet-stream", url: audioCacheOriginalUrl(fileHash) }];
+    }
     const formats = playability?.preferred_format === "aac"
         ? ["aac", "opus"]
         : ["opus", "aac"];
@@ -203,13 +206,6 @@ function audioCacheCandidates(track, playability = null) {
         mime: format === "opus" ? "audio/ogg; codecs=opus" : "audio/aac",
         url: audioCacheEncodedUrl(fileHash, extension, format),
     }));
-    if (!audioCacheUsesCompressedVariant(track)) {
-        candidates.push({
-            format: "original",
-            mime: "application/octet-stream",
-            url: audioCacheOriginalUrl(fileHash),
-        });
-    }
     return candidates;
 }
 
@@ -220,9 +216,6 @@ async function cacheAudioTrack(track, context = {}) {
     const existing = await readAudioCacheRecord(fileHash).catch(() => null);
     if (audioCacheRecordIsUsable(track, existing)) {
         return { ok: true, format: existing.format, size: existing.size, reused: true };
-    }
-    if (existing?.format === "original" && audioCacheUsesCompressedVariant(track)) {
-        await deleteAudioCacheRecord(fileHash).catch(() => {});
     }
 
     let playability = null;
@@ -308,18 +301,6 @@ async function getAudioCacheStatus(tracks) {
     const records = await Promise.all(uniqueTracks.map((track) =>
         readAudioCacheRecord(String(track.file_hash)).catch(() => null)
     ));
-    const staleHashes = records
-        .map((record, index) => (
-            !audioCacheRecordIsUsable(uniqueTracks[index], record)
-                && isAudioCacheBlob(record?.blob)
-                ? String(uniqueTracks[index].file_hash)
-                : null
-        ))
-        .filter(Boolean);
-    // データセーバー有効化前に保存された原音キャッシュを、状態確認時に移行する。
-    for (const hash of staleHashes) {
-        await deleteAudioCacheRecord(hash).catch(() => {});
-    }
     const cached = records.filter((record, index) =>
         audioCacheRecordIsUsable(uniqueTracks[index], record)
     );

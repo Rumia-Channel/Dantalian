@@ -3,12 +3,22 @@ use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use dantalian::application::error::AppError;
+use dantalian::domain::patch::deserialize_nullable;
 
 #[derive(Debug, Deserialize)]
 struct CopyRequest {
     copy_type: Option<String>,
     location: Option<String>,
     notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateCopyRequest {
+    copy_type: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    location: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    notes: Option<Option<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +54,7 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         .prepare(
             "SELECT c.id, c.book_id, c.copy_type, c.location, c.notes,
                     l.borrower_id, l.lent_date, l.due_date,
-                    bo.name AS borrower_name
+                    bo.name AS lent_to
              FROM copies c
              LEFT JOIN lending_history l
                ON l.copy_id = c.id AND l.returned_date IS NULL
@@ -77,6 +87,19 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     let copy_type = request.copy_type.unwrap_or_else(|| "physical".to_string());
     let location = request.location.unwrap_or_default();
     let notes = request.notes.unwrap_or_default();
+    if !matches!(copy_type.as_str(), "physical" | "ebook") {
+        return Ok(bad_request("invalid copy type"));
+    }
+    let db = ctx.d1("DB")?;
+    if db
+        .prepare("SELECT id FROM books WHERE id=?")
+        .bind_refs(&book_id)?
+        .first::<serde_json::Value>(None)
+        .await?
+        .is_none()
+    {
+        return error_response(AppError::NotFound);
+    }
     let values = [
         book_id,
         D1Type::Text(&copy_type),
@@ -112,23 +135,33 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
-    let request = match parse_json::<CopyRequest>(&mut req).await {
+    let request = match parse_json::<UpdateCopyRequest>(&mut req).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
     let copy_type_value = request.copy_type;
     let location_value = request.location;
     let notes_value = request.notes;
+    if copy_type_value
+        .as_deref()
+        .is_some_and(|value| !matches!(value, "physical" | "ebook"))
+    {
+        return Ok(bad_request("invalid copy type"));
+    }
+    let location_present = D1Type::Integer(i32::from(location_value.is_some()));
+    let notes_present = D1Type::Integer(i32::from(notes_value.is_some()));
     let copy_type = copy_type_value
         .as_deref()
         .map(D1Type::Text)
         .unwrap_or(D1Type::Null);
     let location = location_value
-        .as_deref()
+        .as_ref()
+        .and_then(|value| value.as_deref())
         .map(D1Type::Text)
         .unwrap_or(D1Type::Null);
     let notes = notes_value
-        .as_deref()
+        .as_ref()
+        .and_then(|value| value.as_deref())
         .map(D1Type::Text)
         .unwrap_or(D1Type::Null);
     let result = ctx
@@ -136,11 +169,18 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         .prepare(
             "UPDATE copies
              SET copy_type = COALESCE(?, copy_type),
-                 location = COALESCE(?, location),
-                 notes = COALESCE(?, notes)
+                 location = CASE WHEN ? THEN ? ELSE location END,
+                 notes = CASE WHEN ? THEN ? ELSE notes END
              WHERE id = ?",
         )
-        .bind_refs([&copy_type, &location, &notes, &id])
+        .bind_refs([
+            &copy_type,
+            &location_present,
+            &location,
+            &notes_present,
+            &notes,
+            &id,
+        ])
         .map_err(db_error)?
         .run()
         .await

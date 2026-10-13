@@ -6,6 +6,8 @@ use std::process::Command;
 fn main() {
     let html_files = [
         "static/index.html",
+        "static/books/index.html",
+        "static/reader/index.html",
         "static/register/index.html",
         "static/manage/index.html",
         "static/edit/index.html",
@@ -28,6 +30,7 @@ fn main() {
         "static/css/music.css",
         "static/css/playlist.css",
         "static/css/licenses.css",
+        "static/css/reader.css",
     ];
 
     let js_files = [
@@ -48,8 +51,11 @@ fn main() {
         "static/js/series.js",
         "static/js/storage-locations.js",
         "static/js/labels.js",
+        "static/js/catalogue-controls.js",
         "static/js/book-grid.js",
         "static/js/detail.js",
+        "static/js/book-links.js",
+        "static/js/reader.js",
         "static/js/authors.js",
         "static/js/edit/copies.js",
         "static/js/edit/tracks.js",
@@ -95,6 +101,9 @@ fn main() {
     println!("cargo:rerun-if-changed=LICENSE");
     println!("cargo:rerun-if-changed=NOTICE");
     println!("cargo:rerun-if-changed=MODULE_LICENSE_FRAUNHOFER");
+    println!("cargo:rerun-if-changed=bibi.lock.json");
+    println!("cargo:rerun-if-changed=scripts/bibi/dantalian.js");
+    println!("cargo:rerun-if-changed=static/vendor/bibi");
     println!("cargo:rerun-if-env-changed=DANTALIAN_GENERATE_LICENSES");
 
     for file in html_files
@@ -109,6 +118,17 @@ fn main() {
     }
 
     let mut hasher = DefaultHasher::new();
+    for file in [
+        "static/vendor/bibi/build-manifest.json",
+        "static/vendor/bibi/import-manifest.json",
+        "static/vendor/bibi/presets/dantalian.js",
+        "static/vendor/bibi/LICENSE",
+    ] {
+        println!("cargo:rerun-if-changed={file}");
+        if let Ok(bytes) = std::fs::read(file) {
+            bytes.hash(&mut hasher);
+        }
+    }
 
     for file in html_files
         .iter()

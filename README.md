@@ -62,6 +62,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 - ISBN による書籍登録（NDL メタデータ + Amazon 表紙画像）
 - ユーザー定義シリーズ管理（作成・変更・削除・書籍への割り当て）
+- 本だけを扱う一覧（`/books/`）。著者別／一覧の切り替え、検索、並び順、シリーズ・大シリーズの絞り込みに対応
 - レスポンシブ対応ダークテーマ UI
 - コンテンツ幅設定（LocalStorage に保存）
 
@@ -142,6 +143,8 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 
 変換はサーバー側で行われ、再生時に生成済みのファイルを再利用します。
 
+ブラウザのオフラインキャッシュも現在の設定に合わせます。有効時は対象拡張子の Opus/AAC、無効時は原音だけを再生・再利用します。設定切替で形式が合わなくなったキャッシュは未取得扱いになりますが、状態確認だけでは削除せず、新しい音声の取得・保存が成功してから置き換えます。
+
 ### API
 
 - `POST /api/media-sync/run` — 手動実行。レスポンスは `ok` / `scanned` / `uploaded` / `skipped` / `failed` / `missing_local` を含む summary JSON。
@@ -156,3 +159,72 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 - 設定バリデーション (`config.validate()`) に失敗した状態では同期を実行せず、warn ログを出して短時間スリープしてから再確認します。`types` が空や S3 認証情報が不足したまま成功扱いにはなりません。
 - 同期は images / audio / epubs ディレクトリを**再帰的に**走査し、拡張子でフィルタしたうえで `head_object` で既存確認 → なければ `put_object` します。`head_object` が NotFound 以外のエラー (401/403/5xx/タイムアウト等) を返した場合は上書きせず失敗として記録します。
 - Content-Type は拡張子から自動設定します。
+
+## 編集 API の更新契約
+
+Native / Worker の書籍の nullable フィールド、所蔵の `location` / `notes`、借主の `notes`、プレイリストの `description` / `cover_cd_id`、トラックメタデータは、JSON の未指定フィールドを保持し、明示的な `null` で値を消去します。
+
+- 書籍と大シリーズ所属、トラックメタデータとアーティスト所属はそれぞれまとめて更新します。不正な所属先で失敗した場合、先に情報だけが書き換わることはありません。
+- 新規トラックでも `artists` のみのメタデータ更新を保存・再取得できます。Worker の `raw_size_bytes` は符号付き 32 bit の上限では制限せず、対応する大容量音声のバイト数を保持します。
+- `PUT /api/books/{id}/series` で `series_id: null` を指定すると、シリーズ巻数も消去します。
+- 所属先の異なる URL からのトラック更新・メタデータ取得・削除は `404` を返します。
+- 貸出中の所蔵への再貸出は `409` を返します。同時に貸し出しても成功するのは一件だけです。所蔵一覧の `lent_to` には借主名を返します。
+
+### プレイリスト
+
+| メソッド・パス | リクエスト・動作 |
+|---|---|
+| `POST /api/playlists` | `name` と任意の `description` / `cover_cd_id` / `track_ids`。初期トラックを含めて作成します。 |
+| `PUT /api/playlists/{id}` | 情報更新。`track_ids` を指定した場合だけ曲順を置き換え、`[]` で空にします。 |
+| `POST /api/playlists/{id}/tracks` | `{"track_ids":[1,2]}` でサーバー側の現在の末尾へ追加します。単曲の `{"track_id":1}` も受け付けますが、両方の同時指定はできません。 |
+| `DELETE /api/playlists/{id}/tracks` | `{"track_ids":[1,2]}` でまとめて削除し、残った位置を詰めます。 |
+
+追加できるのは CD に属し `file_hash` を持つトラックだけです。重複した ID は先頭の出現順を保って一つにまとめます。作成・曲順置換・一括追加・一括削除は原子的に実行します。
+
+Native / Worker ともに取得・更新レスポンスの `tracks` は `{ position, track, cd }` の配列です。追加・削除時はクライアントの古い一覧を使った曲順置換ではなく、上記の一括操作を使用してください。
+
+## DB スキーマの整合性
+
+Native の現行スキーマは `13` です。対応版より新しい DB を開いた場合、テーブルを削除せず起動を拒否します。新しいバージョンで更新した DB を古い実行ファイルで開かないでください。
+
+Worker の更新時は `worker/migrations/0016_grand_series_integrity.sql` を D1 に適用してください。この移行は存在しない書籍・CD・シリーズへの大シリーズ所属を除去し、以後の不正な所属を拒否します。対象の削除時には所属も自動的に除去します。Native にも同じ整合性制約を適用します。
+
+## 更新経路の回帰検証
+
+単体テスト:
+
+```sh
+cargo test --features native --all-targets
+cargo test --manifest-path worker/Cargo.toml
+```
+
+API の検証には使い捨て DB の Native またはローカル Worker を起動し、`WORKER_BASE_URL` にその URL を指定して次を実行します。認証を有効にした場合は `WORKER_API_TOKEN` も指定してください。
+
+```sh
+node --test worker/tests/reliability_contract.mjs
+```
+
+この API 回帰検証は Worker CI でも実行します。新規トラックのアーティストのみの更新と、2 GiB 以上の音声サイズを含むメタデータ更新も検証対象です。
+
+## 本一覧 (`/books/`)
+
+ヘッダーの「本」から開く、本だけの一覧です。`media_type` が `cd` または `audiobook` の項目を除いた本を表示します。
+
+- 表示と操作は一覧 (`/`) と同じ `static/js/book-grid.js` を共有し、`<body data-catalogue="books">` で分類を切り替えます。設定バーは `static/js/catalogue-controls.js` が両ページ分を組み立てます。
+- 並び順や表示形式の保存キーは `dantalian_books_*` に分離し、一覧ページの設定 (`dantalian_*` / `dantalian_type_filter`) とは独立して保存します。
+- 種別フィルタ（全／書籍／CD／AB）は本ページには表示しません。検索対象は本ページで表示中の項目だけです。
+- シリーズ／大シリーズのカードとモーダルは、本ページで表示中の本だけを表示します。表示できる本が無いグループはカードに出ません。
+- 詳細モーダル (`static/js/detail.js`) は `getAllItems()` 経由でシリーズ・大シリーズの項目を解決するため、どちらのページでも表示中の分類が一致します。
+
+静的アセットを追加した場合は `build.rs` の `html_files` / `js_files` にも登録してください。登録漏れがあるとキャッシュバスタ用ハッシュが更新されません。Worker は `build_assets.mjs` が `static/` をそのまま複製するため、追加作業はありません。
+
+### 読書リーダー (Bibi)
+
+EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.1.0** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
+
+- 一覧・本一覧・シリーズ内の本をクリックすると、同じタブの `/reader/?book=<id>` で登録済み EPUB を開きます。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」からも読書画面へ移動できます。CD・オーディオブックのクリック動作は変更していません。
+- 読書画面には元の一覧への戻りリンク、書籍情報へのリンク、現在の進捗率を表示します。Bibi の目次・ページ送り・キーボード・スライダーを使用できます。
+- EPUB 未登録の場合は登録案内を表示します。PDF は Bibi で開かず、ダウンロードを案内します。
+- 再開位置は Bibi がブラウザ内に保存します。書籍 ID・ファイル版で分離しますが、サーバーへの位置保存、端末間同期、読了状態の自動更新は未接続です。
+
+取り込みコマンド、API 契約、確認済み範囲と残作業は [docs/BIBI_INTEGRATION.md](docs/BIBI_INTEGRATION.md) を参照してください。

@@ -120,7 +120,22 @@ impl StorageLocationRepository for D1StorageLocationRepository {
                     .and_then(|meta| meta.changes)
                     .unwrap_or_default()
             }
-            (None, None) => return Ok(()),
+            (None, None) => {
+                let exists = self
+                    .db
+                    .prepare("SELECT id FROM storage_locations WHERE id=?")
+                    .bind_refs(&id)
+                    .map_err(Self::map_error)?
+                    .first::<serde_json::Value>(None)
+                    .await
+                    .map_err(Self::map_error)?
+                    .is_some();
+                return if exists {
+                    Ok(())
+                } else {
+                    Err(AppError::NotFound)
+                };
+            }
         };
         if changed == 0 {
             return Err(AppError::NotFound);

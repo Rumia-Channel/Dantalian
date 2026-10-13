@@ -14,3 +14,7 @@ worker/.asset-version
 /worker/staging-secrets.json
 /worker/ci/__pycache__
 /node_modules
+# CocoIndex Code (ccc)
+/.cocoindex_code/
+/static/vendor/bibi/
+/static/vendor/.bibi-import-*/

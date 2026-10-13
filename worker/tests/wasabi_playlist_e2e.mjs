@@ -68,18 +68,26 @@ test("playlist API serves the list, the cover, and the joined tracks", { skip: !
       track_ids: [track.id],
     });
     assert.equal(withTrack.response.status, 200);
+    const rejected = await jsonRequest("PUT", `/api/playlists/${playlistId}`, {
+      name: "Must not commit",
+      description: null,
+      track_ids: [track.id, 2_000_000_000],
+    });
+    assert.equal(rejected.response.status, 400);
 
     const fetched = await jsonRequest("GET", `/api/playlists/${playlistId}`);
     assert.equal(fetched.response.status, 200);
+    assert.equal(fetched.body.name, playlist.body.name);
+    assert.equal(fetched.body.description, "playlist contract");
     assert.equal(fetched.body.tracks.length, 1);
-    assert.equal(fetched.body.tracks[0].file_hash, fileHash);
+    assert.equal(fetched.body.tracks[0].track.file_hash, fileHash);
 
     const listed = await jsonRequest("GET", "/api/playlists");
     assert.equal(listed.response.status, 200);
     const listedEntry = listed.body.find((entry) => entry.id === playlistId);
     assert.ok(listedEntry, "created playlist must appear in the list");
     assert.equal(listedEntry.tracks.length, 1);
-    assert.equal(listedEntry.tracks[0].file_hash, fileHash);
+    assert.equal(listedEntry.tracks[0].track.file_hash, fileHash);
   } finally {
     if (playlistId !== undefined) {
       await jsonRequest("DELETE", `/api/playlists/${playlistId}`);

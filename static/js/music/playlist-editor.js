@@ -1,6 +1,16 @@
 let playlistEditorState = null;
 let playlistEditorDragIndex = null;
 
+function setPlaylistEditorBusy(modal, busy) {
+    if (modal.dataset.busy === String(busy)) return;
+    modal.dataset.busy = String(busy);
+    modal.querySelectorAll("button, input, select, textarea").forEach((control) => {
+        if (busy) control.dataset.wasDisabled = String(control.disabled);
+        control.disabled = busy || control.dataset.wasDisabled === "true";
+    });
+    modal.querySelectorAll("[data-playlist-editor-row]").forEach((row) => { row.draggable = !busy; });
+}
+
 function editorCdKey(entry) {
     return entry && entry.cd && entry.cd.id != null ? String(entry.cd.id) : "unknown";
 }
@@ -182,12 +192,14 @@ function ensurePlaylistEditor() {
     document.body.appendChild(modal);
 
     const close = () => {
+        if (modal.dataset.busy === "true") return;
         modal.hidden = true;
         playlistEditorState = null;
         playlistEditorDragIndex = null;
     };
 
     modal.addEventListener("click", (event) => {
+        if (modal.dataset.busy === "true") return;
         if (event.target === modal || event.target.closest("[data-playlist-editor-close]")) {
             close();
             return;
@@ -207,6 +219,7 @@ function ensurePlaylistEditor() {
     });
 
     modal.addEventListener("dragstart", (event) => {
+        if (modal.dataset.busy === "true") { event.preventDefault(); return; }
         const row = event.target.closest("[data-playlist-editor-row]");
         if (!row) return;
         playlistEditorDragIndex = Number(row.dataset.index);
@@ -226,6 +239,7 @@ function ensurePlaylistEditor() {
         if (row && !row.contains(event.relatedTarget)) row.classList.remove("is-drag-over");
     });
     modal.addEventListener("drop", (event) => {
+        if (modal.dataset.busy === "true") return;
         const row = event.target.closest("[data-playlist-editor-row]");
         if (!row || playlistEditorDragIndex == null || !playlistEditorState) return;
         event.preventDefault();
@@ -246,34 +260,35 @@ function ensurePlaylistEditor() {
     });
     modal.querySelector("[data-playlist-editor-form]").addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (!playlistEditorState) return;
+        if (!playlistEditorState || modal.dataset.busy === "true") return;
+        const state = playlistEditorState;
         const form = event.currentTarget;
         const name = form.querySelector("[data-playlist-editor-name]").value.trim();
         const description = form.querySelector("[data-playlist-editor-description]").value.trim();
         const coverValue = form.querySelector("[data-playlist-editor-cover]").value;
-        const save = form.querySelector("[data-playlist-editor-save]");
+        if (state.id == null) return;
         if (!name) return;
 
-        save.disabled = true;
+        setPlaylistEditorBusy(modal, true);
         setPlaylistEditorStatus(modal, "保存中...");
         try {
-            await playlistRequest(`/api/playlists/${playlistEditorState.id}`, {
+            const playlist = await playlistRequest(`/api/playlists/${state.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     name,
                     description: description || null,
                     cover_cd_id: coverValue ? Number(coverValue) : null,
-                    track_ids: playlistEditorState.entries.map((entry) => entry.track.id),
+                    track_ids: state.entries.map((entry) => entry.track.id),
                 }),
             });
-            await loadPlaylists();
-            if (typeof renderGrid === "function") renderGrid();
+            storePlaylist(playlist);
+            setPlaylistEditorBusy(modal, false);
             close();
         } catch (err) {
             setPlaylistEditorStatus(modal, err.message || "プレイリストの保存に失敗しました", true);
         } finally {
-            save.disabled = false;
+            setPlaylistEditorBusy(modal, false);
         }
     });
     document.addEventListener("keydown", (event) => {
@@ -284,6 +299,8 @@ function ensurePlaylistEditor() {
 }
 
 function openPlaylistEditor(id) {
+    const existingModal = document.getElementById("playlist-editor-modal");
+    if (existingModal?.dataset.busy === "true") return;
     const playlist = allPlaylists.find((item) => item.id === Number(id));
     if (!playlist) return;
 

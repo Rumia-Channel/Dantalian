@@ -43,13 +43,17 @@ impl BorrowerRepository for NativeBorrowerRepository {
         &self,
         id: i64,
         name: Option<&str>,
-        notes: Option<&str>,
+        notes: Option<Option<&str>>,
     ) -> Result<(), AppError> {
         let db = self.db.clone();
         let name = name.map(str::to_string);
-        let notes = notes.map(str::to_string);
+        let notes = notes.map(|notes| notes.map(str::to_string));
         let updated = tokio::task::spawn_blocking(move || {
-            db.update_borrower(id, name.as_deref(), notes.as_deref())
+            db.update_borrower(
+                id,
+                name.as_deref(),
+                notes.as_ref().map(|notes| notes.as_deref()),
+            )
         })
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?

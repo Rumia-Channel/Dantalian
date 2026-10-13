@@ -84,6 +84,7 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
                  LEFT JOIN books b ON gsi.item_type = 'book' AND b.id = gsi.item_id
                  LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
                  WHERE gsi.grand_series_id = ?
+                   AND CASE gsi.item_type WHEN 'series' THEN s.id WHEN 'book' THEN b.id WHEN 'cd' THEN c.id END IS NOT NULL
                  ORDER BY gsi.item_type, gsi.item_id",
             )
             .bind_refs(&id)
@@ -215,6 +216,26 @@ pub async fn add_item(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         Err(error) => return error_response(error),
     };
     let item_type = D1Type::Text(&request.item_type);
+    let db = ctx.d1("DB")?;
+    let table = match request.item_type.as_str() {
+        "series" => "series",
+        "book" => "books",
+        _ => "cds",
+    };
+    let valid = db
+        .prepare(format!(
+            "SELECT 1 WHERE EXISTS(SELECT 1 FROM grand_series WHERE id=?1)
+         AND EXISTS(SELECT 1 FROM {table} WHERE id=?2)"
+        ))
+        .bind_refs([&grand_series_id, &item_id])
+        .map_err(map_db)?
+        .first::<serde_json::Value>(None)
+        .await
+        .map_err(map_db)?
+        .is_some();
+    if !valid {
+        return error_response(AppError::NotFound);
+    }
     let result = ctx
         .d1("DB")?
         .prepare(

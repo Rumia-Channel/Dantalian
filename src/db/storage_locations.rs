@@ -7,7 +7,7 @@ impl Db {
         name: &str,
         parent_id: Option<i64>,
     ) -> Result<StorageLocation, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         conn.execute(
             "INSERT INTO storage_locations (name, parent_id) VALUES (?1, ?2)",
             params![name, parent_id],
@@ -21,7 +21,7 @@ impl Db {
     }
 
     pub fn list_storage_locations(&self) -> Result<Vec<StorageLocation>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt = conn.prepare(
             "SELECT id, name, parent_id FROM storage_locations ORDER BY parent_id IS NOT NULL, parent_id, name",
         )?;
@@ -39,7 +39,7 @@ impl Db {
         &self,
         id: i64,
     ) -> Result<Option<StorageLocation>, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let mut stmt =
             conn.prepare("SELECT id, name, parent_id FROM storage_locations WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![id], |row| {
@@ -56,7 +56,7 @@ impl Db {
     }
 
     pub fn rename_storage_location(&self, id: i64, name: &str) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE storage_locations SET name = ?1 WHERE id = ?2",
             params![name, id],
@@ -69,7 +69,7 @@ impl Db {
         id: i64,
         parent_id: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute(
             "UPDATE storage_locations SET parent_id = ?1 WHERE id = ?2",
             params![parent_id, id],
@@ -78,7 +78,7 @@ impl Db {
     }
 
     pub fn delete_storage_location(&self, id: i64) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM storage_locations WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }

@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "dantalian"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "aws-sdk-s3",
  "axum",
@@ -858,6 +858,7 @@ dependencies = [
  "lofty",
  "ogg",
  "opus-rs",
+ "parking_lot",
  "quick-xml",
  "reqwest",
  "rusqlite",
