@@ -1,7 +1,6 @@
 Bibi.preset({
     'extract-if-necessary': ['*'],
     'autostart': 'yes',
-    'autostart-embedded': 'yes',
     'resume-from-last-position': 'yes',
     'keep-settings': 'yes',
     'use-menubar': 'yes',
