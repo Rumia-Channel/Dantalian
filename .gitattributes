@@ -1,0 +1,2 @@
+# Keep checksum-bound Bibi host assets identical across checkout platforms.
+scripts/bibi/dantalian.js text eol=lf
