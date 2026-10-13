@@ -95,6 +95,12 @@ test("copy and borrower patches distinguish omitted notes from null, and lending
     assert.equal(listed.length, 1);
     assert.equal(listed[0].lent_to, "Renamed borrower");
     assert.equal((await request("POST", `/api/copies/${copy.id}/return`)).status, 204);
+    assert.equal((await request("POST", `/api/copies/${copy.id}/lend`, { borrower_id: borrower.id })).status, 204);
+    const history = await request("GET", `/api/copies/${copy.id}/history`);
+    assert.equal(history.status, 200);
+    assert.equal(history.body.length, 2);
+    assert.equal(history.body.filter(record => record.returned_date === null).length, 1);
+    assert.equal((await request("POST", `/api/copies/${copy.id}/return`)).status, 204);
     assert.equal((await request("POST", `/api/books/${book.id}/copies`, { copy_type: "invalid" })).status, 400);
     assert.equal((await request("POST", "/api/books/2000000000/copies", { copy_type: "physical" })).status, 404);
   } finally { await clean(cleanup.reverse()); }

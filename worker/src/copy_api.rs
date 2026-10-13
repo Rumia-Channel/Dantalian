@@ -266,23 +266,17 @@ pub async fn lend(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     if !borrower_exists {
         return error_response(AppError::NotFound);
     }
-    let active = db
-        .prepare("SELECT 1 FROM lending_history WHERE copy_id = ? AND returned_date IS NULL")
-        .bind_refs(&copy_id)
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?;
-    if active.is_some() {
-        return error_response(AppError::Conflict("Copy is already lent".to_string()));
-    }
     let due_date = request.due_date.unwrap_or_default();
     let notes = request.notes.unwrap_or_default();
     let lent_date = today();
     let result = db
         .prepare(
             "INSERT INTO lending_history (copy_id, borrower_id, lent_date, due_date, notes)
-             VALUES (?, ?, ?, ?, ?)",
+             SELECT ?, ?, ?, ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM lending_history WHERE copy_id = ? AND returned_date IS NULL
+             )
+             RETURNING id",
         )
         .bind_refs([
             &copy_id,
@@ -290,14 +284,16 @@ pub async fn lend(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
             &D1Type::Text(&lent_date),
             &D1Type::Text(&due_date),
             &D1Type::Text(&notes),
+            &copy_id,
         ])
         .map_err(db_error)?
-        .run()
+        .first::<i64>(Some("id"))
         .await;
-    if let Err(error) = result {
-        return error_response(AppError::Conflict(error.to_string()));
+    match result {
+        Ok(Some(_)) => Ok(Response::empty()?.with_status(204)),
+        Ok(None) => error_response(AppError::Conflict("Copy is already lent".to_string())),
+        Err(error) => error_response(AppError::Conflict(error.to_string())),
     }
-    Ok(Response::empty()?.with_status(204))
 }
 
 pub async fn return_copy(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
