@@ -29,7 +29,7 @@ Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
 
 ```sh
-git clone https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
+git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
 git checkout --detach 27b05f902718c835e063e96f28515ec1d2d621f2
 bun install --frozen-lockfile
@@ -46,6 +46,8 @@ node scripts/import_bibi.mjs --verify
 ```
 
 確認環境は Bun 1.4.2 / Node.js 24.21.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
+
+固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
 [`scripts/import_bibi.mjs`](../scripts/import_bibi.mjs) が検証済みの `__dist/bibi/` 全体を `static/vendor/bibi/` に配置する。SHA・クリーンな checkout・lock・toolchain・必須ファイル・一覧・サイズ・digest を確認し、ステージングの検証に成功してから既存配布物と入れ替える。検証失敗時は既存配布物を変更しない。`--verify` は配置済み成果物を再検証し、`--destination DIRECTORY` で Worker の複製先等も確認できる。生成ディレクトリは Git 管理しない。配下の相対関係を維持し `/vendor/bibi/` で配信する。デモ・サンプル本は不要。Jo だけ、reader JS だけを抜き出す配布は不可。
 
@@ -263,7 +265,9 @@ Windows の native Chromium と、固定 SHA の [Linux CI](https://github.com/R
 - 実 Native の拡張子なし `/epubs/{hash}` と実ローカル Worker の ASSETS 上の `.epub` を、配布版 Jo・独自 preset で Firefox から開いた。両方で ready、本文表示、CFI `:4500` への復元後の可視位置 `:4300`、`spine-text` 進捗と identity 付き確定通知を確認した。別 contentHash の復元は `IDENTITY_MISMATCH` となり位置が変わらず、EPUB 内スクリプトは実行されなかった。Native の再確認には修正前の応答キャッシュを避ける book URL を使った。
 - Windows の既定 MSVC C コンパイラーは依存ビルドで `D8050` を返したため、検証プロセスだけ `CC/CXX` にインストール済み `clang-cl` を指定した。Range テストの一時領域もプロセス限定で writable な `TEMP/TMP/SystemTemp` を指定した。リポジトリ・ユーザーのコンパイラー設定は変更していない。
 
-Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路や認可を検証したものではない。Dantalian の変更後 GitHub Actions は未実行。
+Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路や認可を検証したものではない。`v0.1.15` の [Dantalian Linux CI](https://github.com/Rumia-Channel/Dantalian/actions/runs/38426015882) は Bibi のビルド・39 unit tests・12 browser scenarios まで成功したが、取り込みで lockfile checksum mismatch になり、Native/Worker と本番デプロイは実行されなかった。
+
+`v0.1.16` では Windows checkout の CRLF ではなく Git の正規 LF 内容から `bun.lock` と `LICENSE` の固定チェックサムを取り直した。ホスト preset も `.gitattributes` で LF に固定する。正規 checkout で frozen install・ビルド・39 unit tests・12 browser scenarios・17 reader assets の取り込みと厳格な再検証・取り込み検証テスト 6 件が成功した。チェックサム検証を無効化した修正ではない。
 
 ### 読書画面接続の検証
 
