@@ -253,10 +253,12 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - キーボードのページ送りで `spine-text` 進捗が `0` から約 `0.2251` に変わり、CFI `/6/2!/4/2/4/1:9789` を取得した。ブラウザの「戻る」で直接本一覧に戻り、同じカードから開き直すと `initialRestore.ok:true`、同じ CFI・進捗を再開した。EPUB 内のテスト用スクリプトは実行されなかった。
 - Native テスト 102 件成功・外部サービス依存 1 件除外、Worker helper テスト 28 件成功、取り込み検証 6 件成功。実 Native HTTP のデータ整合性契約 5 件も成功した。
 - 認証必須の実ローカル Worker で、ヘッダーなしの起動ページから共通 API ログインを行い、書籍取得 `200` と EPUB 未登録案内を確認した。外部 URL を `from` に渡しても戻り先は本一覧になり、戻った本一覧では「認証設定」と正常な API 取得を確認した。Worker の auth・license・UI・整合性 HTTP 契約 9 件が成功した。これはローカルで Wasabi の EPUB を開いた検証ではない。
+- `v0.1.17` の [Linux CI](https://github.com/Rumia-Channel/Dantalian/actions/runs/38438555102) は Bibi と Native が成功したが、Worker の同時貸出で 4 件すべてが `204` となり、本番デプロイは実行されなかった。`v0.1.18` で事前 SELECT と INSERT の間の競合を、`INSERT ... WHERE NOT EXISTS ... RETURNING id` の単一 SQL に置き換えた。実ローカル Worker の同時 32 要求で成功 `204` は 1 件、競合 `409` は 31 件、貸出レコードは 1 件となった。返却後の再貸出と履歴の保存も Native/Worker 両方の HTTP 回帰で確認した。テストを緩めた修正ではない。
+- 既存の本番 EPUB を旧埋め込みから standalone に直接切り替える事前確認でも、同じ user/book/file tuple から CFI `/6/8!/4/2/2/2` と同じ進捗を再開した。画面領域変更で pageCount が変わっても、保存する元本文位置は維持された。
 
-### 未実施の最終ホスト受け入れ
+### 配信時と保存・同期拡張時のホスト受け入れ
 
-Dantalian の最終受け入れでは追加で次を実施する:
+リリースの読書画面と、未接続のサーバー保存・同期は区別して次を確認する:
 
 1. 固定 SHA のクリーンな成果物・独自 preset のみで standalone 専用ページを起動する。本番の登録済み EPUB でも、起動・ページ移動・再開を確認。
 2. 実際の Native 認証 endpoint と Worker → Wasabi の最終 CORS/Range/署名期限を確認。
