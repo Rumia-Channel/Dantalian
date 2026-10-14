@@ -122,6 +122,7 @@ fn main() {
     for file in [
         "static/vendor/bibi/build-manifest.json",
         "static/vendor/bibi/import-manifest.json",
+        "static/vendor/bibi/dantalian.html",
         "static/vendor/bibi/presets/dantalian.js",
         "static/vendor/bibi/LICENSE",
     ] {

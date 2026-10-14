@@ -14,6 +14,17 @@ export const requiredAssets = [
 ];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+export function renderHostEntry(indexBytes, presetBytes) {
+    const html = indexBytes.toString('utf8');
+    const presetAttribute = 'data-bibi-preset=""';
+    const scriptVersion = /src="resources\/scripts\/bibi\.js\?v=([^"]+)"/g;
+    if (html.split(presetAttribute).length !== 2 || [...html.matchAll(scriptVersion)].length !== 1) {
+        throw new Error('Bibi entry must have one empty document preset and one versioned reader bundle.');
+    }
+    return Buffer.from(html.replace(presetAttribute, 'data-bibi-preset="dantalian"')
+        .replace(scriptVersion, (_, version) => `src="resources/scripts/bibi.js?v=${version}.${sha256(presetBytes)}"`));
+}
+
 export async function filesUnder(root) {
     const stat = await lstat(root);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Not a regular distribution directory: ${root}`);
@@ -71,8 +82,9 @@ export async function verifyUpstream(root, pin, additions = []) {
 }
 
 export async function verifyImported(root, pin, presetBytes) {
-    const additions = ['LICENSE', 'presets/dantalian.js'];
+    const additions = ['LICENSE', 'dantalian.html', 'presets/dantalian.js'];
     const upstream = await verifyUpstream(root, pin, [...additions, importManifestName]);
+    const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), presetBytes);
     const metadata = JSON.parse(await readFile(join(root, importManifestName)));
     if (metadata.schemaVersion !== 1 || metadata.repository !== pin.repository ||
         metadata.upstreamManifestSha256 !== sha256(upstream.manifestBytes)) {
@@ -82,7 +94,7 @@ export async function verifyImported(root, pin, presetBytes) {
     if (JSON.stringify(names) !== JSON.stringify(additions)) throw new Error('Invalid Bibi host additions.');
     for (const file of metadata.files) {
         const bytes = await readFile(join(root, file.path));
-        const expectedHash = file.path === 'LICENSE' ? pin.licenseSha256 : sha256(presetBytes);
+        const expectedHash = file.path === 'LICENSE' ? pin.licenseSha256 : sha256(file.path === 'dantalian.html' ? hostEntry : presetBytes);
         if (bytes.length !== file.bytes || sha256(bytes) !== file.sha256 || file.sha256 !== expectedHash) {
             throw new Error(`Bibi host addition mismatch: ${file.path}`);
         }

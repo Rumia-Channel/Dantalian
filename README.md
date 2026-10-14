@@ -220,11 +220,14 @@ node --test worker/tests/reliability_contract.mjs
 
 ### 読書リーダー (Bibi)
 
-EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.1.0** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
+EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.0** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
 
-- 一覧・本一覧・シリーズ内の本をクリックすると、同じタブの `/reader/?book=<id>` で書籍情報を確認し、`/vendor/bibi/` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。CD・オーディオブックのクリック動作は変更していません。
+- トップページ (`/`) の本カードとシリーズ・大シリーズ内の本は、クリックしても読書ページへ遷移せず、従来の詳細画面を開きます。読書は詳細・編集画面の「読む」から開始します。CD・オーディオブックのクリック動作は変更していません。
+- 本専用一覧 (`/books/`) の本カードとシリーズ・大シリーズ内の本は、同じタブの `/reader/?book=<id>` で書籍情報を確認し、document-pinned preset を持つ `/vendor/bibi/dantalian.html` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。
 - 起動ページを `location.replace` で置き換えるため、一覧から開いた後はブラウザの「戻る」で直接元の一覧に戻れます。目次・ページ送り・表示設定・スライダーは Bibi 自身の UI を使用します。API ログインは共通の `static/js/auth.js` が担当し、起動時の書籍 API と同一 origin の EPUB 配信に既存の認証を引き継ぎます。
 - EPUB 未登録の場合は登録案内を表示します。PDF は Bibi で開かず、ダウンロードを案内します。
 - 再開位置は Bibi がブラウザ内に保存します。書籍 ID・ファイル版で分離しますが、サーバーへの位置保存、端末間同期、読了状態の自動更新は未接続です。
+- シリーズの本は、本文末尾からさらに進むと「次の巻へ」、表紙からさらに戻ると「前の巻へ」の案内を表示します。別の追加操作で隣接巻へ移動し、本文方向の操作で現在の本へ戻ります。隣接巻がない場合は元の一覧・編集ページへ戻ります。未登録・未対応の隣接巻を飛ばすことはありません。
+- 目次の隣の「戻る」は、最初の起動元の query/fragment を保持して戻ります。巻間移動と戻るは Dantalian の明示設定だけで有効化し、URL の preset 指定だけでは許可しません。`GET /api/reader-navigation` は Native/Worker で同じ書籍・ファイル版・巻順を検証し、読書状態を書き換えません。
 
 取り込みコマンド、API 契約、確認済み範囲と残作業は [docs/BIBI_INTEGRATION.md](docs/BIBI_INTEGRATION.md) を参照してください。
