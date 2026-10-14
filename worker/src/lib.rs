@@ -21,6 +21,7 @@ mod multipart_api;
 mod musicbrainz_api;
 mod object_api;
 mod playlist_api;
+mod reader_navigation_api;
 mod series_api;
 mod series_repository;
 mod settings_api;
@@ -34,12 +35,16 @@ use worker::*;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let auth_response = if req.path().starts_with("/api/internal/audio/jobs/") {
+    let path = req.path();
+    let auth_response = if path.starts_with("/api/internal/audio/jobs/") {
         auth::authorize_processor(&env, &req)?
     } else {
         auth::authorize(&env, &req)?
     };
-    if let Some(response) = auth_response {
+    if let Some(mut response) = auth_response {
+        if path == "/api/reader-navigation" {
+            response.headers_mut().set("Cache-Control", "no-store")?;
+        }
         return Ok(response);
     }
     Router::new()
@@ -53,6 +58,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 "authentication_required": auth::authentication_required(&ctx.env),
             }))
         })
+        .get_async("/api/reader-navigation", reader_navigation_api::get)
         .get_async("/api/series", series_api::list)
         .get_async("/api/books/:book_id/copies", copy_api::list)
         .post_async("/api/books/:book_id/copies", copy_api::create)

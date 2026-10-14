@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { importManifestName, manifestName, requiredAssets, sha256, verifyImported, verifyUpstream } from './distribution.mjs';
+import { importManifestName, manifestName, renderHostEntry, requiredAssets, sha256, verifyImported, verifyUpstream } from './distribution.mjs';
 
 const project = new URL('../../', import.meta.url);
 const sourcePin = JSON.parse(await readFile(new URL('bibi.lock.json', project)));
@@ -17,7 +17,7 @@ async function fixture(t, imported = false) {
     const pin = { ...sourcePin, licenseSha256: sha256(license) };
     const files = [];
     for (const path of [...requiredAssets].sort()) {
-        const bytes = Buffer.from(`Distribution fixture: ${path}\n`);
+        const bytes = Buffer.from(path === 'index.html' ? '<!doctype html><script src="resources/scripts/bibi.js?v=fixture" data-bibi-preset=""></script>' : `Distribution fixture: ${path}\n`);
         await mkdir(dirname(join(root, path)), { recursive: true });
         await writeFile(join(root, path), bytes);
         files.push({ path, bytes: bytes.length, sha256: sha256(bytes) });
@@ -33,10 +33,13 @@ async function fixture(t, imported = false) {
     if (imported) {
         await writeFile(join(root, 'LICENSE'), license);
         await writeFile(join(root, 'presets/dantalian.js'), preset);
+        const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), preset);
+        await writeFile(join(root, 'dantalian.html'), hostEntry);
         metadata = {
             schemaVersion: 1, repository: pin.repository, upstreamManifestSha256: sha256(manifestBytes),
             files: [
                 { path: 'LICENSE', bytes: license.length, sha256: sha256(license) },
+                { path: 'dantalian.html', bytes: hostEntry.length, sha256: sha256(hostEntry) },
                 { path: 'presets/dantalian.js', bytes: preset.length, sha256: sha256(preset) },
             ],
         };
@@ -92,8 +95,8 @@ test('inventory traversal and duplicate paths are rejected', async t => {
     await assert.rejects(verifyUpstream(duplicate.root, duplicate.pin));
 });
 
-test('re-signing modified host preset or license with its own digest does not authorize it', async t => {
-    for (const path of ['LICENSE', 'presets/dantalian.js']) {
+test('re-signing a modified host entry, preset or license does not authorize it', async t => {
+    for (const path of ['LICENSE', 'dantalian.html', 'presets/dantalian.js']) {
         const f = await fixture(t, true);
         const changed = Buffer.from('Unauthorized host addition\n');
         await writeFile(join(f.root, path), changed);

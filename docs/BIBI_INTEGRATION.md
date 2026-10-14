@@ -2,11 +2,11 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [Rumia-Channel/bibi の commit `27b05f902718c835e063e96f28515ec1d2d621f2`](https://github.com/Rumia-Channel/bibi/commit/27b05f902718c835e063e96f28515ec1d2d621f2)（`v2.1.0` の master 統合）。移動するブランチ先端ではなく、[`bibi.lock.json`](../bibi.lock.json) に repository・SHA・lock/license の SHA-256・sourceDateEpoch・Node/Bun を固定する。既存の `v2.0.0` タグには本書の新 API は含まれない。
+Bibi **2.2.0** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を追加する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.0/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
-- Dantalian 側では固定成果物の検証・取り込み、独自 preset、Native/Worker の静的配信と CI の共通成果物化に加え、**本のクリックから Bibi の standalone 専用ページを起動し、既存書籍 API の登録済み EPUB を開く導線を接続済み**。Jo / iframe にリーダーを埋め込まない。進捗・ブラウザ内の再開位置は Bibi 自身が管理する。**サーバーへの位置保存・同期、アカウント別の位置管理は未接続**。Bibi は Dantalian の保存 API を直接呼ばない。
+- Dantalian 側では固定成果物の検証・取り込み、独自 preset、Native/Worker の静的配信と CI の共通成果物化に加え、**本一覧の本のクリック、または詳細・編集画面の「読む」から Bibi の standalone 専用ページを起動し、既存書籍 API の登録済み EPUB を開く導線を接続済み**。トップページのクリックは従来の詳細表示を維持する。Jo / iframe にリーダーを埋め込まない。進捗・ブラウザ内の再開位置は Bibi 自身が管理する。**サーバーへの位置保存・同期、アカウント別の位置管理は未接続**。Bibi は Dantalian の保存 API を直接呼ばない。
 
 ## Bibi 側で実装された機能（優先順）
 
@@ -24,6 +24,8 @@ Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [
 
 追加の修正として、離れた位置へ復元する際に移動先 spread が非表示のままとなり、元の位置が返る経路を修正した。ZIP Worker と全体取得の資格情報ポリシーも揃え、同一 origin の cookie を送信するようにした。
 
+2.1.1 では、メニューバー下の本文領域に対するページ移動座標と可視ページ判定を `R.Main` 基準に統一した。ページ送り時に本文上端が欠け、下端に次ページが混入する問題を修正し、メニューバー付き縦書き EPUB の前後移動と横長から縦長へのリサイズを配布物のブラウザ回帰に追加した。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -31,7 +33,7 @@ Bibi **2.1.0** のホスト連携機能を使用する。取り込み対象は [
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach 27b05f902718c835e063e96f28515ec1d2d621f2
+git checkout --detach v2.2.0
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -55,7 +57,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.1.0` であること。 |
+| `schemaVersion` / `version` | `1` / `2.2.0` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -66,7 +68,7 @@ node scripts/import_bibi.mjs --verify
 
 ZIP はエントリー順・UTC/DOS 時刻・権限を固定する。同じソース・lock・ツールチェーン・環境入力なら同じバイト列となる。異なるツールバージョン、dirty 状態、改変済み成果物まで同一という意味ではない。ホスト独自 preset は別ファイルとして管理し、元の manifest と独自追加分の一覧・ハッシュを取り込み側でも記録する。
 
-取り込み時に upstream の `build-manifest.json` は改変せず、`LICENSE` と [`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js) を追加する。`import-manifest.json` が元 manifest の digest とホスト追加分の一覧・サイズ・SHA-256 を記録する。配置済み検証では追加分の自己申告だけでなく、固定 LICENSE と現在の tracked preset のバイト列も照合する。
+upstream の `index.html` と `build-manifest.json` は改変せず、`LICENSE`、[`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js)、生成した `dantalian.html` を追加する。host entry は document の `data-bibi-preset="dantalian"` と preset digest を含む cache key を持つ。`import-manifest.json` は全追加分の一覧・サイズ・SHA-256 を記録する。配置済み検証は自己申告のハッシュだけでなく、固定 LICENSE・tracked preset・元 HTML から再計算した host entry と照合する。
 
 [`build.yml`](../.github/workflows/build.yml) の `bibi` job が frozen install、unit/browser 検証、ビルド、取り込みを行い、`bibi-reader` artifact を一度だけ作る。Native・Worker・develop・staging・production は同じ artifact を取得する。Native は Cargo 実行前、Worker/デプロイは `worker/build_assets.mjs` の冒頭で再検証する。Worker は旧 reader ディレクトリを削除してから静的配布物を複製し、削除された upstream ファイルを残さない。Native の `build.rs` と Worker のアセットハッシュには manifest・preset・LICENSE も反映する。`v0.1.16` の [Linux CI](https://github.com/Rumia-Channel/Dantalian/actions/runs/38429352764) で Bibi・Native・Worker・本番デプロイが成功した。
 
@@ -76,7 +78,7 @@ ZIP はエントリー順・UTC/DOS 時刻・権限を固定する。同じソ�
 
 ホストと `/vendor/bibi/` は同じ origin で配信する。`book` には `/epubs/{file_hash}` を指定できる。URL は `URLSearchParams` で構築し、API の bearer token やユーザーの認証情報を query に載せない。
 
-拡張子のない EPUB/ZIP endpoint は、ホスト側で `/vendor/bibi/presets/dantalian.js` を追加して次の設定を配信し、reader URL に `preset=dantalian` を指定する:
+拡張子のない EPUB/ZIP endpoint は専用 preset で展開対象にする。Dantalian の起動先は `/vendor/bibi/dantalian.html`。HTML が basename `dantalian` を preset として固定するので、URL の `preset=dantalian` は付けない。URL で有効な preset を選んだだけでは巻間移動・戻るの機能を許可しない:
 
 ```javascript
 Bibi.preset({
@@ -88,7 +90,11 @@ Bibi.preset({
     'use-arrows': 'yes',
     'use-keys': 'yes',
     'use-slider': 'yes',
+    'flipper-width': 1 / 3,
     'use-nombre': 'yes',
+    'use-host-navigation': true,
+    'host-navigation-api': '/api/reader-navigation',
+    'host-navigation-paths': ['/', '/books/', '/edit/', '/reader/'],
     'allow-scripts-in-content': false,
     'request-with-credentials': false
 });
@@ -97,6 +103,7 @@ Bibi.preset({
 この preset は EPUB を返す Dantalian の書籍 endpoint 用。2.1.0 の判定では空拡張子 `''` を含めるとその分岐が先に返り、`['.epub', '.zip', '']` でも `.epub` 入力をフォルダーとして取得してしまう。実配信で確認したため、拡張子なし・`.epub` の両方を展開対象にする文書化済みの `['*']` を使用する。
 
 独自 preset は `default.js` の操作 UI 設定を自動継承しない。目次・表示設定のメニューバー、左右のページ送り、キー操作、位置スライダー、ページ表示を明示的に有効にする。自動起動だけを指定すると本文を取得できてもこれらの操作が無効になる。
+`flipper-width:1/3` はページ幅基準の左右端の領域。見開きでは画面幅の各 1/6、単ページでは各 1/3 になる。独自 preset は既定の数値設定も自動継承しないため、Dantalian では明示する。
 
 Native の `/epubs/` は `src/epub.rs` の middleware を経由する。Bibi が ZIP の末尾を読む `Range: bytes=-65557` に対し、非空ファイルが指定 suffix より短ければ `bytes=0-` に正規化する。[RFC 9110 §14.1.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-14.1.2) に合わせて全体を `206` で返し、小さな EPUB が既存 `ServeDir` の `416` で開けなくなる問題を解消する。その他の Range・ディレクトリ配信・ストリーミング本体は `ServeDir` に委ねる。
 
@@ -202,7 +209,7 @@ linear spine item 数を N、0-based item index を i とする。
 
 ### 接続済みの読書画面
 
-- [`static/js/book-links.js`](../static/js/book-links.js) が本の読書 URL を組み立てる。一覧・本一覧の本カードとシリーズ内の本から `/reader/?book=<id>&from=<戻り先>` を開く。カードの「詳細」は従来の `showDetail` を維持し、CD・オーディオブックは従来どおり詳細を開く。
+- [`static/js/book-links.js`](../static/js/book-links.js) が本の読書 URL と一覧内のクリック動作を組み立てる。トップページ (`/`) の本カード・シリーズ・大シリーズ内の本は従来の `showDetail` を開き、詳細・編集画面の「読む」から読書を開始する。本専用一覧 (`/books/`) の本カード・シリーズ・大シリーズ内の本は `/reader/?book=<id>&from=<戻り先>` を開き、カードの「詳細」も維持する。CD・オーディオブックは従来どおり詳細を開く。
 - [`static/reader/index.html`](../static/reader/index.html)・[`static/css/reader.css`](../static/css/reader.css)・[`static/js/reader.js`](../static/js/reader.js) は起動・エラー案内ページを構成する。Native は `/reader`・`/reader/` を配信し、Worker は既存 ASSETS 配信を使用する。
 - 既存の `/api/books/{id}` で書籍・`epub_file_hash` を取得し、同一 origin の `/epubs/{hash}` を指定した `/vendor/bibi/` へ `location.replace` で遷移する。Jo / Bucket と外側の iframe・一覧ヘッダー・独自ツールバーは廃止した。目次・表示設定・位置表示は Bibi 自身の UI に任せる。
 - API 認証は `header.js` から分離した共通の `auth.js` を全ページで使用する。書籍不存在・EPUB 未登録・PDF は起動ページに表示し、書籍情報や元ファイルへの導線を残す。EPUB 読み込み後のエラーは Bibi が表示する。エラー案内の戻り先は同一 origin の一覧・本一覧・編集に限定する。一覧から開いた正常な読書画面では、ブラウザの「戻る」で起動ページを挟まず一覧に戻る。
@@ -223,7 +230,25 @@ linear spine item 数を N、0-based item index を i とする。
 
 保存 API の endpoint 名や DB カラムは Dantalian の既存設計に合わせて決める。本書の Bibi API と異なり、未作成 endpoint を呼べるという契約は置かない。ホストは通知の bookKey/contentHash/sessionId と現在の認証ユーザーを照合し、ユーザー ID をクライアントの申告だけで信用しない。
 
-## 7. 確認済み範囲と残るホスト受け入れ
+## 7. シリーズ間ナビゲーション
+
+`GET /api/reader-navigation` は Native/Worker 共通の read-only endpoint。現在の本と即時の隣接巻を単一 SQL snapshot で読み、読み順は `series_number ASC NULLS LAST, id ASC`。欠番を許容し、同番号は ID 順。大シリーズを巻順の代用にせず、CD/オーディオブックは対象にしない。
+
+| query | 契約 |
+| --- | --- |
+| `book_key` | 必須。正規形の正の i64 `book:<id>`。 |
+| `content_hash` | 必須。起動時の `book.epub_file_hash`。違う版は `409 CONTENT_CHANGED`。 |
+| `return_to` | 起動元の path/query/fragment。`/`・`/books/`・`/edit/` 以外や外部 URL は `/books/`。 |
+
+応答は schemaVersion 1 の `{bookKey,contentHash,series,previous,next,returnTo}`。前後が存在しない場合だけ `null`。存在する未登録・非対応巻は `status:missing-file|unsupported-format`、`href:null` として返し、後の巻へ飛ばさない。閲覧可能な隣接巻は `/reader/?book=<id>&entry=start|end&from=...` を返す。`entry` は既存の Automark より優先する `edge=head|foot` に変換する。`returnTo` は最初の起動元を保持する。
+
+全応答は `Cache-Control:no-store`。不正 query は `400 INVALID_REQUEST`、不存在は `404 BOOK_NOT_FOUND`、現本の未登録/非対応は `422 BOOK_UNAVAILABLE`、DB 失敗は `500 DATABASE_ERROR`。Worker の既存認証を使用し、未認証の `401` にも no-store を付ける。lookup と遷移は `reading_status` やサーバー読書位置を書き換えない。
+
+Bibi は初回と遷移直前に同一 origin の endpoint を取得し、書籍・ファイル版・許可 pathname を検証する。前後とも案内ページを一度挟み、別の外向き操作でのみ遷移する。内向き操作は本文へ戻り、保留中の fetch をキャンセルする。目次隣の「戻る」は明示操作として起動元へ直接戻る。通常 preset・URL 選択 preset・iframe では案内・戻るボタン・追加通信を出さない。
+
+HTTP 回帰は実 Native/Worker に対し `worker/tests/reader_navigation_contract.mjs` を実行する。Native は `READER_NAVIGATION_BACKEND=native`、Worker は既定。作成した本に有効な EPUB/PDF fixture を既存 upload API から登録する。Worker CI は `tests/helpers/object_store_fixture.mjs` のローカル HTTP transport を使用し、外部 Wasabi や live D1 ファイルへの直接書き込みに依存しない。この transport は Wasabi の資格情報・署名検証の代用ではない。実 EPUB の取得・表示・巻間遷移は別のブラウザー smoke で確認する。
+
+## 8. 確認済み範囲と残るホスト受け入れ
 
 ### Bibi 側の既存検証（develop 時点）
 
@@ -255,6 +280,24 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - 認証必須の実ローカル Worker で、ヘッダーなしの起動ページから共通 API ログインを行い、書籍取得 `200` と EPUB 未登録案内を確認した。外部 URL を `from` に渡しても戻り先は本一覧になり、戻った本一覧では「認証設定」と正常な API 取得を確認した。Worker の auth・license・UI・整合性 HTTP 契約 9 件が成功した。これはローカルで Wasabi の EPUB を開いた検証ではない。
 - `v0.1.17` の [Linux CI](https://github.com/Rumia-Channel/Dantalian/actions/runs/38438555102) は Bibi と Native が成功したが、Worker の同時貸出で 4 件すべてが `204` となり、本番デプロイは実行されなかった。`v0.1.18` で事前 SELECT と INSERT の間の競合を、`INSERT ... WHERE NOT EXISTS ... RETURNING id` の単一 SQL に置き換えた。実ローカル Worker の同時 32 要求で成功 `204` は 1 件、競合 `409` は 31 件、貸出レコードは 1 件となった。返却後の再貸出と履歴の保存も Native/Worker 両方の HTTP 回帰で確認した。テストを緩めた修正ではない。
 - 既存の本番 EPUB を旧埋め込みから standalone に直接切り替える事前確認でも、同じ user/book/file tuple から CFI `/6/8!/4/2/2/2` と同じ進捗を再開した。画面領域変更で pageCount が変わっても、保存する元本文位置は維持された。
+
+### 0.1.19 の Bibi 2.1.1 追従準備時の検証
+
+- `432ddd2` のクリーンな checkout / Node 24.21.0 / Bun 1.4.2 で frozen install、39 unit tests、ビルド、manifest 検証、13 Chromium browser scenarios に成功。新しいメニューバー下の縦書きページ移動・リサイズの回帰も含む。upstream 17 reader assets を取り込み、Native と Worker の配置先で固定 SHA・lock・toolchain・全ファイル digest の再検証に成功した。
+- Native の `cargo build --features native --bin dantalian --locked` と関連テスト 102 件成功・外部サービス依存 1 件除外、Worker の assets / release Wasm build と helper テスト 28 件成功、取り込み検証 6 件成功。既定 MSVC の `D8050` を避け、Native の検証プロセスだけ `CC/CXX` にインストール済み `clang-cl`、`TEMP/TMP/SystemTemp` に writable な一時領域を指定した。
+- 使い捨て Native DB に既存 API で縦書き EPUB を登録し、`/reader/?book=<id>` から更新済み Bibi の standalone 専用ページを Chromium で開いた。ready/operable、EPUB 内スクリプト無効、キーボードの前進で pageIndex `0 → 1`・`spine-text` 進捗 `0 → 約 0.0841`、本文ページとスクロール領域の上端 `39px` の一致を確認した。
+- 実ローカル Worker の ASSETS 上の縦書き EPUB でも、独自 preset とメニューバー付きの paged 表示で前進・後退、`1280×900 → 760×1000` のリサイズ後に本文ページと表示領域の上下端が一致した。Worker のライセンスページは `Dantalian 0.1.19` を表示した。Wasabi の EPUB 経路・本番デプロイ・Firefox は今回の検証対象に含まない。
+- トップページの本クリックを従来の詳細表示に戻した。実 Native のアーティスト別・一覧表示で本カードのクリック、Enter / Space、シリーズ・大シリーズ内の本を確認し、URL が `/` のまま詳細を表示した。詳細の「読む」と本専用一覧のカードは Bibi 専用ページへ遷移し、本専用一覧のシリーズ内の本も reader 起動を維持した。Native を再ビルドしてキャッシュバスタを更新し、Worker の静的 assets も再生成した。
+
+### Dantalian 0.1.19 / Bibi 2.2.0 の検証
+
+- Bibi master の no-ff 統合 commit `cedd18ba110b1bbbb8886b8355d5b1c64d76bf3c` を LF の clean checkout でビルド。frozen install、46 unit tests、26 browser scenarios、17 reader assets の manifest、`Bibi-v2.2.0.zip` の作成に成功。dirty な作業中配布物を取り込んだものではない。
+- Native build・関連テスト 107 件成功/外部依存 1 件除外、Worker assets・release Wasm build・helper テスト 28 件成功。取り込み検証 6 件と Native/Worker の配置済み全 digest 検証に成功した。
+- 使い捨て Native DB の3巻を実 EPUB upload API で登録し、本文末尾→案内→別の wheel→次巻先頭、先頭→案内→前巻末尾、目次隣の戻る→元の query/fragment を実 Chromium の専用読書画面で確認した。トップの詳細表示と本一覧の読書起動も実クリックで確認した。
+- 認証必須のローカル Worker でも実ログイン、3巻の upload、Worker `/epubs/` から別 origin HTTP transport の Range 配信、同じ巻間・戻る・一覧導線を確認した。これはローカル object transport fixture を使った検証であり、今回の live Wasabi の資格情報・署名期限検証ではない。Worker ASSETS は `dantalian.html` を拡張子なしの canonical URL に redirect するが、document-pinned preset と動作を維持する。
+- Native の新 API HTTP 契約 2 件、Worker の新 API/認証/UI/ライセンス/データ整合性契約 11 件が成功。live D1 ファイルを外部 SQLite から直接書き換える方式は同時実行の HTTP に 500 を発生させたため廃止し、fixture は既存 upload API から登録する。同時 HTTP 回帰でも成功した。
+- Chromium mobile の iPad 相当 `834×1194` / `1194×834` と safe area でメニューバー全体を矩形・スクリーンショットで確認。タッチの境界操作、LTR/RTL のページ幅基準のクリックも成功。実 iPad Safari の確認ではない。
+- ローカル sandbox の inherited ACL が生成ディレクトリの rename を拒否したため、検証済みの別 staging を作成し、旧 inventory に廃止ファイルがないことを確認して停止中の配信先へファイルをコピー、全 digest を再検証した。製品 importer の検証と atomic replacement を緩めた変更はない。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 

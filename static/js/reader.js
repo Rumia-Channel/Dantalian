@@ -9,8 +9,11 @@
 
     const requestedReturn = parameters.get("from") || "/books/";
     const returnUrl = new URL(URL.canParse(requestedReturn, location.origin) ? requestedReturn : "/books/", location.origin);
-    if (returnUrl.origin === location.origin && ["/", "/books/", "/edit/"].includes(returnUrl.pathname)) {
-        back.href = returnUrl.pathname + returnUrl.search;
+    let returnPath = "/books/";
+    if (!/[\\\u0000-\u001f\u007f]/.test(requestedReturn) &&
+        returnUrl.origin === location.origin && ["/", "/books/", "/edit/"].includes(returnUrl.pathname)) {
+        returnPath = returnUrl.pathname + returnUrl.search + returnUrl.hash;
+        back.href = returnPath;
         back.textContent = returnUrl.pathname === "/" ? "一覧に戻る" : returnUrl.pathname === "/edit/" ? "編集に戻る" : "本一覧に戻る";
     }
 
@@ -31,15 +34,20 @@
         download.classList.remove("hidden");
         if (/\.pdf$/i.test(book.epub_file_name || "")) throw new Error("Bibi は PDF に対応していません。ファイルをダウンロードして閲覧してください。");
 
-        const readerUrl = new URL("/vendor/bibi/", location.origin);
-        readerUrl.search = new URLSearchParams({
+        const readerUrl = new URL("/vendor/bibi/dantalian.html", location.origin);
+        const readerParameters = new URLSearchParams({
             book: bookUrl,
-            preset: "dantalian",
             "book-key": `book:${book.id}`,
             "content-hash": book.epub_file_hash,
             "storage-namespace": "dantalian",
             "storage-user": "local",
+            "host-return-to": returnPath,
         });
+        const entry = parameters.get("entry");
+        if (entry === "start" || entry === "end") {
+            readerParameters.set("edge", entry === "start" ? "head" : "foot");
+        }
+        readerUrl.search = readerParameters;
         // Replace the launcher so browser Back returns directly to the catalogue.
         location.replace(readerUrl.href);
     } catch (error) {

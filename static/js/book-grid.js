@@ -334,7 +334,7 @@ function renderBookCard(item) {
     const mediaType = item.media_type || "book";
     const mediaBadges = { cd: "CD", audiobook: "AB" };
     const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
-    const readsBook = isCatalogueBook(item);
+    const readsBook = isBooksCatalogue && isCatalogueBook(item);
     const clickHandler = catalogueItemClickHandler(item);
     const cardOpening = readsBook
         ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(bookReaderUrl(item.id))}" aria-label="${escapeAttr(item.title)}を読む">`
