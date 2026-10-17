@@ -93,6 +93,7 @@ Bibi.preset({
     'item-padding-left': 24,
     'item-padding-right': 24,
     'use-menubar': 'yes',
+    'use-full-height': 'yes',
     'use-arrows': 'yes',
     'use-keys': 'yes',
     'use-slider': 'yes',
@@ -110,6 +111,10 @@ Bibi.preset({
 
 独自 preset は `default.js` の操作 UI 設定を自動継承しない。目次・表示設定のメニューバー、左右のページ送り、キー操作、位置スライダー、ページ表示を明示的に有効にする。自動起動だけを指定すると本文を取得できてもこれらの操作が無効になる。
 `flipper-width:1/3` はページ幅基準の左右端の領域。見開きでは画面幅の各 1/6、単ページでは各 1/3 になる。独自 preset は既定の数値設定も自動継承しないため、Dantalian では明示する。
+
+`v0.1.22` で `use-full-height` の設定漏れを修正し、上流と同じ overlay 表示になるよう専用 preset で明示した。省略すると `false` に正規化され、`html:not(.book-full-height)` によりメニュー項目が常時表示され、本文領域にもメニューバー用の高さが予約される。本文の余白を削る CSS で回避しない。
+
+同じ EPUB・同じ viewport の上流 `index.html` と専用ページで `#bibi-main` の上端・高さが一致することを実画面で確認した。Native / Worker ともアイドル時のメニューグループの computed opacity は `0`、hover 時は `1`。設定 popup は開閉でき、閉じて本文へ pointer を戻すと再び非表示になる。`I.Menu.Hover === false` だけでは非表示の確認にならない。
 
 Native の `/epubs/` は `src/epub.rs` の middleware を経由する。Bibi が ZIP の末尾を読む `Range: bytes=-65557` に対し、非空ファイルが指定 suffix より短ければ `bytes=0-` に正規化する。[RFC 9110 §14.1.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-14.1.2) に合わせて全体を `206` で返し、小さな EPUB が既存 `ServeDir` の `416` で開けなくなる問題を解消する。その他の Range・ディレクトリ配信・ストリーミング本体は `ServeDir` に委ねる。
 
