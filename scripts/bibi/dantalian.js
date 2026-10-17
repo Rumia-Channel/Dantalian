@@ -8,6 +8,7 @@ Bibi.preset({
     'item-padding-left': 24,
     'item-padding-right': 24,
     'use-menubar': 'yes',
+    'use-full-height': 'yes',
     'use-arrows': 'yes',
     'use-keys': 'yes',
     'use-slider': 'yes',
