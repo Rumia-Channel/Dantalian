@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<searchRetrieveResponse xmlns="http://www.loc.gov/zing/srw/">
+  <version>1.2</version><numberOfRecords>1</numberOfRecords>
+  <records><record><recordSchema>dcndl_v3</recordSchema><recordPacking>xml</recordPacking><recordData>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcndl="http://ndl.go.jp/dcndl/terms/" xmlns:foaf="http://xmlns.com/foaf/0.1/">
+      <dcndl:BibAdminResource rdf:about="https://ndlsearch.ndl.go.jp/books/R100000002-I000000001">
+        <dcterms:description>type : book</dcterms:description>
+        <dcterms:provenance><rdf:Description><foaf:name>Not the publisher</foaf:name></rdf:Description></dcterms:provenance>
+      </dcndl:BibAdminResource>
+      <dcndl:BibResource rdf:about="https://ndlsearch.ndl.go.jp/books/R100000002-I000000001#material">
+        <dcterms:identifier rdf:datatype="http://ndl.go.jp/dcndl/terms/ISBN">9784101010014</dcterms:identifier>
+        <dcterms:identifier rdf:datatype="http://ndl.go.jp/dcndl/terms/JPNO">12345678</dcterms:identifier>
+        <dcterms:title>NDL v3 fixture</dcterms:title>
+        <dc:title><rdf:Description><rdf:value>NDL v3 fixture</rdf:value><dcndl:transcription>エヌディーエル</dcndl:transcription></rdf:Description></dc:title>
+        <dcterms:creator><foaf:Agent rdf:about="http://id.ndl.go.jp/auth/entity/00054222"><foaf:name>夏目, 漱石</foaf:name><dcndl:transcription>ナツメ, ソウセキ</dcndl:transcription></foaf:Agent></dcterms:creator>
+        <dcterms:creator><foaf:Agent><foaf:name>森 鴎外</foaf:name></foaf:Agent></dcterms:creator>
+        <dcterms:creator><foaf:Agent rdf:about="https://other.example/author/1234"><foaf:name>Fixture Other Author</foaf:name></foaf:Agent></dcterms:creator>
+        <dcterms:publisher><foaf:Agent><foaf:name>Fixture Publisher</foaf:name></foaf:Agent></dcterms:publisher>
+        <dcterms:issued>2026</dcterms:issued><dcterms:date>2026.9</dcterms:date>
+        <dcterms:description>Fixture description</dcterms:description>
+        <dcndl:seriesTitle><rdf:Description><rdf:value>Fixture Series</rdf:value><dcndl:transcription>シリーズ</dcndl:transcription></rdf:Description></dcndl:seriesTitle>
+        <dcndl:alternative><rdf:Description><rdf:value>Alternative title</rdf:value><dcndl:transcription>ベツタイトル</dcndl:transcription></rdf:Description></dcndl:alternative>
+        <dcndl:volume><rdf:Description><rdf:value>2</rdf:value><dcndl:transcription>ニ</dcndl:transcription></rdf:Description></dcndl:volume>
+        <dcndl:price>1200円</dcndl:price><dcterms:extent>300p</dcterms:extent>
+        <dcndl:record rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I000000001#item"/>
+      </dcndl:BibResource>
+      <dcndl:Item rdf:about="https://ndlsearch.ndl.go.jp/books/R100000002-I000000001#item"><dcterms:publisher>Not the book publisher</dcterms:publisher></dcndl:Item>
+    </rdf:RDF>
+  </recordData></record></records>
+</searchRetrieveResponse>

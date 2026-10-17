@@ -146,6 +146,8 @@ jobs:
       - name: Install Node and Wrangler dependencies
         working-directory: .
         run: npm ci --ignore-scripts
+      - name: Test NDL coordination and lookup contracts
+        run: node --test tests/ndl_api_contract.mjs
       - name: Check Container Controller
         working-directory: .
         run: npm run typecheck:container

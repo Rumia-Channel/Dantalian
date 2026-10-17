@@ -452,12 +452,15 @@ async fn register(
     };
     if !manual {
         let lookup = if isdn {
-            external_api::lookup_isdn(identifier.as_deref().unwrap_or_default()).await
+            external_api::lookup_isdn(identifier.as_deref().unwrap_or_default())
+                .await
+                .map(|book| book.map(|book| (book, "isdn")))
         } else {
-            external_api::lookup_isbn(identifier.as_deref().unwrap_or_default()).await
+            external_api::lookup_isbn(&ctx.env, identifier.as_deref().unwrap_or_default()).await
         };
         match lookup {
-            Ok(Some(book)) => {
+            Ok(Some((book, metadata_source))) => {
+                source = metadata_source;
                 merge_ndl_book(&mut body, &book);
                 if !isdn && !request_cover_supplied {
                     let amazon_search_terms = ["title", "alternative"]
@@ -481,11 +484,13 @@ async fn register(
                                 match amazon_api::persist_cover(&ctx, &cover).await {
                                     Ok(file_name) => {
                                         set_cover_url(&mut body, file_name);
-                                        source = "amazon";
+                                        if source != "open_library" {
+                                            source = "amazon";
+                                        }
                                     }
                                     Err(error) => {
                                         worker::console_error!(
-                                            "Amazon cover storage failed; keeping NDL metadata: {error}"
+                                            "Amazon cover storage failed; keeping book metadata: {error}"
                                         );
                                     }
                                 }
@@ -494,7 +499,7 @@ async fn register(
                         Ok(None) => {}
                         Err(error) => {
                             worker::console_error!(
-                                "Amazon metadata lookup failed; keeping NDL metadata: {error}"
+                                "Amazon metadata lookup failed; keeping book metadata: {error}"
                             );
                         }
                     }
@@ -945,21 +950,64 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn amazon_metadata_overrides_ndl_description_and_date() {
-        let mut body = json!({
-            "description": "NDL description",
-            "publish_date": "2020-01-01"
-        });
+    fn verified_amazon_dates_take_priority_over_catalog_dates() {
         let info = AmazonInfo {
             description: Some("Amazon description".to_string()),
             publish_date: Some("2021-02-03".to_string()),
             ..AmazonInfo::default()
         };
-        set_amazon_metadata(&mut body, &info, true);
-        assert_eq!(body["description"], "Amazon description");
-        assert_eq!(body["publish_date"], "2021-02-03");
+        for date in ["2020-01-01", "2020-03-NN", "2020-NN-NN"] {
+            let mut body = json!({
+                "description": "Catalog description",
+                "publish_date": date
+            });
+            set_amazon_metadata(&mut body, &info, true);
+            assert_eq!(body["publish_date"], "2021-02-03");
+            assert_eq!(body["description"], "Amazon description");
+        }
+    }
 
+    #[test]
+    fn missing_amazon_dates_preserve_catalog_date_precision() {
+        for amazon_date in [None, Some(String::new())] {
+            let info = AmazonInfo {
+                publish_date: amazon_date,
+                ..AmazonInfo::default()
+            };
+            for date in ["2020-01-01", "2020-03-NN", "2020-NN-NN"] {
+                let mut body = json!({"publish_date": date});
+                set_amazon_metadata(&mut body, &info, true);
+                assert_eq!(body["publish_date"], date);
+            }
+        }
+    }
+
+    #[test]
+    fn amazon_date_fills_missing_catalog_dates() {
+        let info = AmazonInfo {
+            publish_date: Some("2021-02-03".to_string()),
+            ..AmazonInfo::default()
+        };
+        for mut body in [
+            json!({}),
+            json!({"publish_date": null}),
+            json!({"publish_date": ""}),
+            json!({"publish_date": "  "}),
+        ] {
+            set_amazon_metadata(&mut body, &info, true);
+            assert_eq!(body["publish_date"], "2021-02-03");
+        }
+    }
+
+    #[test]
+    fn unverified_amazon_metadata_cannot_fill_dates_or_replace_descriptions() {
+        let info = AmazonInfo {
+            description: Some("Different book description".to_string()),
+            publish_date: Some("2021-02-03".to_string()),
+            ..AmazonInfo::default()
+        };
+        let mut body = json!({"description": "Catalog description"});
         set_amazon_metadata(&mut body, &info, false);
-        assert_eq!(body["description"], "Amazon description");
+        assert_eq!(body, json!({"description": "Catalog description"}));
     }
 }

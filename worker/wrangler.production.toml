@@ -54,5 +54,13 @@ binding = "AUDIO_JOB_QUEUE"
 pattern = "__SERVICE_DOMAIN__"
 custom_domain = true
 
+[[durable_objects.bindings]]
+name = "NDL_COORDINATOR"
+class_name = "NdlCoordinator"
+
+[[migrations]]
+tag = "ndl-coordinator-v1"
+new_sqlite_classes = ["NdlCoordinator"]
+
 [triggers]
 crons = ["0 * * * *"]

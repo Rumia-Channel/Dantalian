@@ -19,6 +19,7 @@ mod label_repository;
 mod media_sync_api;
 mod multipart_api;
 mod musicbrainz_api;
+mod ndl_coordinator;
 mod object_api;
 mod playlist_api;
 mod reader_navigation_api;
@@ -30,6 +31,7 @@ mod storage_location_repository;
 mod track_api;
 mod wasabi;
 pub mod wasabi_config;
+pub use ndl_coordinator::NdlCoordinator;
 
 use worker::*;
 

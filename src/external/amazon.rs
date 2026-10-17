@@ -1,7 +1,4 @@
-use crate::{
-    amazon::{self, AmazonInfo},
-    db::NewBook,
-};
+use crate::amazon::{self, AmazonInfo};
 use base64::Engine;
 use reqwest::Client;
 use sha3::{Digest, Sha3_256};
@@ -12,74 +9,6 @@ fn amazon_request(client: &Client, url: &str) -> reqwest::RequestBuilder {
         .get(url)
         .header("User-Agent", ua_generator::ua::spoof_ua())
         .header("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
-}
-
-pub async fn lookup_isbn(
-    client: &Client,
-    isbn: &str,
-    images_dir: &str,
-) -> Result<Option<NewBook>, String> {
-    let isbn_variants = amazon::isbn_lookup_variants(isbn);
-    let Some(mut ndl) = super::ndl::lookup_ndl(client, &isbn_variants).await? else {
-        return Ok(None);
-    };
-    super::ndl::enrich_author_ndl_ids(client, &mut ndl.authors).await;
-    let expected_isbn13 = isbn_variants
-        .iter()
-        .find(|variant| variant.len() == 13)
-        .map(String::as_str);
-
-    let (cover_url, amazon_description, amazon_publish_date) =
-        fetch_amazon_cover_with_retry(client, &isbn_variants, images_dir, isbn, expected_isbn13)
-            .await;
-
-    let description = amazon_description.or(ndl.description);
-
-    Ok(Some(NewBook {
-        isbn: Some(isbn.to_string()),
-        isdn: None,
-        jan: None,
-        title: ndl.title,
-        publisher: ndl.publisher,
-        publish_date: amazon_publish_date
-            .or_else(|| crate::external::normalize_publish_date(ndl.publish_date.as_deref())),
-        cover_url,
-        description,
-        title_transcription: ndl.title_transcription,
-        series_title: ndl.series_title,
-        series_title_transcription: ndl.series_title_transcription,
-        alternative: ndl.alternative,
-        alternative_transcription: ndl.alternative_transcription,
-        volume: ndl.volume,
-        volume_transcription: ndl.volume_transcription,
-        price: ndl.price,
-        extent: ndl.extent,
-        jpno: ndl.jpno,
-        ndl_url: ndl.ndl_url,
-        authors: ndl.authors,
-        media_type: None,
-        catalog_number: None,
-        artist: None,
-        label: None,
-        disc_count: None,
-        tracks: None,
-        isdn_region: None,
-        isdn_class: None,
-        isdn_type: None,
-        isdn_rating_gender: None,
-        isdn_rating_age: None,
-        isdn_genre_code: None,
-        isdn_genre_name: None,
-        isdn_genre_user: None,
-        isdn_c_code: None,
-        isdn_author: None,
-        isdn_shape: None,
-        isdn_contents: None,
-        isdn_barcode2: None,
-        isdn_sample_image_url: None,
-        isdn_useroption: None,
-        isdn_external_links: None,
-    }))
 }
 
 async fn download_cover(client: &Client, url: &str, images_dir: &str) -> Result<String, String> {
@@ -307,7 +236,7 @@ async fn lookup_amazon_cover(
     Ok((Some(cover), description, publish_date))
 }
 
-async fn fetch_amazon_cover_with_retry(
+pub(super) async fn fetch_amazon_cover_with_retry(
     client: &Client,
     lookup_keys: &[String],
     images_dir: &str,
@@ -485,47 +414,6 @@ mod tests {
         "#;
 
         assert_eq!(parse_amazon_search_result(html).unwrap(), None);
-    }
-
-    #[tokio::test]
-    #[ignore = "requires live NDL and Amazon access"]
-    async fn lookup_isbn_uses_amazon_release_date() {
-        let client = reqwest::Client::builder().build().expect("HTTP client");
-        let amazon_info =
-            super::lookup_amazon_info(&client, "9784569823522", Some("9784569823522"))
-                .await
-                .expect("Amazon lookup should succeed");
-        assert_eq!(amazon_info.isbn13.as_deref(), Some("9784569823522"));
-        assert!(super::amazon_isbn13_matches(&amazon_info, "9784569823522"));
-
-        let images_dir =
-            std::env::temp_dir().join(format!("dantalian-amazon-isbn-test-{}", std::process::id()));
-        std::fs::create_dir_all(&images_dir).expect("create image directory");
-
-        let book = super::lookup_isbn(
-            &client,
-            "9784569823522",
-            images_dir.to_str().expect("temporary path is UTF-8"),
-        )
-        .await
-        .expect("ISBN lookup should succeed")
-        .expect("ISBN should resolve to a book");
-
-        let publish_date = book
-            .publish_date
-            .as_deref()
-            .expect("Amazon publication date should resolve");
-        assert_eq!(
-            crate::external::normalize_publish_date(Some(publish_date)).as_deref(),
-            Some(publish_date)
-        );
-        let cover = book
-            .cover_url
-            .as_deref()
-            .expect("Amazon cover should resolve");
-        assert!(images_dir.join(cover).is_file());
-
-        let _ = std::fs::remove_dir_all(images_dir);
     }
 
     #[tokio::test]

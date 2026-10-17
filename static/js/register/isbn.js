@@ -18,7 +18,7 @@ registerForm.addEventListener("submit", async (e) => {
     registerBtn.disabled = true;
     const stopProgress = startRegisterProgress(
         registerStatus,
-        "NDL検索 → Amazonで紙版確認 → 表紙取得 → 保存",
+        "NDL検索（未検出時はOpen Library）→ Amazonで紙版確認 → 表紙取得 → 保存",
     );
     try {
         const res = await fetch("/api/books", {
@@ -34,7 +34,7 @@ registerForm.addEventListener("submit", async (e) => {
             return;
         }
 
-        const sourceLabel = data.source === "amazon" ? "Amazon" : data.source === "ndl" ? "国立国会図書館" : data.source === "manual" ? "手動" : "キャッシュ";
+        const sourceLabel = data.source === "open_library" ? "Open Library" : data.source === "amazon" ? "Amazon" : data.source === "ndl" ? "国立国会図書館" : data.source === "manual" ? "手動" : "キャッシュ";
         registerStatus.textContent = `「${data.book.title}」を${sourceLabel}から登録しました`;
         registerStatus.className = "success";
         isbnInput.value = "";
