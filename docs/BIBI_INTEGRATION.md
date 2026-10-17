@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.2.0** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を追加する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.0/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.2.1** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.1/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -26,6 +26,8 @@ Bibi **2.2.0** のホスト連携機能を使用する。固定した repository
 
 2.1.1 では、メニューバー下の本文領域に対するページ移動座標と可視ページ判定を `R.Main` 基準に統一した。ページ送り時に本文上端が欠け、下端に次ページが混入する問題を修正し、メニューバー付き縦書き EPUB の前後移動と横長から縦長へのリサイズを配布物のブラウザ回帰に追加した。
 
+2.2.1 では、小数幅のペインを直交フローのページ送りと誤判定する問題、横書き本文内の画像配置、単独表紙の位置、メニューバーからの pointer 離脱・window blur 後に hover 表示が残る問題を修正した。公開 API の schemaVersion は変わらない。Dantalian の独自 preset にも上下・左右の既定余白を明示し、上流の `default.js` だけに定義された設定が取り込みから漏れないようにしている。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -33,7 +35,7 @@ Bibi **2.2.0** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.2.0
+git checkout --detach v2.2.1
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -47,7 +49,7 @@ node scripts/import_bibi.mjs .tmp/bibi-source
 node scripts/import_bibi.mjs --verify
 ```
 
-確認環境は Bun 1.4.2 / Node.js 24.21.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
+確認環境は Bun 1.4.3 / Node.js 24.22.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
 固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
@@ -57,7 +59,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.2.0` であること。 |
+| `schemaVersion` / `version` | `1` / `2.2.1` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -86,6 +88,10 @@ Bibi.preset({
     'autostart': 'yes',
     'resume-from-last-position': 'yes',
     'keep-settings': 'yes',
+    'item-padding-top': 48,
+    'item-padding-bottom': 48,
+    'item-padding-left': 24,
+    'item-padding-right': 24,
     'use-menubar': 'yes',
     'use-arrows': 'yes',
     'use-keys': 'yes',
@@ -298,6 +304,15 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - Native の新 API HTTP 契約 2 件、Worker の新 API/認証/UI/ライセンス/データ整合性契約 11 件が成功。live D1 ファイルを外部 SQLite から直接書き換える方式は同時実行の HTTP に 500 を発生させたため廃止し、fixture は既存 upload API から登録する。同時 HTTP 回帰でも成功した。
 - Chromium mobile の iPad 相当 `834×1194` / `1194×834` と safe area でメニューバー全体を矩形・スクリーンショットで確認。タッチの境界操作、LTR/RTL のページ幅基準のクリックも成功。実 iPad Safari の確認ではない。
 - ローカル sandbox の inherited ACL が生成ディレクトリの rename を拒否したため、検証済みの別 staging を作成し、旧 inventory に廃止ファイルがないことを確認して停止中の配信先へファイルをコピー、全 digest を再検証した。製品 importer の検証と atomic replacement を緩めた変更はない。
+
+### Dantalian 0.1.21 / Bibi 2.2.1 の検証
+
+- 注釈付き `v2.2.1` の commit `4ddfeefdb867f448ad038e2b18711dccf797b8e3` を LF の clean checkout でビルド。Node 24.22.0 / Bun 1.4.3、frozen install、46 unit tests、26 Chromium browser scenarios、manifest 検証、`Bibi-v2.2.1.zip` の作成に成功した。取り込み検証 6 件と、Native / Worker 配置先の upstream 17 ファイル・ホスト追加分の全 digest 検証も成功した。
+- Native テスト 110 件、Worker helper テスト 34 件、Native build、Worker assets / release Wasm build が成功した。`/api/health` は `version:"0.1.21"` を返した。
+- 実 Firefox の Native 本一覧から専用読書画面を開き、横書き・縦書き本文、Space のページ送り、表示モードの切替、奇数幅・縦長 viewport、元ソース CFI への復元を確認した。元の本一覧へ戻って再度開くと、同じ CFI `/6/2!/4/2/4/1:3806` と成功した `initialRestore` で再開した。メニューバーから pointer を外すと hover 状態が解除された。
+- Native の末尾から最初の PageDown では「次の巻へ」の案内にとどまり、次の独立した PageDown で次巻先頭を開いた。移動後も元の query / fragment を保持した。専用 preset の余白と EPUB 内スクリプト無効も実画面で確認した。
+- 認証必須のローカル Worker で UI ログイン、実 EPUB upload、シリーズ内の本カードからの起動、本文表示・ページ送り、同一 origin cookie と token を含まない読書 URL を確認した。Worker `/epubs/` の先はローカル object transport fixture を使用したため、live Wasabi の資格情報・署名期限を確認したものではない。
+- 登録・upload API で fixture を作る reader-navigation HTTP 契約は Native / Worker 各 2 件が成功し、Worker の未認証応答も含む。既存の DB / D1 や本番データを直接書き換えていない。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 
