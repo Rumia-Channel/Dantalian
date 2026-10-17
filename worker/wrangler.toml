@@ -25,5 +25,13 @@ queue = "dantalian-audio-jobs"
 binding = "AUDIO_JOB_QUEUE"
 
 
+[[durable_objects.bindings]]
+name = "NDL_COORDINATOR"
+class_name = "NdlCoordinator"
+
+[[migrations]]
+tag = "ndl-coordinator-v1"
+new_sqlite_classes = ["NdlCoordinator"]
+
 [triggers]
 crons = ["0 * * * *"]

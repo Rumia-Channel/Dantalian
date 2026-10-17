@@ -1,13 +1,16 @@
 mod amazon;
 pub mod audio_meta;
+mod book_metadata;
 mod discogs;
+mod isbn;
 mod isdn;
 mod musicbrainz;
 pub(crate) mod ndl;
+mod open_library;
 
-pub use amazon::lookup_isbn;
 pub use amazon::{lookup_amazon_cover_for_jan, lookup_amazon_title_for_jan};
 pub use discogs::lookup_cd_discogs;
+pub use isbn::{IsbnLookupError, lookup_isbn};
 pub use isdn::lookup_isdn;
 pub use musicbrainz::{lookup_cd, lookup_cd_by_release_id, search_cd_candidates_by_title};
 

@@ -141,6 +141,20 @@ a:hover {
     padding: 2rem 1rem;
 }
 
+.service-credit {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 0.0625rem solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.service-credit a {
+    margin-inline: 0.15em;
+}
+
 .load-error {
     display: grid;
     justify-items: center;

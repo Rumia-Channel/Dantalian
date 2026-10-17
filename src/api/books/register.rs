@@ -64,36 +64,31 @@ pub async fn register(
         ));
     }
 
-    let new_book = match external::lookup_isbn(&state.client, &isbn, &state.images_dir).await {
-        ok @ Ok(_) => ok,
-        Err(e) => {
-            tracing::warn!("ISBN lookup failed: {}. Retrying...", e);
+    let lookup = match external::lookup_isbn(&state.client, &isbn, &state.images_dir).await {
+        Err(external::IsbnLookupError::Ndl(error)) => {
+            tracing::warn!("NDL lookup failed: {}. Retrying with IPv4...", error);
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             external::lookup_isbn(&state.client_ipv4, &isbn, &state.images_dir).await
         }
+        result => result,
     }
     .map_err(|e| {
         (
             StatusCode::BAD_GATEWAY,
-            Json(serde_json::json!({"error": e})),
+            Json(serde_json::json!({"error": e.to_string()})),
         )
     })?;
 
-    let Some(mut new_book) = new_book else {
+    let Some(lookup) = lookup else {
         return Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Book not found for this ISBN"})),
         ));
     };
 
+    let source = lookup.source.to_string();
+    let mut new_book = lookup.book;
     new_book.publish_date = normalized_publish_date(new_book.publish_date.as_deref())?;
-
-    let source = if new_book.cover_url.is_some() {
-        "amazon"
-    } else {
-        "ndl"
-    }
-    .to_string();
 
     if let Some(ref mt) = req.media_type {
         new_book.media_type = Some(mt.clone());

@@ -18,13 +18,47 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 ## 外部 API / スクレイピング
 
-### 国立国会図書館 NDL SRU API（書籍メタデータ取得）
+### 国立国会図書館サーチ SRU（書籍メタデータ取得）
 
-- **エンドポイント**: `https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl&onlyBib=true&maximumRecords=1&startRecord=1&recordPacking=xml&query=isbn%3D%22{isbn}%22`
-- **用途**: ISBN をキーにして書籍のメタデータを取得する
-- **形式**: SRU/XML（dcndl RDF/XML スキーマ）
-- **取得フィールド**: タイトル（`dcterms:title`）、著者（`dc:creator`）、出版社（`dcterms:publisher` > `foaf:Agent` > `foaf:name`）、出版日（`dcterms:date`）、解説（`dcterms:description`、メタデータノイズ除外）、タイトル読み（`dc:title` > `rdf:Description` > `dcndl:transcription`）、著者読み（`dcterms:creator` > `foaf:Agent` > `dcndl:transcription`）、シリーズタイトル（`dcndl:seriesTitle` > `rdf:Description` > `rdf:value`）、価格（`dcndl:price`）、ページ数（`dcterms:extent`）、NDL URL（`dcndl:BibResource` の `rdf:about` 属性）
-- **実装**: `quick-xml` でパース。`rdf:about` 属性に `#material` を含む最初の `dcndl:BibResource` 要素を対象とし、要素パスの深さとタグ名の組み合わせで各フィールドを識別
+- **エンドポイント**: `https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl_v3&onlyBib=true&maximumRecords=10&startRecord=1&recordPacking=xml&query=isbn%3D%22{isbn}%22`
+- **仕様**: SRU 1.2 / DC-NDL（RDF）ver.3.0。Native / Worker で同じ形式を使用する。
+- **ISBN10 / ISBN13**: 相互変換できる ISBN は、入力された形式と変換した形式をそれぞれ検索する。NDL 側の自動変換だけでは見つからない資料への対策を維持し、HTTP リクエストは必ず直列に送る。ISBN の OR 条件をまとめたクエリは実サービスで `illegal query syntax` となったため採用しない。
+- **候補の選択**: 各検索で最大 10 件を取得し、著者典拠 ID、NDL 自身の書誌、メタデータの充足度を基に両形式の候補から選択する。
+- **取得フィールド**: タイトル・読み、著者・読み・NDL 典拠 ID、出版社、出版日、解説、シリーズ名・読み、別タイトル・読み、巻次・読み、価格、ページ数、全国書誌番号（JPNO）、NDL URL。JPNO は識別子の型を確認し、ISBN や他機関の識別子と混同しない。
+- **パース**: `quick-xml` で `#material` の書誌情報を読み、管理情報・個体情報の値を混入させない。SRU の診断エラーや途中で切れたレコードは「検索結果なし」と区別する。
+- **公式資料**: [API 利用案内](https://ndlsearch.ndl.go.jp/help/api)、[外部提供インタフェース仕様書 第1.5版](https://ndlsearch.ndl.go.jp/file/help/api/specifications/ndlsearch_api_20260925.pdf)、[DC-NDL ver.3.0](https://ndlsearch.ndl.go.jp/renkei/dcndl/version3)。
+
+### Web NDL Authorities SPARQL 1.1（著者典拠取得）
+
+- **エンドポイント**: `https://id.ndl.go.jp/auth/ndla/sparql`。URL エンコードした `query` と `format=json` を POST する。旧エンドポイントの `output=json` は使用しない。
+- **一括取得**: Native / Worker とも、NDL 典拠 ID が不足する著者だけを最大 50 名ずつ `VALUES` でまとめて検索する。HTTP の同時送信ではなく、一つのクエリで複数名を検索する方式。
+- **対応付け**: 著者ごとの位置を結果に含め、応答順に依存せず元の著者に対応付ける。既知の ID は上書きしない。同名候補を一意に特定できない場合や他機関の URI は、NDL 典拠 ID として採用しない。
+- **失敗時**: 典拠の補完に失敗しても取得済みの書籍情報・著者情報は保持する。NDL のデータ更新等で利用できない時間帯は、[公式の SPARQL 1.1 案内](https://id.ndl.go.jp/information/sparql-11/)を参照する。
+
+### Open Library Search API（NDL 未検出時の書誌フォールバック）
+
+- **エンドポイント**: `https://openlibrary.org/search.json`。[公式の Search API](https://openlibrary.org/dev/docs/api/search)を使用し、Legacy とされる `/api/books` や HTML スクレイピングは使用しない。
+- **切り替え条件**: Native / Worker とも、NDL の ISBN10 / ISBN13 が両方とも未検出の場合だけ利用する。0 件の応答に加え、NDL 仕様書の表 3-5 に定義された `Record does not exist`（URI `info:srw/diagnostic/1/1`）も未検出として扱う。URI とメッセージの組み合わせで判別し、通信失敗・タイムアウト・その他の SRU 診断を「未登録」に置き換えることはない。
+- **検索**: ISBN10 / ISBN13 を一つの `isbn:(...)` クエリにまとめ、必要な `fields` だけを指定して最大 5 作品を取得する。版情報の取得に必要な親作品の `key` も指定する。
+- **版の照合**: 作品全体のタイトル・出版社・初版年ではなく、ISBN が入力または相互変換した ISBN と一致する `editions.docs` のタイトル・出版社・刊行日を採用する。著者名は作品の `author_name` を使用する。別の版の書誌を流用しない。
+- **日付**: 刊行日は ISBN の一致を確認できた Amazon の日付を優先し、取得できなかった場合は NDL / Open Library の日付を使用する。年月日を別ソースから継ぎ合わせない。書誌の日付は英語の月名を含む値も `YYYY-MM-DD` / `YYYY-MM-NN` / `YYYY-NN-NN` に正規化し、年・月まで判明している値の精度を保持する。
+- **取得元**: 新規登録の応答は `source: "open_library"`。Open Library の著者を NDL の典拠 ID と混同せず、NDL URL・JPNO も未設定とする。説明と表紙の Amazon 補完は従来どおり維持する。Open Library の Covers API は呼び出さない。
+- **未検出・障害**: 一致する版がなければ未検出として扱う。HTTP 429 / 5xx や不正 JSON は上流エラーとして返し、未検出に置き換えない。Open Library のエラーに対する自動再試行・IPv4 切り替えは行わない。
+- **利用方式**: 利用者の ISBN 登録操作に応じた検索に限定し、大量収集や複数 IP へのアクセス分散は行わない。登録済み書誌は既存の DB キャッシュを再利用し、同じ保存済み ISBN を再取得しない。
+- **識別・利用条件**: `User-Agent` に Dantalian のバージョンとプロジェクト URL を指定する。継続利用時の公開連絡先は `OPEN_LIBRARY_CONTACT` に設定すると同ヘッダーに追加される。未設定時も未識別リクエストの上限（1 リクエスト/秒）を超えないよう、下記の共通制御で毎回 2 秒以上待機する。アプリ登録・連絡先の案内、キャッシュ・大量利用の制約は[公式の利用ガイド](https://openlibrary.org/developers/api)に従う。連絡・登録を自動送信することはない。
+- **ライセンス**: [Open Library のライセンス案内](https://openlibrary.org/developers/licensing)を参照。メタデータの利用と書籍本文・画像の権利を同一視しない。
+
+### NDL / Open Library 共通のアクセス制御・利用条件
+
+- **間隔**: NDL 書誌検索・典拠検索・Open Library 検索を同じ制御で直列化し、毎回送信前に最低 2 秒待機する（初回も対象）。前の応答本文の取得が終わるまで次を送らず、失敗・キャンセル後にも次の送信前の待機を適用する。2 秒は本アプリの保守的な設定であり、NDL が公表した上限・推奨値ではない。
+- **Native**: 非同期のプロセス内ロックと、OS の一時ディレクトリ内の `dantalian-ndl-request.lock` によるファイルロックを併用する。同じ OS ユーザー・一時ディレクトリを使う複数プロセス間でも多重送信を防ぐ。ロックファイルを取得中に削除しない。ロックを開けない場合は直接通信へ迂回せずエラーにする。
+- **Worker**: `NDL_COORDINATOR` にバインドした `NdlCoordinator` Durable Object の固定名 `ndl` に NDL と Open Library の書誌通信を集約する。同じデプロイの複数 API isolate 間でも直列化する。ローカル・develop・staging・production の Wrangler 設定にバインドと `ndl-coordinator-v1` マイグレーションを含めてデプロイする。バインドがない古い設定では取得をエラーにし、isolate 内だけの制御や直接アクセスへフォールバックしない。
+- **タイムアウト**: 応答本文を含む NDL / Open Library 通信に Native は 30 秒、Worker は 10 秒の上限を設ける。Worker はタイムアウト・キャンセル時に外部通信も中止する。Native の NDL エラーに対する既存の IPv4 再取得のみ維持し、Open Library エラーでは再取得しない。
+- **制御の範囲**: 別マシン・別ユーザー・別一時ディレクトリの Native、異なる Worker デプロイ、Native と Worker の間ではロックを共有しない。それらを併用する場合も各 API への多重アクセスを生じさせない運用が必要。
+- **クレジット**: アプリ共通フッターに NDL サーチ API、Web NDL Authorities API、Open Library API の利用を明記し、公式案内へリンクする。他のデータ提供機関の書誌には別の利用条件があるため、[API 提供対象データプロバイダ一覧](https://ndlsearch.ndl.go.jp/help/api/provider)も確認する。
+- **継続利用**: NDL は継続的な利用について連絡先・利用内容の通知への協力を求めている。営利利用等で必要な申請・許諾と併せて、[公式の利用案内](https://ndlsearch.ndl.go.jp/help/api)に従う。アプリから連絡・申請を自動送信することはない。
+
+ローカル回帰検証は Worker をビルドした後に `node --test worker/tests/ndl_api_contract.mjs` で実行する。外部 API にはアクセスせず、ISBN10 / ISBN13 片方だけの資料、一括典拠取得、異なる API isolate 間の直列化、遅い応答本文、取得失敗とタイムアウト後の継続、Open Library へのフォールバック・版の照合・キャッシュ・エラー区別を検証する。
 
 ### Amazon.co.jp スクレイピング（表紙画像取得）
 
@@ -60,7 +94,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 ## 機能
 
-- ISBN による書籍登録（NDL メタデータ + Amazon 表紙画像）
+- ISBN による書籍登録（NDL メタデータ、未検出時は Open Library、Amazon 表紙画像）
 - ユーザー定義シリーズ管理（作成・変更・削除・書籍への割り当て）
 - 本だけを扱う一覧（`/books/`）。著者別／一覧の切り替え、検索、並び順、シリーズ・大シリーズの絞り込みに対応
 - レスポンシブ対応ダークテーマ UI
@@ -73,6 +107,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 | `DATA_DIR` | データ保存ディレクトリ | `~/Documents` (Windows: `C:\Users\{user}\Documents`) |
 | `PORT` | サーバー待受ポート | `3000` |
 | `RUST_LOG` | ログレベル | `dantalian=debug` でデバッグ出力 |
+| `OPEN_LIBRARY_CONTACT` | Open Library に送信する公開連絡先（メール等）。Worker では Vars に設定。変更後は再起動／再デプロイする | 未設定（プロジェクト URL のみ） |
 
 ## データ構成
 

@@ -32,4 +32,11 @@
         navEl.setAttribute("aria-current", "page");
     }
 
+    var credit = document.createElement("footer");
+    credit.className = "service-credit";
+    credit.innerHTML =
+        '書誌情報の取得に<a href="https://ndlsearch.ndl.go.jp/help/api" target="_blank" rel="noopener noreferrer">国立国会図書館サーチのAPI</a>・<a href="https://openlibrary.org/developers/api" target="_blank" rel="noopener noreferrer">Open LibraryのAPI</a>、' +
+        '著者典拠の取得に<a href="https://id.ndl.go.jp/information/sparql-11/" target="_blank" rel="noopener noreferrer">Web NDL AuthoritiesのAPI</a>を利用しています。';
+    app.appendChild(credit);
+
 })();

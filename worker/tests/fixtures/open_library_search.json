@@ -1,0 +1,23 @@
+{
+  "numFound": 1,
+  "docs": [
+    {
+      "key": "/works/OL45804W",
+      "title": "Work title, not the requested edition",
+      "publisher": ["Publisher of another edition"],
+      "first_publish_year": 1970,
+      "author_name": ["Roald Dahl"],
+      "editions": {
+        "docs": [
+          {
+            "key": "/books/OL7353617M",
+            "title": "Fantastic Mr. Fox",
+            "publisher": ["Puffin"],
+            "publish_date": ["October 1, 1988"],
+            "isbn": ["9780140328721"]
+          }
+        ]
+      }
+    }
+  ]
+}
