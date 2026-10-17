@@ -255,7 +255,7 @@ node --test worker/tests/reliability_contract.mjs
 
 ### 読書リーダー (Bibi)
 
-EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.0** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
+EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.1** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
 
 - トップページ (`/`) の本カードとシリーズ・大シリーズ内の本は、クリックしても読書ページへ遷移せず、従来の詳細画面を開きます。読書は詳細・編集画面の「読む」から開始します。CD・オーディオブックのクリック動作は変更していません。
 - 本専用一覧 (`/books/`) の本カードとシリーズ・大シリーズ内の本は、同じタブの `/reader/?book=<id>` で書籍情報を確認し、document-pinned preset を持つ `/vendor/bibi/dantalian.html` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。
