@@ -5,32 +5,33 @@ use serde::Serialize;
 use worker::{Env, Result};
 
 pub(crate) async fn lookup_isbn(env: &Env, variants: &[String]) -> Result<Option<NdlBook>> {
+    let mut failure = None;
+    for variant in variants {
+        match lookup_variant(env, variant).await {
+            Ok(Some(mut book)) => {
+                enrich_authors(env, &mut book).await;
+                return Ok(Some(book));
+            }
+            Ok(None) => {}
+            Err(error) => failure = Some(error),
+        }
+    }
+    failure.map_or(Ok(None), Err)
+}
+
+async fn lookup_variant(env: &Env, isbn: &str) -> Result<Option<NdlBook>> {
     #[derive(Serialize)]
     struct IsbnRequest<'a> {
         isbn: &'a str,
     }
-    let mut best: Option<NdlBook> = None;
-    for variant in variants {
-        let xml = ndl_coordinator::request(
-            env,
-            "/sru",
-            serde_json::to_string(&IsbnRequest { isbn: variant })?,
-            "NDL",
-        )
-        .await?;
-        if let Some(book) = ndl_sru::parse_sru(&xml).map_err(worker::Error::RustError)? {
-            if best
-                .as_ref()
-                .is_none_or(|previous| ndl_sru::score(&book) >= ndl_sru::score(previous))
-            {
-                best = Some(book);
-            }
-        }
-    }
-    if let Some(book) = best.as_mut() {
-        enrich_authors(env, book).await;
-    }
-    Ok(best)
+    let xml = ndl_coordinator::request(
+        env,
+        "/sru",
+        serde_json::to_string(&IsbnRequest { isbn })?,
+        "NDL",
+    )
+    .await?;
+    ndl_sru::parse_sru(&xml).map_err(worker::Error::RustError)
 }
 
 async fn enrich_authors(env: &Env, book: &mut NdlBook) {

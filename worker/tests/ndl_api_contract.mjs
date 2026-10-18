@@ -24,13 +24,32 @@ test("different API isolates preserve explicit ISBN alternatives and serialize b
     assertBook(thirteenOnly, "ISBN13-only record");
     assert.equal(failed.status, 502, JSON.stringify(failed.body));
     assert.equal(fixture.maximumActive, 1, "NDL response bodies from different API isolates must not overlap");
-    assert.equal(fixture.events.filter(event => event.kind === "sru").length, 5);
     assert.equal(fixture.events.filter(event => event.kind === "authority").length, 2, "Two unresolved names per book need one batch, not two requests");
     assert.equal(fixture.events.filter(event => event.kind === "open_library").length, 0, "Neither NDL hits nor NDL failures should invoke the fallback");
     const events = fixture.events.toSorted((a, b) => a.started - b.started);
     const idle = events.slice(1).map((event, index) => event.started - events[index].finished);
     assert.ok(idle.every(ms => ms >= 1900), `Idle gaps: ${JSON.stringify(idle)}`);
     t.diagnostic(`Maximum NDL concurrency ${fixture.maximumActive}; idle gaps in ms: ${idle.map(Math.round).join(", ")}`);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("an ISBN hit succeeds without querying its failing alternate, and a failed first ISBN can recover", { timeout: 45000 }, async () => {
+  const fixture = await createNdlFixture();
+  try {
+    const firstHit = await fixture.register(0, "9784041112953");
+    assert.equal(firstHit.status, 201, JSON.stringify(firstHit.body));
+    assert.equal(firstHit.body.book.title, "First ISBN hit");
+    assert.deepEqual(fixture.events.filter(event => event.kind === "sru").map(event => event.isbn), ["9784041112953"]);
+
+    const recovered = await fixture.register(1, "9784041124253");
+    assert.equal(recovered.status, 201, JSON.stringify(recovered.body));
+    assert.equal(recovered.body.book.title, "Recovered from alternate ISBN");
+    assert.deepEqual(fixture.events.filter(event => event.kind === "sru").map(event => event.isbn), [
+      "9784041112953", "9784041124253", "4041124255",
+    ]);
+    assert.equal(fixture.events.filter(event => event.kind === "open_library").length, 0);
   } finally {
     await fixture.close();
   }

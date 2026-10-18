@@ -14,39 +14,49 @@ pub(crate) async fn lookup_ndl(
     client: &Client,
     isbn_variants: &[String],
 ) -> Result<Option<BookMetadata>, String> {
-    let mut candidates = Vec::new();
+    let mut failure = None;
     for isbn in isbn_variants {
-        let raw_query = isbn_query(isbn);
-        let query = urlencoding::encode(&raw_query);
-        let url = format!(
-            "{SRU_ENDPOINT}?operation=searchRetrieve&version=1.2&recordSchema={RECORD_SCHEMA}&onlyBib=true&maximumRecords={MAXIMUM_RECORDS}&startRecord=1&recordPacking=xml&query={}",
-            query
-        );
-        let _guard = access::acquire().await?;
-        debug!(%isbn, "NDL search: {}", url);
-        let body = client
-            .get(&url)
-            .header(
-                "User-Agent",
-                concat!(
-                    "Dantalian/",
-                    env!("CARGO_PKG_VERSION"),
-                    " (+https://github.com/Rumia-Channel/Dantalian)"
-                ),
-            )
-            .timeout(access::REQUEST_TIMEOUT)
-            .send()
-            .await
-            .and_then(reqwest::Response::error_for_status)
-            .map_err(|e| format!("NDL request failed: {}", e))?
-            .bytes()
-            .await
-            .map_err(|e| format!("NDL read failed: {}", e))?;
-        let xml = std::str::from_utf8(&body)
-            .map_err(|error| format!("NDL XML decode failed: {error}"))?;
-        candidates.extend(sru::parse_candidates(xml)?);
+        match lookup_variant(client, isbn).await {
+            Ok(Some(book)) => return Ok(Some(book)),
+            Ok(None) => {}
+            Err(error) => failure = Some(error),
+        }
     }
-    Ok(candidates.into_iter().max_by_key(ndl_score))
+    failure.map_or(Ok(None), Err)
+}
+
+async fn lookup_variant(client: &Client, isbn: &str) -> Result<Option<BookMetadata>, String> {
+    let raw_query = isbn_query(isbn);
+    let query = urlencoding::encode(&raw_query);
+    let url = format!(
+        "{SRU_ENDPOINT}?operation=searchRetrieve&version=1.2&recordSchema={RECORD_SCHEMA}&onlyBib=true&maximumRecords={MAXIMUM_RECORDS}&startRecord=1&recordPacking=xml&query={}",
+        query
+    );
+    let _guard = access::acquire().await?;
+    debug!(%isbn, "NDL search: {}", url);
+    let body = client
+        .get(&url)
+        .header(
+            "User-Agent",
+            concat!(
+                "Dantalian/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://github.com/Rumia-Channel/Dantalian)"
+            ),
+        )
+        .timeout(access::REQUEST_TIMEOUT)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| format!("NDL request failed: {}", e))?
+        .bytes()
+        .await
+        .map_err(|e| format!("NDL read failed: {}", e))?;
+    let xml =
+        std::str::from_utf8(&body).map_err(|error| format!("NDL XML decode failed: {error}"))?;
+    Ok(sru::parse_candidates(xml)?
+        .into_iter()
+        .max_by_key(ndl_score))
 }
 
 fn ndl_score(info: &BookMetadata) -> i32 {

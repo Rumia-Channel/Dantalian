@@ -31,7 +31,16 @@ export async function createNdlFixture() {
     if (event.kind === "sru") {
       // Deliberately no automatic 10/13 conversion: some NDL records need an explicit alternate ISBN.
       const terms = [...url.searchParams.get("query").matchAll(/isbn="([0-9X]+)"/g)].map(match => match[1]);
-      if (terms.includes("4041164699")) {
+      event.isbn = terms[0];
+      if (terms.includes("9784041112953")) {
+        xml = book("First ISBN hit", true);
+      } else if (terms.includes("4041112958")) {
+        status = 503;
+      } else if (terms.includes("9784041124253")) {
+        status = 503;
+      } else if (terms.includes("4041124255")) {
+        xml = book("Recovered from alternate ISBN", true);
+      } else if (terms.includes("4041164699")) {
         xml = book("ISBN10-only record");
       } else if (terms.includes("9780262033848")) {
         xml = book("ISBN13-only record");
