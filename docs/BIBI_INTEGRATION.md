@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.2.1** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.1/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.2.2** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.2/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -27,6 +27,7 @@ Bibi **2.2.1** のホスト連携機能を使用する。固定した repository
 2.1.1 では、メニューバー下の本文領域に対するページ移動座標と可視ページ判定を `R.Main` 基準に統一した。ページ送り時に本文上端が欠け、下端に次ページが混入する問題を修正し、メニューバー付き縦書き EPUB の前後移動と横長から縦長へのリサイズを配布物のブラウザ回帰に追加した。
 
 2.2.1 では、小数幅のペインを直交フローのページ送りと誤判定する問題、横書き本文内の画像配置、単独表紙の位置、メニューバーからの pointer 離脱・window blur 後に hover 表示が残る問題を修正した。公開 API の schemaVersion は変わらない。Dantalian の独自 preset にも上下・左右の既定余白を明示し、上流の `default.js` だけに定義された設定が取り込みから漏れないようにしている。
+2.2.2 では、幅を百分率指定した前付け挿絵の分類に固有寸法を使い、フィット後の端切れを防ぐ。見開きは全高の一組として配置・focus し、終端を含む前後移動でページ順を保つ。schemaVersion 1 の位置・ホストナビ API は変更しない。
 
 ## 1. 配布物の取り込み
 
@@ -35,7 +36,7 @@ Bibi **2.2.1** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.2.1
+git checkout --detach v2.2.2
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -59,7 +60,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.2.1` であること。 |
+| `schemaVersion` / `version` | `1` / `2.2.2` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -318,6 +319,13 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - Native の末尾から最初の PageDown では「次の巻へ」の案内にとどまり、次の独立した PageDown で次巻先頭を開いた。移動後も元の query / fragment を保持した。専用 preset の余白と EPUB 内スクリプト無効も実画面で確認した。
 - 認証必須のローカル Worker で UI ログイン、実 EPUB upload、シリーズ内の本カードからの起動、本文表示・ページ送り、同一 origin cookie と token を含まない読書 URL を確認した。Worker `/epubs/` の先はローカル object transport fixture を使用したため、live Wasabi の資格情報・署名期限を確認したものではない。
 - 登録・upload API で fixture を作る reader-navigation HTTP 契約は Native / Worker 各 2 件が成功し、Worker の未認証応答も含む。既存の DB / D1 や本番データを直接書き換えていない。
+
+### Dantalian 0.1.23 / Bibi 2.2.2 の検証
+
+- `v2.2.2` の clean checkout `53d1bdf8610919fec0fc8d13cecfa49c5086cc35` を Node 24.22.0 / Bun 1.4.3 で frozen install・ビルド・manifest 検証。unit tests 46 件と browser integration 14 scenarios、host-navigation 13 scenarios が成功し、reader assets 17 件を検証した。
+- `scripts/bibi/distribution.test.mjs` は 6 件成功。固定 SHA・lock/license digest を更新し、Bibi 2.2.2 を取り込み、配置済み 17 reader assets を再検証した。
+- Dantalian 0.1.23 の Native テスト 110 件、Native build、Worker assets 再生成、release Wasm build が成功した。
+- 実 Firefox で取り込み済み `dantalian.html` を開き、cover → frontispiece → landscape → paired portrait の表示を確認した。読書ナビ API は一時の no-neighbor JSON fixture を使用し、Native / Worker の API 接続はこの画面検証の対象外。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 

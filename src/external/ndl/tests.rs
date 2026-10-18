@@ -11,7 +11,7 @@ async fn ndl_requests_wait_between_failures_across_books_and_author_lookups() {
     let proxy_url = format!("http://{}", listener.local_addr().unwrap());
     let proxy = tokio::spawn(async move {
         let mut requests = tokio::task::JoinSet::new();
-        for _ in 0..3 {
+        for _ in 0..5 {
             let (mut stream, _) = listener.accept().await.unwrap();
             requests.spawn(async move {
                 let mut buffer = [0; 2048];

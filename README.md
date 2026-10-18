@@ -22,8 +22,8 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 - **エンドポイント**: `https://ndlsearch.ndl.go.jp/api/sru?operation=searchRetrieve&version=1.2&recordSchema=dcndl_v3&onlyBib=true&maximumRecords=10&startRecord=1&recordPacking=xml&query=isbn%3D%22{isbn}%22`
 - **仕様**: SRU 1.2 / DC-NDL（RDF）ver.3.0。Native / Worker で同じ形式を使用する。
-- **ISBN10 / ISBN13**: 相互変換できる ISBN は、入力された形式と変換した形式をそれぞれ検索する。NDL 側の自動変換だけでは見つからない資料への対策を維持し、HTTP リクエストは必ず直列に送る。ISBN の OR 条件をまとめたクエリは実サービスで `illegal query syntax` となったため採用しない。
-- **候補の選択**: 各検索で最大 10 件を取得し、著者典拠 ID、NDL 自身の書誌、メタデータの充足度を基に両形式の候補から選択する。
+- **ISBN10 / ISBN13**: 入力された形式を先に検索し、書誌が見つかれば即座に採用して終了する。未検出・通信失敗・パース失敗の場合だけ、相互変換したもう一方の形式を検索する。先の検索が失敗しても、もう一方で書誌を取得できれば成功とする。両形式とも未検出の場合だけ Open Library へ進み、書誌が得られず通信等の失敗が残る場合はエラーを返す。HTTP リクエストは必ず直列に送る。ISBN の OR 条件をまとめたクエリは実サービスで `illegal query syntax` となったため採用しない。
+- **候補の選択**: 一つの検索で最大 10 件を取得し、著者典拠 ID、NDL 自身の書誌、メタデータの充足度を基に候補を選択する。書誌取得に成功した後、別形式との比較のためだけに追加検索することはない。
 - **取得フィールド**: タイトル・読み、著者・読み・NDL 典拠 ID、出版社、出版日、解説、シリーズ名・読み、別タイトル・読み、巻次・読み、価格、ページ数、全国書誌番号（JPNO）、NDL URL。JPNO は識別子の型を確認し、ISBN や他機関の識別子と混同しない。
 - **パース**: `quick-xml` で `#material` の書誌情報を読み、管理情報・個体情報の値を混入させない。SRU の診断エラーや途中で切れたレコードは「検索結果なし」と区別する。
 - **公式資料**: [API 利用案内](https://ndlsearch.ndl.go.jp/help/api)、[外部提供インタフェース仕様書 第1.5版](https://ndlsearch.ndl.go.jp/file/help/api/specifications/ndlsearch_api_20260925.pdf)、[DC-NDL ver.3.0](https://ndlsearch.ndl.go.jp/renkei/dcndl/version3)。
@@ -58,7 +58,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 - **クレジット**: アプリ共通フッターに NDL サーチ API、Web NDL Authorities API、Open Library API の利用を明記し、公式案内へリンクする。他のデータ提供機関の書誌には別の利用条件があるため、[API 提供対象データプロバイダ一覧](https://ndlsearch.ndl.go.jp/help/api/provider)も確認する。
 - **継続利用**: NDL は継続的な利用について連絡先・利用内容の通知への協力を求めている。営利利用等で必要な申請・許諾と併せて、[公式の利用案内](https://ndlsearch.ndl.go.jp/help/api)に従う。アプリから連絡・申請を自動送信することはない。
 
-ローカル回帰検証は Worker をビルドした後に `node --test worker/tests/ndl_api_contract.mjs` で実行する。外部 API にはアクセスせず、ISBN10 / ISBN13 片方だけの資料、一括典拠取得、異なる API isolate 間の直列化、遅い応答本文、取得失敗とタイムアウト後の継続、Open Library へのフォールバック・版の照合・キャッシュ・エラー区別を検証する。
+ローカル回帰検証は Worker をビルドした後に `node --test worker/tests/ndl_api_contract.mjs` で実行する。外部 API にはアクセスせず、ISBN10 / ISBN13 片方だけの資料、書誌取得成功後の追加検索の停止、最初の検索の失敗から別形式での取得成功、一括典拠取得、異なる API isolate 間の直列化、遅い応答本文、取得失敗とタイムアウト後の継続、Open Library へのフォールバック・版の照合・キャッシュ・エラー区別を検証する。
 
 ### Amazon.co.jp スクレイピング（表紙画像取得）
 
@@ -255,7 +255,7 @@ node --test worker/tests/reliability_contract.mjs
 
 ### 読書リーダー (Bibi)
 
-EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.1** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
+EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.2** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
 
 - トップページ (`/`) の本カードとシリーズ・大シリーズ内の本は、クリックしても読書ページへ遷移せず、従来の詳細画面を開きます。読書は詳細・編集画面の「読む」から開始します。CD・オーディオブックのクリック動作は変更していません。
 - 本専用一覧 (`/books/`) の本カードとシリーズ・大シリーズ内の本は、同じタブの `/reader/?book=<id>` で書籍情報を確認し、document-pinned preset を持つ `/vendor/bibi/dantalian.html` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。
