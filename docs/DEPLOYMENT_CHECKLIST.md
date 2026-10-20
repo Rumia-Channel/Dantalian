@@ -36,7 +36,7 @@
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
 - [x] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, the stream route redirects to the canonical `audio/<hash>.<ext>` object, a repeated finalize is a conflict, and a completed EPUB session is rejected as the wrong kind (`worker/tests/wasabi_audio_multipart_e2e.mjs`, `WASABI_E2E=1`).
 - [x] Deployed develop Worker to Wasabi completion and multipart E2E pass (run 38038598391, "Test develop Wasabi basic and multipart lifecycle").
-- [x] Client upload URL contract is pinned without a live bucket: `worker/tests/upload_target_unit.mjs` classifies the target (audio vs epub) and derives both child URLs, and `worker/tests/upload_integration_unit.mjs` drives the real `static/js/upload.js` over a mocked fetch to assert the request sequence (`…/audio/multipart` → parts → complete → `…/audio/finalize`, never `…/multipart/finalize`). Both run in the worker job.
+- [x] Client upload URL contract is pinned without a live bucket: `worker/tests/upload_target_unit.mjs` classifies the target (audio vs epub) and derives both child URLs, and `worker/tests/upload_integration_unit.mjs` drives the real `static/js/upload.js` over a mocked fetch to assert the request sequences (audio: `…/audio/multipart` → parts → complete → `…/audio/finalize`, never `…/multipart/finalize`; large EPUB: `/api/uploads/multipart` → parts → complete → `…/books/:id/epub/finalize`). Both run in the worker job.
 - [x] Production deploy smoke check passes: `…/api/cds/:id/tracks/:track_id/audio/multipart` answers with a non-404 status after the Worker deploy.
 - [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
@@ -83,16 +83,21 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
 - [ ] Test one representative book, cover, EPUB, CD, and audio track through the Access-protected domain.
 - [ ] Confirm browser uploads go directly to Wasabi; large objects do not pass through Worker.
       Audio above `PRESIGNED_MULTIPART_MIN_BYTES` (8 MiB) uses
-      `POST /api/uploads/multipart/init` → direct part `PUT` → `complete` →
-      `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`, so the Worker
-      never buffers a full audio object. Cover uploads still use the Worker
+      `POST /api/{cds|books}/:id/tracks/:track_id/audio/multipart` → direct part `PUT`
+      → `complete` → `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`,
+      so the Worker never buffers a full audio object. EPUB above
+      `WORKER_DIRECT_UPLOAD_MAX_BYTES` (95 MiB) uses
+      `POST /api/uploads/multipart/init` with `object_kind: "epub"` → direct part
+      `PUT` → `complete` → `POST /api/books/:id/epub/finalize`, so a large EPUB
+      never passes through the Worker either. Cover uploads still use the Worker
       route because they are capped at 10 MiB.
-- [ ] Known gap: cover and EPUB uploads have no `finalize` binding yet, so the
-      browser only presigns audio. Both therefore stay on the Worker direct
-      route and are capped at `WORKER_DIRECT_UPLOAD_MAX_BYTES` (95 MiB) even when
-      `upload.file_max_mb` is configured higher; the client now rejects those
-      files before sending instead of failing mid-upload. Extending the presigned
-      path to covers and EPUBs requires a completion binding like the audio one.
+- [ ] Verify one EPUB larger than 95 MiB through the Access-protected domain: the
+      browser uploads parts straight to Wasabi, `POST /api/books/:id/epub/finalize`
+      returns 200, and `/epubs/<hash>.epub` afterwards serves the object.
+- [ ] Known limit: cover uploads stay on the Worker direct route (their own cap
+      is 10 MiB); any cover file larger than `WORKER_DIRECT_UPLOAD_MAX_BYTES` is
+      rejected before sending. Audio and EPUB no longer have that cap because
+      both have a presigned finalize binding.
 - [ ] Monitor structured migration/job events by `job_id`, `object_key`, status, attempt, processor, and error class. Do not log secrets or full signed URLs.
 - [ ] Keep Native available as rollback until post-deployment reconciliation is complete.
 

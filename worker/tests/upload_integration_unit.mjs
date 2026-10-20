@@ -12,6 +12,9 @@ globalThis.uploadTargetIsAudio = uploadTarget.uploadTargetIsAudio;
 globalThis.uploadTargetObjectKind = uploadTarget.uploadTargetObjectKind;
 globalThis.uploadTargetAudioSessionUrl = uploadTarget.uploadTargetAudioSessionUrl;
 globalThis.uploadTargetAudioFinalizeUrl = uploadTarget.uploadTargetAudioFinalizeUrl;
+globalThis.uploadTargetIsEpubUpload = uploadTarget.uploadTargetIsEpubUpload;
+globalThis.uploadTargetPresignedSessionUrl = uploadTarget.uploadTargetPresignedSessionUrl;
+globalThis.uploadTargetPresignedFinalizeUrl = uploadTarget.uploadTargetPresignedFinalizeUrl;
 globalThis.uploadTargetContentType = uploadTarget.uploadTargetContentType;
 globalThis.uploadTargetPickUploadKind = uploadTarget.uploadTargetPickUploadKind;
 globalThis.readApiDiagnostic = async (response) => ({
@@ -144,6 +147,90 @@ test("small audio keeps the single direct upload", async () => {
   assert.equal(calls.every((call) => call.url.includes("/multipart") === false), true);
 });
 
+// 100MB を超える EPUB は Worker の直アップロード上限を超えるため、音声と同じ
+// presigned multipart で Wasabi へ直接送り、書籍の finalize で紐付ける。
+test("large EPUB uploads parts directly to Wasabi and finalizes on the book", async () => {
+  const partSize = 8 * 1024 * 1024;
+  const sessionId = "c".repeat(32);
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = String(url);
+    calls.push({ url: target, method: init.method ?? "GET", body: init.body });
+    if (target === "/api/health") {
+      return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
+    }
+    if (target === "/api/books/7/epub/finalize") {
+      return new Response(JSON.stringify({ file_hash: "c.epub" }), { status: 200 });
+    }
+    if (target.startsWith("https://wasabi.test/")) {
+      return new Response("", { status: 200, headers: { etag: "\"etag-1\"" } });
+    }
+    if (target.endsWith("/sign")) {
+      return new Response(
+        JSON.stringify({ upload_url: "https://wasabi.test/part", part_number: 1 }),
+        { status: 200 },
+      );
+    }
+    if (target.endsWith("/complete")) {
+      return new Response(JSON.stringify({ status: "complete" }), { status: 200 });
+    }
+    if (target === "/api/uploads/multipart") {
+      return new Response(
+        JSON.stringify({ id: sessionId, part_size: partSize, object_key: "epubs/c.epub" }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const response = await uploadFileWithChunks(
+    "/api/books/7/epub",
+    "file",
+    fakeFile(120 * 1024 * 1024, "big-book.epub", "application/epub+zip"),
+    "epub",
+  );
+  assert.equal(response.status, 200);
+
+  const urls = calls.map((call) => call.url);
+  const initCall = calls.find((call) => call.url === "/api/uploads/multipart");
+  assert.ok(initCall, urls.join("\n"));
+  const initBody = JSON.parse(String(initCall.body));
+  assert.equal(initBody.object_kind, "epub");
+  assert.equal(initBody.content_type, "application/epub+zip");
+  assert.equal(initBody.file_name, "big-book.epub");
+  assert.equal(initBody.expected_size, 120 * 1024 * 1024);
+
+  // Worker の直アップロード (/api/books/7/epub) には本文を送らない。
+  assert.equal(urls.includes("/api/books/7/epub"), false, urls.join("\n"));
+  assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/parts/1/sign`), true, urls.join("\n"));
+  assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/complete`), true, urls.join("\n"));
+
+  const finalize = calls.find((call) => call.url === "/api/books/7/epub/finalize");
+  assert.ok(finalize, urls.join("\n"));
+  const finalizeBody = JSON.parse(String(finalize.body));
+  assert.equal(finalizeBody.session_id, sessionId);
+  assert.equal(finalizeBody.name, "big-book.epub");
+});
+
+test("an EPUB under the direct limit keeps the single Worker upload", async () => {
+  const calls = recordedFetch([
+    { prefix: "/api/health", body: { runtime: "cloudflare-worker" } },
+    { prefix: "/api/books/7/epub", body: { file_hash: "x" } },
+  ]);
+  const response = await uploadFileWithChunks(
+    "/api/books/7/epub",
+    "file",
+    fakeFile(20 * 1024 * 1024, "book.epub", "application/epub+zip"),
+    "epub",
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    calls.filter((call) => call.method === "POST").map((call) => call.url),
+    ["/api/books/7/epub"],
+  );
+  assert.equal(calls.some((call) => call.url.includes("/multipart")), false);
+});
+
 // Two uploads started back to back used to mix up their parts and re-render the
 // track list out of order. Each upload must keep its own session and never post
 // another session's part number.
@@ -211,5 +298,35 @@ test("two concurrent uploads keep their own sessions and parts", async () => {
   assert.deepEqual(
     [firstSession, secondSession].sort(),
     [sessions.a, sessions.b].sort(),
+  );
+});
+
+// 新しいクライアントが presigned ルートを持たない旧 Worker に当たった場合でも、
+// 直アップロード上限を超える EPUB は本文を送らずに 413 で止める。このテストは
+// 30 秒のクールダウンを立てるので、必ず最後に実行する。
+test("an EPUB over the direct limit fails closed when the multipart route is missing", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = String(url);
+    calls.push({ url: target, method: init.method ?? "GET" });
+    if (target === "/api/health") {
+      return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
+    }
+    if (target === "/api/uploads/multipart") {
+      return new Response("not found", { status: 404 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const response = await uploadFileWithChunks(
+    "/api/books/7/epub",
+    "file",
+    fakeFile(120 * 1024 * 1024, "big-book.epub", "application/epub+zip"),
+    "epub",
+  );
+  assert.equal(response.status, 413);
+  assert.deepEqual(
+    calls.filter((call) => call.method === "POST").map((call) => call.url),
+    ["/api/uploads/multipart"],
   );
 });

@@ -557,8 +557,9 @@ async function describeUploadError(res, label) {
         const maxBytes = Number(errorBody.max_bytes);
         const maxMb = Number.isFinite(maxBytes) ? Math.round(maxBytes / 1024 / 1024) : null;
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
-            `オブジェクトストレージへ直接アップロードする経路 (presigned multipart) を` +
-            `開始できませんでした。上限${maxMb ? ` (${maxMb}MB)` : ""}とバケットの設定を確認してください。`;
+            `Worker を経由する直アップロードの上限${maxMb ? ` (${maxMb}MB)` : ""}を超えています。` +
+            `このサイズのファイルは presigned multipart (ブラウザ→オブジェクトストレージ直送) ` +
+            `で送る必要があります。Worker が古い場合は最新版をデプロイしてください。`;
     }
     if (res.status === 413 && !serverMsg) {
         return `${label}のアップロードに失敗しました (413 Payload Too Large): ` +
@@ -600,7 +601,7 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
             return;
         }
         try {
-            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file);
+            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file, "epub");
             if (!res.ok) {
                 console.error("File upload failed:", res.status);
                 alert(await describeUploadError(res, "ファイル"));

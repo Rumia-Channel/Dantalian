@@ -8,6 +8,9 @@ const {
   uploadTargetObjectKind,
   uploadTargetAudioSessionUrl,
   uploadTargetAudioFinalizeUrl,
+  uploadTargetIsEpubUpload,
+  uploadTargetPresignedSessionUrl,
+  uploadTargetPresignedFinalizeUrl,
 } = require("../../static/js/upload-target.js");
 
 // v0.1.9 shipped a regression where the session URL `…/audio/multipart` was
@@ -64,5 +67,35 @@ test("the generic EPUB multipart route is left untouched", () => {
   assert.equal(
     uploadTargetAudioSessionUrl("/api/uploads/multipart"),
     "/api/uploads/multipart",
+  );
+});
+
+// 大容量 EPUB は音声と同じ presigned multipart を使うが、セッションはトラック
+// 配下ではなく汎用の `/api/uploads/multipart`、finalize は書籍の EPUB URL 直下。
+test("large EPUB uploads use the generic session and the book finalize URL", () => {
+  assert.equal(uploadTargetIsEpubUpload("/api/books/7/epub"), true);
+  assert.equal(uploadTargetIsEpubUpload("https://dantalian.example/api/books/7/epub"), true);
+  assert.equal(uploadTargetIsEpubUpload("/api/books/7/epub?x=1"), true);
+  assert.equal(uploadTargetIsEpubUpload("/api/books/7/cover"), false);
+  assert.equal(uploadTargetIsEpubUpload("/api/cds/11/tracks/191/audio"), false);
+  assert.equal(uploadTargetIsEpubUpload(undefined), false);
+
+  assert.equal(
+    uploadTargetPresignedSessionUrl("/api/books/7/epub"),
+    "/api/uploads/multipart",
+  );
+  assert.equal(
+    uploadTargetPresignedFinalizeUrl("/api/books/7/epub"),
+    "/api/books/7/epub/finalize",
+  );
+
+  // 音声の派生 URL は従来のまま。
+  assert.equal(
+    uploadTargetPresignedSessionUrl("/api/books/2/tracks/9/audio"),
+    "/api/books/2/tracks/9/audio/multipart",
+  );
+  assert.equal(
+    uploadTargetPresignedFinalizeUrl("/api/books/2/tracks/9/audio"),
+    "/api/books/2/tracks/9/audio/finalize",
   );
 });

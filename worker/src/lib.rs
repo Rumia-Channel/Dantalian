@@ -6,6 +6,7 @@ mod auth;
 mod author_api;
 mod author_repository;
 mod book_api;
+mod book_epub_api;
 mod borrower_api;
 mod borrower_repository;
 mod cd_api;
@@ -97,6 +98,9 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .delete_async("/api/books/:id/cover", object_api::delete_book_cover)
         .post_async("/api/books/:id/epub", object_api::book_epub)
         .delete_async("/api/books/:id/epub", object_api::delete_book_epub)
+        // Large EPUBs skip the Worker body limit: the browser uploads parts
+        // straight to Wasabi, then this binds the completed object to the book.
+        .post_async("/api/books/:id/epub/finalize", book_epub_api::finalize)
         .get_async("/api/audio/stream/:file_hash", object_api::stream)
         .get_async("/api/audio/playability/:file_hash", audio_api::playability)
         .get_async("/audio/:file_hash", object_api::stream)
