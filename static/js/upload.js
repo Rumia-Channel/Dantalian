@@ -1,8 +1,9 @@
 const UPLOAD_CHUNK_SIZE = 90 * 1024 * 1024;
-// Worker 経由の直列アップロードは Cloudflare のリクエスト/メモリ上限に当たるため、
-// これを超えるメディアは presigned multipart でブラウザから Wasabi へ直接送る。
+// 音声はこのサイズ以上で presigned multipart (ブラウザ → Wasabi 直送) に倒す。
+// Cloudflare 経由の単発アップロードはプラン上限 (Free/Pro 100MB) に当たるため。
 const PRESIGNED_MULTIPART_MIN_BYTES = 8 * 1024 * 1024;
-// ネイティブ側のチャンク上限。これ以上の本文はどちらの経路でも受け取れない。
+// Worker の直アップロード上限。EPUB はこれを超えた場合だけ presigned multipart
+// (汎用セッション) を使い、カバーなどそれ以外は従来どおり直アップロードのみ。
 const WORKER_DIRECT_UPLOAD_MAX_BYTES = 95 * 1024 * 1024;
 const MULTIPART_PART_CONCURRENCY = 3;
 
@@ -105,19 +106,19 @@ function audioFinalizeUrl(uploadUrl) {
     return uploadTargetAudioFinalizeUrl(uploadUrl);
 }
 
-// クライアントと Worker のデプロイ時期がずれて `…/audio/multipart` が未実装の
-// 場合に、その間だけ従来の直アップロードへ戻す。恒久的に落とすと、一時的な
-// 404 で以降の大容量アップロードが全部 Worker を通ってしまうため、
+// クライアントと Worker のデプロイ時期がずれて presigned multipart ルートが
+// 未実装の場合に、その間だけ従来の直アップロードへ戻す。恒久的に落とすと、
+// 一時的な 404 で以降の大容量アップロードが全部 Worker を通ってしまうため、
 // クールダウン付きで扱う。
-const AUDIO_MULTIPART_RETRY_AFTER_MS = 30_000;
-let audioMultipartUnavailableUntil = 0;
+const PRESIGNED_MULTIPART_RETRY_AFTER_MS = 30_000;
+let presignedMultipartUnavailableUntil = 0;
 
-function audioMultipartRouteUnavailable() {
-    return Date.now() < audioMultipartUnavailableUntil;
+function presignedMultipartRouteUnavailable() {
+    return Date.now() < presignedMultipartUnavailableUntil;
 }
 
-function markAudioMultipartUnavailable() {
-    audioMultipartUnavailableUntil = Date.now() + AUDIO_MULTIPART_RETRY_AFTER_MS;
+function markPresignedMultipartUnavailable() {
+    presignedMultipartUnavailableUntil = Date.now() + PRESIGNED_MULTIPART_RETRY_AFTER_MS;
 }
 
 async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
@@ -152,8 +153,9 @@ async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
     return { sessionId, partSize };
 }
 
-// 中断時の後始末。Worker 側のセッション削除ルートは未実装なので、失敗しても
-// 握りつぶす (送信済みパートは Wasabi 側のライフサイクルで失効する)。
+// 中断時の後始末。EPUB の汎用セッションは削除ルートで中断できるが、音声の
+// セッション削除ルートは未実装なので 404 は握りつぶす (送信済みパートは
+// Wasabi 側のライフサイクルで失効する)。
 async function abortPresignedMultipartUpload(upload) {
     try {
         await fetch(`${upload.sessionUrl}/${upload.sessionId}`, { method: "DELETE" });
@@ -216,18 +218,17 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
     return { part_number: partNumber, etag };
 }
 
-// 音声の大容量アップロード: init → パートを並列 PUT → complete → finalize。
+// 大容量アップロード: init → パートを並列 PUT → complete → finalize。
+// 音声はセッションをトラックへ、EPUB はセッションを書籍へ結び付ける。
 // Worker は本文を受け取らず、セッション管理と検証だけを行う。
 // マルチパート経路が未実装の Worker に当たった場合は null を返し、呼び出し側が
 // 従来の直アップロードへ戻せるようにする。
-//
-// `uploadUrl` はトラックの音声 URL (`…/audio`)。セッション系は `…/audio/multipart`
-// 配下、finalize は `…/audio/finalize` と、**基底が異なる**ので混同しないこと。
 async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
-    const sessionUrl = audioMultipartSessionUrl(uploadUrl);
+    const sessionUrl = uploadTargetPresignedSessionUrl(uploadUrl);
+    const finalizeUrl = uploadTargetPresignedFinalizeUrl(uploadUrl);
     const started = await startPresignedMultipartUpload(sessionUrl, file, uploadKind);
     if (started.routeUnavailable) {
-        markAudioMultipartUnavailable();
+        markPresignedMultipartUnavailable();
         console.warn(
             "presigned multipart endpoint is unavailable on this Worker; " +
             "falling back to the Worker direct upload path",
@@ -261,7 +262,7 @@ async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
             await logUploadFailure(`${sessionUrl}/${upload.sessionId}/complete`, file, completeResponse.clone());
             return completeResponse;
         }
-        return await fetch(audioFinalizeUrl(uploadUrl), {
+        return await fetch(finalizeUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: upload.sessionId, name: file.name }),
@@ -277,32 +278,27 @@ async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
 // 拡張子判定をファイル基準で行える。省略時は URL から推定する。
 async function uploadFileWithChunks(url, fieldName, file, uploadKind) {
     const kind = uploadKind || (isAudioUploadTarget(url) ? "audio" : "epub");
-    // 音声だけが presigned multipart の受け入れ先 (finalize) を持つ。
-    // カバーや EPUB は Worker の直アップロードのみで、完了後の結び付けが
-    // まだ無い。
-    const presignedEligible = kind === "audio";
+    // presigned multipart は音声 (8MiB 以上) と、Worker の直アップロード上限を
+    // 超える EPUB が使う。カバーは常に直アップロードのみ。
+    const presignedEligible = kind === "audio" || uploadTargetIsEpubUpload(url);
     // Worker routes accept a single multipart request up to their direct-upload
     // limit. The native chunk protocol is a different contract and must not be
     // sent to the Worker endpoint as a fake file upload.
     if (await isWorkerRuntime()) {
-        if (
-            presignedEligible &&
-            file.size >= PRESIGNED_MULTIPART_MIN_BYTES &&
-            !audioMultipartRouteUnavailable()
-        ) {
-            // 大きい音声は Cloudflare を通さず Wasabi へ直接送る。
-            // 基底はトラックの音声 URL を渡す (セッション URL ではない)。
+        // 音声は 8MiB から、EPUB は直アップロードでは送れないサイズだけ
+        // presigned multipart に切り替える。
+        const requiresPresigned = presignedEligible
+            && (kind === "audio"
+                ? file.size >= PRESIGNED_MULTIPART_MIN_BYTES
+                : file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES);
+        if (requiresPresigned && !presignedMultipartRouteUnavailable()) {
+            // Cloudflare を通さず Wasabi へ直接送る。基底はアップロード先 URL。
             const response = await uploadWithPresignedMultipart(url, file, kind);
             if (response) return response;
         }
-        if (!presignedEligible && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
-            const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
-            await logUploadFailure(url, file, response.clone());
-            return response;
-        }
-        // 上限超過の音声は multipart 経路が担当する。ここに来るのは経路が
-        // 使えない (旧 Worker / フォールバック) 場合なので、送信前に落とす。
-        if (presignedEligible && file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
+        // presigned 経路が使えない旧 Worker では、直アップロード上限を超えた
+        // ファイルを送信前に落とす。
+        if (file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
             const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
             await logUploadFailure(url, file, response.clone());
             return response;

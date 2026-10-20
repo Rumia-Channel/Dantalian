@@ -38,6 +38,29 @@ function uploadTargetAudioFinalizeUrl(uploadUrl) {
     return `${uploadTargetStripSessionSuffix(uploadUrl)}/finalize`;
 }
 
+// 大容量アップロードの presigned multipart セッション URL。
+// 音声はトラック URL 配下の専用セッション (`…/audio/multipart`) を使うが、
+// EPUB はアップロード先 URL に対応するセッションを持たないため、汎用の
+// `/api/uploads/multipart` を使う (Worker 側の object_kind は epub)。
+const UPLOAD_GENERIC_MULTIPART_PATH = "/api/uploads/multipart";
+// EPUB (書籍ファイル) のアップロード先か。カバー (`…/cover`) や音声は含めない。
+const UPLOAD_EPUB_PATH_PATTERN = /\/api\/books\/\d+\/epub(?:\?|$)/;
+
+function uploadTargetIsEpubUpload(uploadUrl) {
+    return typeof uploadUrl === "string" && UPLOAD_EPUB_PATH_PATTERN.test(uploadUrl);
+}
+
+function uploadTargetPresignedSessionUrl(uploadUrl) {
+    if (uploadTargetIsAudio(uploadUrl)) return uploadTargetAudioSessionUrl(uploadUrl);
+    return UPLOAD_GENERIC_MULTIPART_PATH;
+}
+
+// finalize は音声も EPUB もアップロード先 URL の直下 (`…/finalize`) に置く。
+function uploadTargetPresignedFinalizeUrl(uploadUrl) {
+    if (uploadTargetIsAudio(uploadUrl)) return uploadTargetAudioFinalizeUrl(uploadUrl);
+    return `${uploadTargetStripSessionSuffix(uploadUrl)}/finalize`;
+}
+
 // ブラウザが返す MIME は環境依存で、.m4a が `video/mp4` や空文字になることが
 // ある。Worker は audio/* か application/octet-stream しか受け付けないため、
 // 拡張子から既知の MIME を引き直す。未知の拡張子は申告値に任せる。
@@ -85,6 +108,9 @@ if (typeof module !== "undefined" && module.exports) {
         uploadTargetObjectKind,
         uploadTargetAudioSessionUrl,
         uploadTargetAudioFinalizeUrl,
+        uploadTargetIsEpubUpload,
+        uploadTargetPresignedSessionUrl,
+        uploadTargetPresignedFinalizeUrl,
         uploadTargetContentType,
         uploadTargetPickUploadKind,
     };
