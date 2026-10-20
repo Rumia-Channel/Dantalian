@@ -52,7 +52,7 @@ node scripts/import_bibi.mjs --verify
 
 確認環境は Bun 1.4.3 / Node.js 24.22.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
-固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
+固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
 [`scripts/import_bibi.mjs`](../scripts/import_bibi.mjs) が検証済みの `__dist/bibi/` 全体を `static/vendor/bibi/` に配置する。SHA・クリーンな checkout・lock・toolchain・必須ファイル・一覧・サイズ・digest を確認し、ステージングの検証に成功してから既存配布物と入れ替える。検証失敗時は既存配布物を変更しない。`--verify` は配置済み成果物を再検証し、`--destination DIRECTORY` で Worker の複製先等も確認できる。生成ディレクトリは Git 管理しない。配下の相対関係を維持し `/vendor/bibi/` で配信する。デモ・サンプル本は不要。Jo だけ、reader JS だけを抜き出す配布は不可。
 
@@ -326,6 +326,11 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - `scripts/bibi/distribution.test.mjs` は 6 件成功。固定 SHA・lock/license digest を更新し、Bibi 2.2.2 を取り込み、配置済み 17 reader assets を再検証した。
 - Dantalian 0.1.23 の Native テスト 110 件、Native build、Worker assets 再生成、release Wasm build が成功した。
 - 実 Firefox で取り込み済み `dantalian.html` を開き、cover → frontispiece → landscape → paired portrait の表示を確認した。読書ナビ API は一時の no-neighbor JSON fixture を使用し、Native / Worker の API 接続はこの画面検証の対象外。
+
+### Dantalian 0.1.24 / Bibi 2.2.2 checksum 修正の検証
+
+- v0.1.23 の CI は `bibi` job の取り込みで `Bibi source lockfile mismatch.` となり、native / worker と各デプロイが実行されなかった。原因は `bibi.lock.json` の lock/license SHA-256 を CRLF checkout のファイルから採っていたこと。
+- Git の正規 LF blob から `lockSha256` と `licenseSha256` を取り直した（license は 2.2.1 と同一）。`core.autocrlf=false` の clean checkout `53d1bdf8610919fec0fc8d13cecfa49c5086cc35` を Node 24.22.0 / Bun 1.4.3、`SOURCE_DATE_EPOCH=1792337145` で frozen install・ビルド・`verify:dist`。manifest の `lockSha256` が `fe26bfb2…` と一致し、取り込み・`--verify`（17 reader assets）・distribution tests 6 件が成功した。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 
