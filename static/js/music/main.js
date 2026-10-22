@@ -78,7 +78,7 @@ function renderAlbumCard(cd) {
         ? '<span class="music-album-badge music-album-badge--audiobook">AB</span>'
         : '<span class="music-album-badge">CD</span>';
     const cover = cd.cover_url
-        ? `<img class="music-album-cover" src="/images/${cd.cover_url}" alt="${escapeAttr(cd.title)}" loading="lazy">`
+        ? `<img class="music-album-cover" src="/images/${escapeAttr(cd.cover_url)}" alt="${escapeAttr(cd.title)}" loading="lazy">`
         : `<div class="music-album-coverfallback"><span class="material-icons">album</span></div>`;
     const trackCount = (cd.tracks || []).filter((t) => t.file_hash).length;
     const artistName = getCdArtistName(cd);

@@ -92,7 +92,7 @@
         authDialog.innerHTML =
             '<form class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-dialog-title">' +
                 '<h2 id="auth-dialog-title">Dantalian APIログイン</h2>' +
-                '<p id="auth-dialog-message">staging Worker APIを利用するにはAPIトークンが必要です。</p>' +
+                '<p id="auth-dialog-message">APIを利用するにはAPIトークンが必要です。</p>' +
                 '<label for="auth-dialog-token">APIトークン</label>' +
                 '<input id="auth-dialog-token" type="password" autocomplete="current-password" required>' +
                 '<div class="auth-dialog-actions">' +
@@ -209,7 +209,7 @@
         authButton.addEventListener("click", function () {
             showAuthDialog(getAuthToken()
                 ? "現在の認証情報を変更できます。"
-                : "staging Worker APIを利用するにはAPIトークンが必要です。");
+                : "APIを利用するにはAPIトークンが必要です。");
         });
     }
     syncAuthCookie();

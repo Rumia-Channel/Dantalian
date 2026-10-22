@@ -73,7 +73,7 @@ async function renderBookEdit(id) {
             <div class="edit-cover-wrap">
                 <div class="edit-cover" id="edit-cover-display">
                     ${book.cover_url
-                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="">`
+                        ? `<img class="book-cover" src="/images/${escapeAttr(book.cover_url)}" alt="">`
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">
@@ -714,7 +714,7 @@ async function renderCdEdit(cdId) {
             <div class="edit-cover-wrap">
                 <div class="edit-cover" id="edit-cover-display">
                     ${cd.cover_url
-                        ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="">`
+                        ? `<img class="book-cover" src="/images/${escapeAttr(cd.cover_url)}" alt="">`
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">

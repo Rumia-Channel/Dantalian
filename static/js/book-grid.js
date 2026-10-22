@@ -346,7 +346,7 @@ function renderBookCard(item) {
     ${cardOpening}
         ${
             item.cover_url
-                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
+                ? `<img class="book-cover" src="/images/${escapeAttr(item.cover_url)}" alt="${escapeAttr(item.title)}" loading="lazy">`
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
         ${mediaBadge}
@@ -408,7 +408,7 @@ function renderCdCard(item) {
             const audioUrl = t.file_hash ? `/audio/${encodeURIComponent(t.file_hash)}` : "";
             const audioActions = t.file_hash ? `
                     <span class="cd-card-track-actions">
-                        <button type="button" class="cd-card-track-action" onclick="event.stopPropagation();playPreviewAudio('${audioUrl}','${escapeJs(t.title)}',this)" aria-label="${escapeAttr(t.title)}を再生">
+                        <button type="button" class="cd-card-track-action" onclick="event.stopPropagation();playPreviewAudio('${audioUrl}',${jsStringAttr(t.title)},this)" aria-label="${escapeAttr(t.title)}を再生">
                             <span class="material-icons" aria-hidden="true">play_arrow</span>
                         </button>
                         <a class="cd-card-track-action" href="${audioUrl}" download="${escapeAttr(t.file_name || fallbackFileName)}" onclick="event.stopPropagation()" aria-label="${escapeAttr(t.title)}をダウンロード">
@@ -439,7 +439,7 @@ function renderCdCard(item) {
         subParts.push(item.authors.map((a) => escapeHtml(a.name)).join(", "));
     }
     if (item.label || item.catalog_number) {
-        subParts.push([item.label, item.catalog_number].filter(Boolean).join(" · "));
+        subParts.push(escapeHtml([item.label, item.catalog_number].filter(Boolean).join(" · ")));
     }
 
     const hasAudio = tracks.some((track) => track.file_hash);
@@ -459,7 +459,7 @@ function renderCdCard(item) {
     <div class="book-card cd-card-v" onclick="showCdDetail(${item.originalId})">
         ${
             item.cover_url
-                ? `<img class="book-cover" src="/images/${item.cover_url}" alt="${escapeAttr(item.title)}" loading="lazy">`
+                ? `<img class="book-cover" src="/images/${escapeAttr(item.cover_url)}" alt="${escapeAttr(item.title)}" loading="lazy">`
                 : '<div class="book-cover-placeholder">No Image</div>'
         }
         ${mediaBadge}
@@ -475,7 +475,7 @@ function renderCdCard(item) {
 function renderSeriesCard(series, books) {
     const coversHtml = books.slice(0, 8).map((b) =>
         b.cover_url
-            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+            ? `<img class="book-cover" src="/images/${escapeAttr(b.cover_url)}" alt="" loading="lazy">`
             : '<div class="book-cover-placeholder"></div>'
     ).join("");
 
@@ -493,7 +493,7 @@ function renderSeriesCard(series, books) {
 function renderGrandSeriesCard(gs, books) {
     const coversHtml = books.slice(0, 12).map((b) =>
         b.cover_url
-            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+            ? `<img class="book-cover" src="/images/${escapeAttr(b.cover_url)}" alt="" loading="lazy">`
             : '<div class="book-cover-placeholder"></div>'
     ).join("");
 
@@ -641,7 +641,7 @@ function renderItemsByAuthor(items) {
                     <span class="author-group-count">${books.length}件</span>
                 </button>`;
 
-        html += `<div class="author-group${isCollapsed ? " author-group--collapsed" : ""}" data-author-group="${escapeHtml(groupKey)}">${headerHtml}<div class="author-group-grid">`;
+        html += `<div class="author-group${isCollapsed ? " author-group--collapsed" : ""}" data-author-group="${escapeAttr(groupKey)}">${headerHtml}<div class="author-group-grid">`;
         html += buildGridHtml(books);
         html += `</div></div>`;
     }
