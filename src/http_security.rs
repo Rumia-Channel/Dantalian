@@ -1,14 +1,30 @@
-//! 全レスポンスに付与するセキュリティヘッダー。
-//!
-//! Content-Security-Policy はインラインイベントハンドラと Bibi リーダーの
-//! 動作確認が必要なためここでは付与しない（README の残作業を参照）。
+//! 全レスポンスに付与するセキュリティヘッダーと、バージョン付き静的
+//! アセットの長期キャッシュ。
 
 use axum::{
     extract::Request,
-    http::{HeaderName, HeaderValue},
+    http::{HeaderName, HeaderValue, header},
     middleware::Next,
     response::Response,
 };
+
+/// `?v=<ASSET_VERSION>` で参照される静的アセットは内容が変わると URL も
+/// 変わるため、長期間キャッシュしてよい。Bibi の HTML エントリ点は
+/// バージョン付き URLではないので対象外にする。
+fn is_versioned_asset(path: &str) -> bool {
+    const DIRECT_ASSET_PREFIXES: [&str; 4] = ["/js/", "/css/", "/fonts/", "/wasm/"];
+    const BIBI_ASSET_PREFIXES: [&str; 5] = [
+        "/vendor/bibi/and/",
+        "/vendor/bibi/extensions/",
+        "/vendor/bibi/presets/",
+        "/vendor/bibi/resources/",
+        "/vendor/bibi/wardrobe/",
+    ];
+    DIRECT_ASSET_PREFIXES
+        .iter()
+        .chain(BIBI_ASSET_PREFIXES.iter())
+        .any(|prefix| path.starts_with(prefix))
+}
 
 const SECURITY_HEADERS: [(&str, &str); 5] = [
     ("x-content-type-options", "nosniff"),
@@ -41,12 +57,19 @@ const SECURITY_HEADERS: [(&str, &str); 5] = [
 ];
 
 pub async fn security_headers(request: Request, next: Next) -> Response {
+    let versioned_asset = is_versioned_asset(request.uri().path());
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     for (name, value) in SECURITY_HEADERS {
         headers.insert(
             HeaderName::from_static(name),
             HeaderValue::from_static(value),
+        );
+    }
+    if versioned_asset {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
         );
     }
     response

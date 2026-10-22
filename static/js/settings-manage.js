@@ -146,8 +146,13 @@ async function renderSettingsForm() {
     const container = document.getElementById("settings-form");
     if (!container) return;
     let settings;
+    let runtime;
     try {
-        settings = await loadSettings();
+        // Settings and runtime detection are independent; run them together.
+        [settings, runtime] = await Promise.all([
+            loadSettings(),
+            detectWorkerSettingsRuntime(),
+        ]);
     } catch (error) {
         container.innerHTML = `
             <div class="load-error" role="alert">
@@ -156,7 +161,7 @@ async function renderSettingsForm() {
             </div>`;
         return;
     }
-    workerSettingsRuntime = await detectWorkerSettingsRuntime();
+    workerSettingsRuntime = runtime;
     const workerDisabledAttr = workerSettingsRuntime ? ' disabled aria-disabled="true"' : "";
     const workerSectionClass = workerSettingsRuntime
         ? " settings-form-section-disabled"
