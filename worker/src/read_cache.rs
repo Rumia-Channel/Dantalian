@@ -52,6 +52,12 @@ pub(crate) async fn lookup(plan: &CachePlan) -> Option<Response> {
     let cache = Cache::default();
     match cache.get(plan.url.as_str(), true).await {
         Ok(Some(mut hit)) => {
+            // The cached copy carries `max-age` so the Cache API keeps it, but
+            // the browser must not cache API JSON: a list rendered from a stale
+            // browser cache makes deletes look like no-ops (and the next click
+            // then gets a 404). Writes already force a primary read via the
+            // dantalian_d1_primary cookie, so the server cache is enough.
+            let _ = hit.headers_mut().set("cache-control", "no-store");
             let _ = hit.headers_mut().set(CACHE_STATUS_HEADER, "hit");
             Some(hit)
         }
@@ -62,7 +68,8 @@ pub(crate) async fn lookup(plan: &CachePlan) -> Option<Response> {
 /// Store a successful JSON response in the colo cache.
 ///
 /// The Cache API requires an explicit `max-age`/`s-maxage`; `Response::cloned`
-/// keeps the original response intact for the client.
+/// keeps the original response intact for the client. The client response is
+/// marked `no-store` so browser caches never serve stale API data.
 pub(crate) async fn store(plan: &CachePlan, response: &mut Response) {
     if response.status_code() != 200 {
         return;
@@ -76,4 +83,6 @@ pub(crate) async fn store(plan: &CachePlan, response: &mut Response) {
     }
     let _ = cached.headers_mut().set(CACHE_STATUS_HEADER, "miss");
     let _ = Cache::default().put(plan.url.as_str(), cached).await;
+    let _ = response.headers_mut().set("cache-control", "no-store");
+    let _ = response.headers_mut().set(CACHE_STATUS_HEADER, "miss");
 }

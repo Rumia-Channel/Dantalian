@@ -320,12 +320,13 @@ fn encode_aac_decoded<W: Write>(decoded: DecodedAudio, output: W) -> Result<W, S
     let profile = aac_profile_for(&decoded);
     let pcm = resample_audio(decoded, profile);
     let channels = usize::from(profile.channels);
+    let channel_mode = channel_mode_for(profile.channels)?;
     let mut params = PureRustEncoderParameters::new(channels);
     params
         .set_parameter(EncoderParameter::AudioObjectType, 2)
         .map_err(|error| format!("AAC encoder parameter error: {error:?}"))?;
     params
-        .set_parameter(EncoderParameter::ChannelMode, profile.channels.into())
+        .set_parameter(EncoderParameter::ChannelMode, channel_mode)
         .map_err(|error| format!("AAC encoder parameter error: {error:?}"))?;
     params
         .set_parameter(EncoderParameter::SampleRate, profile.target_rate)
