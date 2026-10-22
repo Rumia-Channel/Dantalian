@@ -1,15 +1,19 @@
+use futures_util::StreamExt;
 use futures_util::future::{Either, select};
 use futures_util::pin_mut;
 use quick_xml::{Reader, events::Event};
 use std::time::Duration;
 use url::Url;
-use worker::{AbortController, Delay, Fetch, Result};
+use worker::{AbortController, Delay, Fetch, Response, Result};
 
 pub(crate) mod ndl;
 mod ndl_sru;
 mod open_library;
 
 const EXTERNAL_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// External response bodies are read with this cap. The send timeout only
+/// covers the headers, so the body read itself must stay bounded as well.
+pub(crate) const MAX_EXTERNAL_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default)]
 pub struct NdlAuthor {
@@ -76,6 +80,71 @@ pub(crate) async fn fetch_with_timeout(fetch: Fetch, label: &str) -> Result<work
     }
 }
 
+/// Read an external response body as text with a hard size cap.
+pub(crate) async fn read_text_limited(response: Response, label: &str) -> Result<String> {
+    let bytes = read_bytes_limited(response, label, MAX_EXTERNAL_RESPONSE_BYTES).await?;
+    String::from_utf8(bytes).map_err(|error| {
+        worker::Error::RustError(format!("{label} response was not valid UTF-8: {error}"))
+    })
+}
+
+/// Read an external response body as bytes, failing when it exceeds `limit`.
+pub(crate) async fn read_bytes_limited(
+    response: Response,
+    label: &str,
+    limit: usize,
+) -> Result<Vec<u8>> {
+    read_bytes_capped(response, limit)
+        .await?
+        .ok_or_else(|| response_too_large(label, limit))
+}
+
+/// Read an external response body incrementally so a hostile or oversized
+/// response cannot buffer without bound in the Worker isolate. A declared
+/// content length above the cap is rejected before any body is read. Returns
+/// `Ok(None)` when the body exceeds `limit`.
+pub(crate) async fn read_bytes_capped(
+    mut response: Response,
+    limit: usize,
+) -> Result<Option<Vec<u8>>> {
+    let declared_length = response
+        .headers()
+        .get("content-length")?
+        .and_then(|value| value.trim().parse::<u64>().ok());
+    if declared_length.is_some_and(|length| length > limit as u64) {
+        return Ok(None);
+    }
+    match response.stream() {
+        Ok(stream) => {
+            pin_mut!(stream);
+            let mut body = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                if body.len() + chunk.len() > limit {
+                    return Ok(None);
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(Some(body))
+        }
+        // In-process responses (for example Durable Object stub replies) may
+        // already be buffered, so the cap is enforced after the read instead.
+        Err(_) => {
+            let body = response.bytes().await?;
+            if body.len() > limit {
+                return Ok(None);
+            }
+            Ok(Some(body))
+        }
+    }
+}
+
+fn response_too_large(label: &str, limit: usize) -> worker::Error {
+    worker::Error::RustError(format!(
+        "{label} response body exceeded the {limit} byte limit"
+    ))
+}
+
 pub(crate) async fn lookup_isbn(
     env: &worker::Env,
     isbn: &str,
@@ -92,14 +161,11 @@ pub(crate) async fn lookup_isbn(
 pub async fn lookup_isdn(isdn: &str) -> Result<Option<NdlBook>> {
     let url = Url::parse(&format!("https://isdn.jp/xml/{isdn}"))
         .map_err(|error| worker::Error::RustError(error.to_string()))?;
-    let mut response = fetch_with_timeout(Fetch::Url(url), "ISDN").await?;
+    let response = fetch_with_timeout(Fetch::Url(url), "ISDN").await?;
     if !response.status_code().to_string().starts_with('2') {
         return Ok(None);
     }
-    let xml = response
-        .text()
-        .await
-        .map_err(|error| worker::Error::RustError(format!("ISDN response read failed: {error}")))?;
+    let xml = read_text_limited(response, "ISDN").await?;
     parse_isdn(&xml).map_err(|error| worker::Error::RustError(error.to_string()))
 }
 

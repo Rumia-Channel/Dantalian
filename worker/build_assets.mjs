@@ -60,16 +60,34 @@ let previousAssetVersion = "";
 try {
     previousAssetVersion = await readFile(assetVersionPath, "utf8");
 } catch {}
-if (previousAssetVersion.trim() === assetVersion && await readFile(join(outputDir, "index.html"), "utf8").then(() => true).catch(() => false)) {
+if (previousAssetVersion.trim() === assetVersion && await readFile(join(outputDir, "index.html"), "utf8").then(() => true).catch(() => false) && await readFile(join(outputDir, "_headers"), "utf8").then(() => true).catch(() => false)) {
     console.log(`Worker assets unchanged: ${assetVersion}`);
     process.exit(0);
 }
+
+// Cloudflare Workers Static Assets の `_headers`。API 応答は Worker 側で
+// 設定するが、静的な UI/アセット応答にも基本ヘッダーを付与する。
+// CSP: ホスト UI のインラインイベントハンドラと Bibi (new Function / DOMPurify
+// 済み EPUB のインラインスタイル / blob フレーム / 同一 origin の Worker) を
+// 許可する。Worker の音声・画像・EPUB は presigned URL へ 302 リダイレクト
+// するため、リダイレクト先 (Wasabi の https origin) を connect/img/media で
+// 許可する必要がある（リダイレクト先も CSP の検査対象）。
+const securityHeaders = [
+    "/*",
+    "  X-Content-Type-Options: nosniff",
+    "  X-Frame-Options: SAMEORIGIN",
+    "  Referrer-Policy: same-origin",
+    "  Permissions-Policy: camera=(), microphone=(), geolocation=()",
+    "  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data: blob: https:; frame-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'",
+    "",
+].join("\n");
 
 await mkdir(outputDir, { recursive: true });
 await rm(join(outputDir, "vendor", "bibi"), { recursive: true, force: true });
 await cp(sourceDir, outputDir, { recursive: true });
 await cp(join(projectDir, "LICENSE"), join(outputDir, "LICENSE"));
 await cp(join(projectDir, "NOTICE"), join(outputDir, "NOTICE"));
+await writeFile(join(outputDir, "_headers"), securityHeaders);
 
 const generatedLicensePath = join(workerDir, ".worker-license.html");
 await rm(generatedLicensePath, { force: true });

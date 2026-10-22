@@ -15,6 +15,8 @@ use worker::{
     Response, Result, State, durable_object,
 };
 
+use crate::external_api::{MAX_EXTERNAL_RESPONSE_BYTES, read_bytes_limited, read_text_limited};
+
 const INTERVAL: Duration = Duration::from_secs(2);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -158,13 +160,13 @@ async fn fetch_complete(request: Request, label: &str) -> Result<Response> {
     let signal = controller.signal();
     let _abort = AbortOnDrop(Some(controller));
     let fetch = async {
-        let mut response = Fetch::Request(request).send_with_signal(&signal).await?;
+        let response = Fetch::Request(request).send_with_signal(&signal).await?;
         let status = response.status_code();
         let headers = Headers::new();
         if let Some(content_type) = response.headers().get("Content-Type")? {
             headers.set("Content-Type", &content_type)?;
         }
-        let bytes = response.bytes().await?;
+        let bytes = read_bytes_limited(response, label, MAX_EXTERNAL_RESPONSE_BYTES).await?;
         Ok(Response::from_bytes(bytes)?
             .with_status(status)
             .with_headers(headers))
@@ -191,7 +193,7 @@ pub(crate) async fn request(env: &Env, path: &str, body: String, label: &str) ->
     init.with_method(Method::Post)
         .with_headers(headers)
         .with_body(Some(body.into()));
-    let mut response = stub
+    let response = stub
         .fetch_with_request(Request::new_with_init(
             &format!("https://ndl.internal{path}"),
             &init,
@@ -203,5 +205,5 @@ pub(crate) async fn request(env: &Env, path: &str, body: String, label: &str) ->
             response.status_code(),
         )));
     }
-    response.text().await
+    read_text_limited(response, label).await
 }

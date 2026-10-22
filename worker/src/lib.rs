@@ -39,6 +39,15 @@ use worker::*;
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = req.path();
+    // Defense in depth: the processor token is scoped to the internal audio-job
+    // endpoints (plus the public health probe). Reject it everywhere else so a
+    // container credential can never act as a general API token.
+    if !path.starts_with("/api/internal/audio/jobs/")
+        && path != "/api/health"
+        && auth::presents_processor_token(&env, &req)?
+    {
+        return Response::error("Forbidden", 403);
+    }
     let auth_response = if path.starts_with("/api/internal/audio/jobs/") {
         auth::authorize_processor(&env, &req)?
     } else {

@@ -5,7 +5,7 @@ use std::time::Duration;
 use url::Url;
 use worker::{Delay, Fetch, Headers, Method, Request, RequestInit, Result};
 
-use crate::external_api::fetch_with_timeout;
+use crate::external_api::{fetch_with_timeout, read_text_limited};
 
 const MUSICBRAINZ_MIN_INTERVAL: Duration = Duration::from_millis(1_100);
 const MUSICBRAINZ_MAX_RETRIES: usize = 2;
@@ -272,16 +272,14 @@ async fn musicbrainz_search(query: &str, limit: usize) -> Result<Vec<MbRelease>>
         .append_pair("query", query)
         .append_pair("limit", &limit.clamp(1, 100).to_string())
         .append_pair("fmt", "json");
-    let mut response = fetch_musicbrainz(url, "MusicBrainz release search").await?;
+    let response = fetch_musicbrainz(url, "MusicBrainz release search").await?;
     let status = response.status_code();
     if !(200..300).contains(&status) {
         return Err(worker::Error::RustError(format!(
             "MusicBrainz search returned HTTP {status}"
         )));
     }
-    let json = response.text().await.map_err(|error| {
-        worker::Error::RustError(format!("MusicBrainz search response read failed: {error}"))
-    })?;
+    let json = read_text_limited(response, "MusicBrainz search").await?;
     serde_json::from_str::<MbSearchResponse>(&json)
         .map(|search| search.releases.unwrap_or_default())
         .map_err(|error| {
@@ -305,7 +303,7 @@ async fn musicbrainz_release(release_id: &str) -> Result<Option<MbRelease>> {
     url.query_pairs_mut()
         .append_pair("inc", "recordings+artist-credits+labels+media")
         .append_pair("fmt", "json");
-    let mut response = fetch_musicbrainz(url, "MusicBrainz release").await?;
+    let response = fetch_musicbrainz(url, "MusicBrainz release").await?;
     let status = response.status_code();
     if status == 404 {
         return Ok(None);
@@ -315,9 +313,7 @@ async fn musicbrainz_release(release_id: &str) -> Result<Option<MbRelease>> {
             "MusicBrainz release returned HTTP {status}"
         )));
     }
-    let json = response.text().await.map_err(|error| {
-        worker::Error::RustError(format!("MusicBrainz release response read failed: {error}"))
-    })?;
+    let json = read_text_limited(response, "MusicBrainz release").await?;
     serde_json::from_str(&json).map(Some).map_err(|error| {
         worker::Error::RustError(format!("MusicBrainz release JSON failed: {error}"))
     })
