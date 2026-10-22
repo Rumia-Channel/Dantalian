@@ -1,5 +1,6 @@
 mod storage;
 
+use crate::d1_read;
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use dantalian::application::error::AppError;
 use dantalian::domain::patch::deserialize_nullable;
@@ -115,8 +116,10 @@ async fn write_error(
     Err(error)
 }
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    Response::from_json(&storage::list(&ctx.d1("DB")?).await?)
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    Response::from_json(&storage::list(&db).await?)
 }
 
 pub async fn get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {

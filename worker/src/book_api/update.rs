@@ -1,4 +1,5 @@
 use super::{db_error, id_type, load, value_for};
+use crate::d1_read::ReadDb;
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use dantalian::application::error::AppError;
 use worker::{D1Database, D1PreparedStatement, D1Type, Request, Response, Result, RouteContext};
@@ -175,7 +176,7 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         Err(error) => return error_response(error),
     };
     let db = ctx.d1("DB")?;
-    if load(&db, raw).await?.is_none() {
+    if load(&ReadDb::Primary(&db), raw).await?.is_none() {
         return error_response(AppError::NotFound);
     }
     let mut body = match parse_json::<serde_json::Value>(&mut req).await {
@@ -222,7 +223,7 @@ pub async fn set_series(mut req: Request, ctx: RouteContext<()>) -> Result<Respo
         return error_response(error);
     }
     let db = ctx.d1("DB")?;
-    let current = match load(&db, raw).await? {
+    let current = match load(&ReadDb::Primary(&db), raw).await? {
         Some(book) => book,
         None => return error_response(AppError::NotFound),
     };

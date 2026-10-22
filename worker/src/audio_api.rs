@@ -125,15 +125,23 @@ pub async fn playability(req: Request, ctx: RouteContext<()>) -> Result<Response
         Err(error) => return error_response(error),
     };
 
-    let original = match inspect_audio_variant(&storage, &original_key).await {
+    // Probe the three variants concurrently; doing this sequentially added
+    // three round trips to Wasabi before playback could start.
+    let (original, opus, aac) = futures_util::future::join3(
+        inspect_audio_variant(&storage, &original_key),
+        inspect_audio_variant(&storage, &opus_key),
+        inspect_audio_variant(&storage, &aac_key),
+    )
+    .await;
+    let original = match original {
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
-    let opus = match inspect_audio_variant(&storage, &opus_key).await {
+    let opus = match opus {
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
-    let aac = match inspect_audio_variant(&storage, &aac_key).await {
+    let aac = match aac {
         Ok(value) => value,
         Err(error) => return error_response(error),
     };

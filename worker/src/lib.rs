@@ -12,6 +12,7 @@ mod borrower_repository;
 mod cd_api;
 mod copy_api;
 mod cover_api;
+mod d1_read;
 mod error;
 mod external_api;
 mod grand_series_api;
@@ -59,7 +60,8 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         return Ok(response);
     }
-    Router::new()
+    let method = req.method();
+    let mut response = Router::new()
         .get_async("/api/health", |_req, ctx| async move {
             Response::from_json(&serde_json::json!({
                 "ok": true,
@@ -269,7 +271,21 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             playlist_api::remove_track,
         )
         .run(req, env)
-        .await
+        .await?;
+    // After a successful write, prefer the primary database for a short window
+    // so a following GET observes the change even though reads normally use a
+    // D1 read replica (`d1_read::read_db`).
+    if matches!(
+        method,
+        Method::Post | Method::Put | Method::Delete | Method::Patch
+    ) && response.status_code() < 400
+    {
+        let _ = response.headers_mut().append(
+            "set-cookie",
+            "dantalian_d1_primary=1; Path=/; Max-Age=30; HttpOnly; SameSite=Strict",
+        );
+    }
+    Ok(response)
 }
 
 // The Worker has no local filesystem or SQLite backup API; D1 backups stay

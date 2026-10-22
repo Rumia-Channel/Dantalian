@@ -6,6 +6,7 @@ use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::{
     amazon_api,
+    d1_read::{self, ReadDb},
     error::{bad_request, error_response, parse_id, parse_json},
     external_api,
 };
@@ -111,42 +112,36 @@ fn id_type(id: i64, label: &str) -> std::result::Result<D1Type<'static>, AppErro
     Ok(D1Type::Integer(value))
 }
 
-async fn load(db: &worker::D1Database, raw: i64) -> Result<Option<BookRow>> {
+async fn load(db: &ReadDb<'_>, raw: i64) -> Result<Option<BookRow>> {
     let id = id_type(raw, "book id").map_err(|error| worker::Error::from(error.to_string()))?;
-    db.prepare(&format!("SELECT {BOOK_COLUMNS} FROM books WHERE id = ?"))
+    db.prepare(format!("SELECT {BOOK_COLUMNS} FROM books WHERE id = ?"))
         .bind_refs(&id)
         .map_err(db_error)?
         .first::<BookRow>(None)
         .await
         .map_err(db_error)
 }
-async fn output(db: &worker::D1Database, book: BookRow) -> Result<serde_json::Value> {
+async fn output(db: &ReadDb<'_>, book: BookRow) -> Result<serde_json::Value> {
     let id = id_type(book.id, "book id").map_err(|error| worker::Error::from(error.to_string()))?;
-    let authors = db
+    // Authors and copy counts are independent aggregates: fetch both in one
+    // round trip instead of three sequential D1 queries.
+    let row = db
         .prepare(
-            "SELECT a.id,a.ndl_id,a.name,a.transcription,ba.sort_order
-             FROM authors a
-             JOIN book_authors ba ON ba.author_id=a.id
-             WHERE ba.book_id=?
-             ORDER BY ba.sort_order,ba.author_id",
-        )
-        .bind_refs(&id)
-        .map_err(db_error)?
-        .all()
-        .await
-        .map_err(db_error)?
-        .results::<serde_json::Value>()
-        .map_err(db_error)?;
-    let counts = db
-        .prepare(
-            "SELECT COUNT(*) AS copies_count,
-                    COALESCE(SUM(CASE WHEN lh.id IS NOT NULL
-                                      AND lh.returned_date IS NULL
-                                      THEN 1 ELSE 0 END), 0) AS lent_count
-             FROM copies c
-             LEFT JOIN lending_history lh
-               ON lh.copy_id = c.id AND lh.returned_date IS NULL
-             WHERE c.book_id = ?",
+            "SELECT
+                (SELECT json_group_array(json_object(
+                            'id', a.id, 'ndl_id', a.ndl_id, 'name', a.name,
+                            'transcription', a.transcription,
+                            'sort_order', ba.sort_order))
+                 FROM authors a
+                 JOIN book_authors ba ON ba.author_id = a.id
+                 WHERE ba.book_id = ?1
+                 ORDER BY ba.sort_order, ba.author_id) AS authors_json,
+                (SELECT COUNT(*) FROM copies c WHERE c.book_id = ?1) AS copies_count,
+                (SELECT COUNT(*)
+                 FROM copies c
+                 JOIN lending_history lh
+                   ON lh.copy_id = c.id AND lh.returned_date IS NULL
+                 WHERE c.book_id = ?1) AS lent_count",
         )
         .bind_refs(&id)
         .map_err(db_error)?
@@ -154,21 +149,24 @@ async fn output(db: &worker::D1Database, book: BookRow) -> Result<serde_json::Va
         .await
         .map_err(db_error)?
         .unwrap_or_default();
+    let authors: Vec<serde_json::Value> = row
+        .get("authors_json")
+        .and_then(|value| value.as_str())
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_default();
     let mut value =
         serde_json::to_value(book).map_err(|error| worker::Error::from(error.to_string()))?;
     if let Some(object) = value.as_object_mut() {
         object.insert("authors".into(), serde_json::Value::Array(authors));
         object.insert(
             "copies_count".into(),
-            counts
-                .get("copies_count")
+            row.get("copies_count")
                 .cloned()
                 .unwrap_or_else(|| serde_json::Value::from(0)),
         );
         object.insert(
             "lent_count".into(),
-            counts
-                .get("lent_count")
+            row.get("lent_count")
                 .cloned()
                 .unwrap_or_else(|| serde_json::Value::from(0)),
         );
@@ -182,6 +180,7 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Err(response) => return Ok(response),
     };
     let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
     const SUMMARY_SELECT: &str = "SELECT b.id,b.isbn,b.isdn,b.jan,b.title,b.publisher,b.publish_date,b.cover_url,b.description,b.series_id,b.series_number,b.media_type,
         COUNT(DISTINCT c.id) AS copies_count,
         COUNT(DISTINCT CASE WHEN lh.id IS NOT NULL THEN c.id END) AS lent_count,
@@ -349,13 +348,15 @@ fn set_amazon_metadata(
     }
 }
 
-pub async fn get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let raw = match parse_id(&ctx, "id") {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
-    match load(&ctx.d1("DB")?, raw).await? {
-        Some(book) => Response::from_json(&output(&ctx.d1("DB")?, book).await?),
+    let db = ctx.d1("DB")?;
+    let read = d1_read::read_db(&req, &db)?;
+    match load(&read, raw).await? {
+        Some(book) => Response::from_json(&output(&read, book).await?),
         None => error_response(AppError::NotFound),
     }
 }
@@ -436,7 +437,7 @@ async fn register(
             .map_err(db_error)?;
         if let Some(book) = existing {
             return Response::from_json(&serde_json::json!({
-                "book": output(&db, book).await?,
+                "book": output(&ReadDb::Primary(&db), book).await?,
                 "source": "cache"
             }));
         }
@@ -602,11 +603,11 @@ async fn register(
         .await
         .map_err(db_error)?;
     }
-    let book = load(&db, id)
+    let book = load(&ReadDb::Primary(&db), id)
         .await?
         .ok_or_else(|| worker::Error::from("book insert returned no row"))?;
     Response::from_json(&serde_json::json!({
-        "book": output(&db, book).await?,
+        "book": output(&ReadDb::Primary(&db), book).await?,
         "source": source
     }))
     .map(|response| response.with_status(201))
