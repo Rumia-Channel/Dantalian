@@ -81,6 +81,7 @@ mod tests {
             uploads_dir: Arc::new(String::new()),
             discogs_token: String::new(),
             musicbrainz_contact: String::new(),
+            auth: crate::auth::AuthConfig::default(),
         };
         Router::new().nest("/api", api::routes()).with_state(state)
     }

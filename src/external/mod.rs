@@ -243,6 +243,41 @@ use reqwest::Client;
 use sha3::{Digest, Sha3_256};
 use tracing::debug;
 
+/// 外部メタデータ由来の表紙画像として受け入れる最大サイズ。
+const MAX_EXTERNAL_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
+/// 外部応答の本文を上限付きで読み込む。上流が巨大な応答を返しても
+/// メモリを上限以上に確保しない。
+async fn read_limited_body(
+    response: &mut reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    if let Some(length) = response.content_length()
+        && length > max_bytes as u64
+    {
+        return Err(format!(
+            "Image too large: declared {} bytes (max {} bytes)",
+            length, max_bytes
+        ));
+    }
+    let mut data = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("Image read failed: {}", e))?
+    {
+        let new_len = data.len().saturating_add(chunk.len());
+        if new_len > max_bytes {
+            return Err(format!(
+                "Image too large: exceeded {} byte limit",
+                max_bytes
+            ));
+        }
+        data.extend_from_slice(&chunk);
+    }
+    Ok(data)
+}
+
 pub(crate) async fn download_image(
     client: &Client,
     url: &str,
@@ -259,7 +294,7 @@ pub(crate) async fn download_image(
     for (k, v) in extra_headers {
         req = req.header(*k, *v);
     }
-    let response = req
+    let mut response = req
         .send()
         .await
         .map_err(|e| format!("Image download failed: {}", e))?;
@@ -283,10 +318,7 @@ pub(crate) async fn download_image(
         _ => "jpg",
     };
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Image read failed: {}", e))?;
+    let bytes = read_limited_body(&mut response, MAX_EXTERNAL_IMAGE_BYTES).await?;
 
     let hash = Sha3_256::digest(&bytes);
     let filename = format!(

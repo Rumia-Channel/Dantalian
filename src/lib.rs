@@ -15,6 +15,8 @@ pub mod audio_encoding;
 #[cfg(feature = "audio-preprocessor")]
 pub mod audio_preprocessor;
 #[cfg(feature = "native")]
+pub mod auth;
+#[cfg(feature = "native")]
 pub mod backup;
 #[cfg(feature = "native")]
 pub mod db;
@@ -23,6 +25,8 @@ mod db_models;
 pub mod domain;
 #[cfg(feature = "native")]
 mod external;
+#[cfg(feature = "native")]
+pub mod http_security;
 #[cfg(feature = "native")]
 pub mod media_sync;
 pub mod ports;
@@ -48,4 +52,5 @@ pub struct AppState {
     pub object_storage: Arc<adapters::native_object_storage::NativeObjectStorage>,
     pub discogs_token: String,
     pub musicbrainz_contact: String,
+    pub auth: auth::AuthConfig,
 }

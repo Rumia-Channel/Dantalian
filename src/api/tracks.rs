@@ -2,8 +2,9 @@ use super::track_access::{TrackParent, require_track};
 use crate::api::upload_chunks::{ChunkQuery, StoreResult};
 use axum::{
     Json,
-    extract::{Multipart, Path, Query, State},
+    extract::{Path, Query, State},
 };
+use axum_extra::extract::Multipart;
 use tokio::fs;
 
 pub async fn list_tracks(
@@ -86,30 +87,38 @@ pub async fn upload_track_audio(
         .validate()
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
+    let audio_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_AUDIO_MB,
+        crate::api::AUDIO_MAX_BYTES,
+    );
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?
     {
         let name = field.file_name().unwrap_or("unknown").to_string();
-        let data = field
-            .bytes()
+        let read_limit = if chunk_info.is_some() {
+            crate::api::upload_chunks::MAX_CHUNK_BYTES
+        } else {
+            audio_max
+        };
+        let data = crate::api::upload_chunks::read_field_limited(&mut field, read_limit)
             .await
-            .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-        let audio_max = crate::api::upload_limit_bytes(
-            &state,
-            crate::api::KEY_UPLOAD_AUDIO_MB,
-            crate::api::AUDIO_MAX_BYTES,
-        );
+            .map_err(|error| {
+                tracing::warn!(track_id, "Audio read failed: {}", error);
+                axum::http::StatusCode::BAD_REQUEST
+            })?;
         let (saved_name, _ext) = match chunk_info.as_ref() {
             Some(info) => match crate::api::upload_chunks::store_chunk(
                 state.uploads_dir.as_str(),
                 "audio",
                 info.clone(),
                 &data,
+                audio_max,
             )
             .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?
             {

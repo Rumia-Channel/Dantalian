@@ -930,27 +930,35 @@ pub async fn upload_cd_track_audio(
     let audio_dir = state.audio_dir.as_str();
     let chunk_info = chunk.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
 
+    let audio_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_AUDIO_MB,
+        crate::api::AUDIO_MAX_BYTES,
+    );
     let mut file_hash: Option<String> = None;
     let mut file_name: Option<String> = None;
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?
     {
         let name = field.file_name().unwrap_or("unknown").to_string();
-        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-        let audio_max = crate::api::upload_limit_bytes(
-            &state,
-            crate::api::KEY_UPLOAD_AUDIO_MB,
-            crate::api::AUDIO_MAX_BYTES,
-        );
+        let read_limit = if chunk_info.is_some() {
+            crate::api::upload_chunks::MAX_CHUNK_BYTES
+        } else {
+            audio_max
+        };
+        let data = crate::api::upload_chunks::read_field_limited(&mut field, read_limit)
+            .await
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
         let (saved_name, _ext) = match chunk_info.as_ref() {
             Some(info) => match crate::api::upload_chunks::store_chunk(
                 state.uploads_dir.as_str(),
                 "audio",
                 info.clone(),
                 &data,
+                audio_max,
             )
             .map_err(|_| StatusCode::BAD_REQUEST)?
             {
@@ -1297,10 +1305,15 @@ pub async fn upload_cd_cover(
         )
     })?;
 
+    let cover_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_COVER_MB,
+        crate::api::COVER_MAX_BYTES,
+    );
     let mut data: Option<Vec<u8>> = None;
     let mut content_type: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -1309,22 +1322,26 @@ pub async fn upload_cd_cover(
         let name = field.name().unwrap_or("").to_string();
         if name == "cover" {
             let ct = field.content_type().unwrap_or("image/jpeg").to_string();
-            let bytes = field
-                .bytes()
+            let read_limit = if chunk_info.is_some() {
+                crate::api::upload_chunks::MAX_CHUNK_BYTES
+            } else {
+                cover_max
+            };
+            let bytes = crate::api::upload_chunks::read_field_limited(&mut field, read_limit)
                 .await
-                .map_err(|e| {
+                .map_err(|error| {
                     (
                         StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e.to_string()})),
+                        Json(serde_json::json!({"error": error})),
                     )
-                })?
-                .to_vec();
+                })?;
             let bytes = match chunk_info.as_ref() {
                 Some(info) => match crate::api::upload_chunks::store_chunk(
                     state.uploads_dir.as_str(),
                     "cover",
                     info.clone(),
                     &bytes,
+                    cover_max,
                 )
                 .map_err(|_| {
                     (
@@ -1353,11 +1370,6 @@ pub async fn upload_cd_cover(
                 },
                 None => bytes,
             };
-            let cover_max = crate::api::upload_limit_bytes(
-                &state,
-                crate::api::KEY_UPLOAD_COVER_MB,
-                crate::api::COVER_MAX_BYTES,
-            );
             if bytes.len() > cover_max {
                 return Err((
                     StatusCode::BAD_REQUEST,
