@@ -55,6 +55,15 @@ function uploadTargetPresignedSessionUrl(uploadUrl) {
     return UPLOAD_GENERIC_MULTIPART_PATH;
 }
 
+// セッション開始 (init) の URL。音声のセッション URL 自体が init ルートだが、
+// 汎用 EPUB セッションの init は `/api/uploads/multipart/init` にあり、
+// セッション URL (`…/multipart`) に POST しても 404 になる。
+// parts / complete / abort はセッション URL の下 (`…/multipart/:id/...`) を使う。
+function uploadTargetPresignedInitUrl(uploadUrl) {
+    if (uploadTargetIsAudio(uploadUrl)) return uploadTargetAudioSessionUrl(uploadUrl);
+    return `${UPLOAD_GENERIC_MULTIPART_PATH}/init`;
+}
+
 // finalize は音声も EPUB もアップロード先 URL の直下 (`…/finalize`) に置く。
 function uploadTargetPresignedFinalizeUrl(uploadUrl) {
     if (uploadTargetIsAudio(uploadUrl)) return uploadTargetAudioFinalizeUrl(uploadUrl);
@@ -110,6 +119,7 @@ if (typeof module !== "undefined" && module.exports) {
         uploadTargetAudioFinalizeUrl,
         uploadTargetIsEpubUpload,
         uploadTargetPresignedSessionUrl,
+        uploadTargetPresignedInitUrl,
         uploadTargetPresignedFinalizeUrl,
         uploadTargetContentType,
         uploadTargetPickUploadKind,
