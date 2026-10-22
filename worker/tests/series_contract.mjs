@@ -47,3 +47,48 @@ test("series HTTP contract", async () => {
   });
   assert.equal(malformed.status, 400);
 });
+
+// Audiobooks/CDs mirror books: they can be attached to a user series and carry
+// a series volume, which the catalogue uses to order the series.
+test("CD/audiobook series volume HTTP contract", async () => {
+  const seriesName = `cd-series-${Date.now()}`;
+  const series = await request("POST", "/api/series", { name: seriesName });
+  assert.equal(series.status, 201);
+  const seriesId = series.body.id;
+
+  const created = await request("POST", "/api/cds", {
+    title: `cd-series-contract-${Date.now()}`,
+    media_type: "audiobook",
+    series_id: seriesId,
+    series_number: 2,
+  });
+  assert.equal(created.status, 201);
+  const cdId = created.body.cd?.id ?? created.body.id;
+  assert.ok(cdId, JSON.stringify(created.body));
+
+  let list = await request("GET", "/api/cds");
+  assert.equal(list.status, 200);
+  let row = list.body.find((cd) => cd.id === cdId);
+  assert.equal(row.series_id, seriesId);
+  assert.equal(row.series_number, 2);
+
+  // Volume-only update keeps the series assignment.
+  assert.equal((await request("PUT", `/api/cds/${cdId}`, { title: row.title, series_number: 5 })).status, 204);
+  list = await request("GET", "/api/cds");
+  row = list.body.find((cd) => cd.id === cdId);
+  assert.equal(row.series_id, seriesId);
+  assert.equal(row.series_number, 5);
+
+  // Clearing both values must round-trip as null.
+  assert.equal(
+    (await request("PUT", `/api/cds/${cdId}`, { title: row.title, series_id: null, series_number: null })).status,
+    204,
+  );
+  list = await request("GET", "/api/cds");
+  row = list.body.find((cd) => cd.id === cdId);
+  assert.equal(row.series_id, null);
+  assert.equal(row.series_number, null);
+
+  await request("DELETE", `/api/cds/${cdId}`);
+  await request("DELETE", `/api/series/${seriesId}`);
+});

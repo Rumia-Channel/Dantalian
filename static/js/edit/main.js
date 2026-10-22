@@ -814,9 +814,15 @@ async function renderCdEdit(cdId) {
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">シリーズ設定</h3>
-                <div class="edit-field">
-                    <label>シリーズ</label>
-                    <div id="edit-cd-series-select-container"></div>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>シリーズ</label>
+                        <div id="edit-cd-series-select-container"></div>
+                    </div>
+                    <div class="edit-field">
+                        <label>シリーズ巻数</label>
+                        <input type="number" name="series_number" value="${cd.series_number != null ? cd.series_number : ''}" min="1" step="1">
+                    </div>
                 </div>
             </div>
             <div class="edit-actions">
@@ -957,7 +963,7 @@ async function saveCd(e, cdId) {
     const fd = new FormData(e.target);
     const body = {};
     for (const [key, val] of fd.entries()) {
-        if (key === "disc_count" || key === "parent_book_id") {
+        if (key === "disc_count" || key === "parent_book_id" || key === "series_number") {
             body[key] = val === "" ? null : parseInt(val, 10);
         } else {
             body[key] = val === "" ? null : val;

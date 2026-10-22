@@ -271,6 +271,7 @@ mod tests {
                 parent_book_id: None,
                 media_type: Some("cd".to_string()),
                 series_id: None,
+                series_number: None,
             })
             .expect("CD");
         let track = db
@@ -331,6 +332,7 @@ mod tests {
                 parent_book_id: None,
                 media_type: None,
                 series_id: None,
+                series_number: None,
             })
             .expect("CD");
         db.add_cd_author(cd.id, dupe).expect("link dupe");

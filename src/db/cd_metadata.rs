@@ -148,6 +148,7 @@ mod tests {
             parent_book_id: None,
             media_type: Some("audiobook".to_string()),
             series_id: None,
+            series_number: None,
         }
     }
 

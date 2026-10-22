@@ -108,6 +108,7 @@ pub struct Cd {
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
+    pub series_number: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

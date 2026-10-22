@@ -498,6 +498,10 @@ function renderCdDetail(cd, currentSeries, tracks) {
             <div id="cd-detail-series-select-container"></div>
         </div>
         <div class="detail-series-assign">
+            <label>巻</label>
+            <input type="number" id="cd-detail-series-number" class="form-input" style="max-width:6rem;" min="1" value="${cd.series_number != null ? cd.series_number : ''}" placeholder="—" onchange="updateCdSeriesNumber(${cd.originalId}, this.value)">
+        </div>
+        <div class="detail-series-assign">
             <label>大シリーズ</label>
             <div id="cd-detail-grand-series-select-container"></div>
         </div>
@@ -531,11 +535,27 @@ function renderCdDetail(cd, currentSeries, tracks) {
 async function assignCdSeries(cdId, value) {
     const cd = (allCds || []).find((c) => c.id === cdId);
     const seriesId = value != null ? value : null;
+    const numInput = document.getElementById("cd-detail-series-number");
+    const seriesNumber = numInput && numInput.value ? parseInt(numInput.value, 10) : null;
     try {
         await fetch(`/api/cds/${cdId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: cd?.title || "", series_id: seriesId }),
+            body: JSON.stringify({ title: cd?.title || "", series_id: seriesId, series_number: seriesNumber }),
+        });
+        await loadCds();
+        renderItems();
+    } catch {}
+}
+
+async function updateCdSeriesNumber(cdId, value) {
+    const cd = (allCds || []).find((c) => c.id === cdId);
+    const seriesNumber = value ? parseInt(value, 10) : null;
+    try {
+        await fetch(`/api/cds/${cdId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: cd?.title || "", series_number: seriesNumber }),
         });
         await loadCds();
         renderItems();

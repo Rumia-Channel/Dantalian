@@ -10,6 +10,7 @@ let manualCdTracks = [];
 let manualRendered = false;
 let manualAuthorSelect = null;
 let manualSeriesSelect = null;
+let manualCdSeriesSelect = null;
 let manualGrandSeriesSelect = null;
 
 // 登録種別に合わせてフィールド群の hidden / required / disabled を揃える。
@@ -291,6 +292,19 @@ async function renderManualForm() {
                     <input type="number" name="cd_parent_book_id" min="1" step="1">
                 </div>
             </div>
+            <div class="edit-section">
+                <h3 class="edit-section-title">シリーズ設定</h3>
+                <div class="edit-row">
+                    <div class="edit-field">
+                        <label>シリーズ</label>
+                        <div id="manual-cd-series-select-container"></div>
+                    </div>
+                    <div class="edit-field">
+                        <label>シリーズ巻数</label>
+                        <input type="number" name="cd_series_number" min="1" step="1">
+                    </div>
+                </div>
+            </div>
             <div class="edit-field">
                 <label>説明</label>
                 <textarea name="cd_description" rows="3"></textarea>
@@ -394,6 +408,13 @@ async function renderManualForm() {
             form.querySelector("input[name=grand_series_id]").value = val != null ? val : "";
         },
     });
+
+    const manualCdSeriesContainer = document.getElementById("manual-cd-series-select-container");
+    manualCdSeriesSelect = manualCdSeriesContainer ? createSearchableSelect(manualCdSeriesContainer, {
+        options: manualAllSeries.map((s) => ({ value: s.id, label: s.name })),
+        value: null,
+        placeholder: "なし",
+    }) : null;
 
     manualAuthorSelect = createSearchableSelect(document.getElementById("manual-author-select-container"), {
         options: manualAllAuthors.map((a) => ({ value: a.id, label: a.name })),
@@ -555,6 +576,7 @@ async function submitManualBook(e) {
         manualRendered = false;
         manualAuthorSelect = null;
         manualSeriesSelect = null;
+        manualCdSeriesSelect = null;
         manualGrandSeriesSelect = null;
         await renderManualForm();
         const resultEl = document.getElementById("manual-register-status");
@@ -586,7 +608,8 @@ async function submitManualCd(e) {
         volume: document.querySelector("input[name=cd_volume]")?.value || null,
         media_type: document.querySelector("select[name=cd_media_type]")?.value || null,
         parent_book_id: parseInt(document.querySelector("input[name=cd_parent_book_id]")?.value) || null,
-        series_id: manualSeriesSelect ? manualSeriesSelect.getValue() : null,
+        series_id: manualCdSeriesSelect ? manualCdSeriesSelect.getValue() : null,
+        series_number: parseInt(document.querySelector("input[name=cd_series_number]")?.value, 10) || null,
         grand_series_id: manualGrandSeriesSelect ? manualGrandSeriesSelect.getValue() : null,
         author_ids: manualAuthorIds.slice(),
         tracks: manualCdTracks.map((track) => ({ ...track })),
@@ -636,6 +659,7 @@ async function submitManualCd(e) {
         manualAuthorIds = [];
         manualCdTracks = [];
         manualRendered = false;
+        manualCdSeriesSelect = null;
         await renderManualForm();
         document.getElementById("manual-media-type").value = "cd";
         syncManualMediaTypeFields();
