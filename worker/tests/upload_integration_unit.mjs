@@ -14,6 +14,7 @@ globalThis.uploadTargetAudioSessionUrl = uploadTarget.uploadTargetAudioSessionUr
 globalThis.uploadTargetAudioFinalizeUrl = uploadTarget.uploadTargetAudioFinalizeUrl;
 globalThis.uploadTargetIsEpubUpload = uploadTarget.uploadTargetIsEpubUpload;
 globalThis.uploadTargetPresignedSessionUrl = uploadTarget.uploadTargetPresignedSessionUrl;
+globalThis.uploadTargetPresignedInitUrl = uploadTarget.uploadTargetPresignedInitUrl;
 globalThis.uploadTargetPresignedFinalizeUrl = uploadTarget.uploadTargetPresignedFinalizeUrl;
 globalThis.uploadTargetContentType = uploadTarget.uploadTargetContentType;
 globalThis.uploadTargetPickUploadKind = uploadTarget.uploadTargetPickUploadKind;
@@ -174,7 +175,7 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
     if (target.endsWith("/complete")) {
       return new Response(JSON.stringify({ status: "complete" }), { status: 200 });
     }
-    if (target === "/api/uploads/multipart") {
+    if (target === "/api/uploads/multipart/init") {
       return new Response(
         JSON.stringify({ id: sessionId, part_size: partSize, object_key: "epubs/c.epub" }),
         { status: 200 },
@@ -192,7 +193,9 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
   assert.equal(response.status, 200);
 
   const urls = calls.map((call) => call.url);
-  const initCall = calls.find((call) => call.url === "/api/uploads/multipart");
+  // Regression: 0.1.25/0.1.26 posted init to the session base (404) and then
+  // fell back to the Worker direct path, which rejected the file with 413.
+  const initCall = calls.find((call) => call.url === "/api/uploads/multipart/init");
   assert.ok(initCall, urls.join("\n"));
   const initBody = JSON.parse(String(initCall.body));
   assert.equal(initBody.object_kind, "epub");
@@ -312,7 +315,7 @@ test("an EPUB over the direct limit fails closed when the multipart route is mis
     if (target === "/api/health") {
       return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
     }
-    if (target === "/api/uploads/multipart") {
+    if (target === "/api/uploads/multipart/init") {
       return new Response("not found", { status: 404 });
     }
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -327,6 +330,6 @@ test("an EPUB over the direct limit fails closed when the multipart route is mis
   assert.equal(response.status, 413);
   assert.deepEqual(
     calls.filter((call) => call.method === "POST").map((call) => call.url),
-    ["/api/uploads/multipart"],
+    ["/api/uploads/multipart/init"],
   );
 });

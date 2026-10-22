@@ -121,8 +121,8 @@ function markPresignedMultipartUnavailable() {
     presignedMultipartUnavailableUntil = Date.now() + PRESIGNED_MULTIPART_RETRY_AFTER_MS;
 }
 
-async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
-    const response = await fetch(sessionUrl, {
+async function startPresignedMultipartUpload(initUrl, file, uploadKind) {
+    const response = await fetch(initUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -130,7 +130,7 @@ async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
             content_type: uploadTargetContentType(file.name, file.type),
             // セッション URL ではなくファイルから用途を決める。`.m4a` を音声として
             // 送るため、URL 判定だけに頼らない。
-            object_kind: uploadKind ?? multipartObjectKind(sessionUrl),
+            object_kind: uploadKind ?? multipartObjectKind(initUrl),
             file_name: file.name,
         }),
     });
@@ -138,7 +138,7 @@ async function startPresignedMultipartUpload(sessionUrl, file, uploadKind) {
         return { routeUnavailable: true };
     }
     if (!response.ok) {
-        await logUploadFailure(sessionUrl, file, response.clone());
+        await logUploadFailure(initUrl, file, response.clone());
         return { error: response };
     }
     const body = await readUploadJson(response);
@@ -225,8 +225,11 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
 // 従来の直アップロードへ戻せるようにする。
 async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
     const sessionUrl = uploadTargetPresignedSessionUrl(uploadUrl);
+    // 汎用 EPUB セッションの init は `/api/uploads/multipart/init` にあり、
+    // セッション URL に POST すると 404 になる (音声は同じ URL が init ルート)。
+    const initUrl = uploadTargetPresignedInitUrl(uploadUrl);
     const finalizeUrl = uploadTargetPresignedFinalizeUrl(uploadUrl);
-    const started = await startPresignedMultipartUpload(sessionUrl, file, uploadKind);
+    const started = await startPresignedMultipartUpload(initUrl, file, uploadKind);
     if (started.routeUnavailable) {
         markPresignedMultipartUnavailable();
         console.warn(

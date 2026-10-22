@@ -10,6 +10,7 @@ const {
   uploadTargetAudioFinalizeUrl,
   uploadTargetIsEpubUpload,
   uploadTargetPresignedSessionUrl,
+  uploadTargetPresignedInitUrl,
   uploadTargetPresignedFinalizeUrl,
 } = require("../../static/js/upload-target.js");
 
@@ -67,6 +68,20 @@ test("the generic EPUB multipart route is left untouched", () => {
   assert.equal(
     uploadTargetAudioSessionUrl("/api/uploads/multipart"),
     "/api/uploads/multipart",
+  );
+  // The generic session URL is the base for parts/complete; init lives at
+  // /api/uploads/multipart/init (posting to the base returned 404 in 0.1.25/0.1.26).
+  assert.equal(
+    uploadTargetPresignedInitUrl("/api/books/7/epub"),
+    "/api/uploads/multipart/init",
+  );
+  assert.equal(
+    uploadTargetPresignedSessionUrl("/api/books/7/epub"),
+    "/api/uploads/multipart",
+  );
+  assert.equal(
+    uploadTargetPresignedInitUrl("/api/cds/11/tracks/191/audio"),
+    "/api/cds/11/tracks/191/audio/multipart",
   );
 });
 

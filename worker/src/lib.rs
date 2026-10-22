@@ -145,6 +145,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/uploads/covers/init", cover_api::init)
         .post_async("/api/uploads/covers/complete", cover_api::complete)
         .post_async("/api/uploads/multipart/init", multipart_api::init)
+        // Compatibility alias for 0.1.25/0.1.26 clients, which posted the
+        // generic EPUB init to the session base URL and fell back to the
+        // 95 MiB direct path (413) when that returned 404.
+        .post_async("/api/uploads/multipart", multipart_api::init)
         .post_async(
             "/api/uploads/multipart/:id/parts/:part_number/sign",
             multipart_api::sign_part,
