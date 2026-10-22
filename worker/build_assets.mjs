@@ -79,6 +79,28 @@ const securityHeaders = [
     "  Referrer-Policy: same-origin",
     "  Permissions-Policy: camera=(), microphone=(), geolocation=()",
     "  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data: blob: https:; frame-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'",
+    // HTML references JS/CSS with an ?v=<asset version> cache buster
+    // (build.rs hashes the static tree), so versioned assets can be cached for a
+    // year. Bibi's internal asset URLs are digest-versioned as well; its HTML
+    // entry points are deliberately excluded because they are not versioned.
+    "/js/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/css/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/wasm/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/vendor/bibi/and/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/vendor/bibi/extensions/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/vendor/bibi/presets/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/vendor/bibi/resources/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/vendor/bibi/wardrobe/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "/fonts/*",
+    "  Cache-Control: public, max-age=2592000",
     "",
 ].join("\n");
 

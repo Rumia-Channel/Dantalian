@@ -92,13 +92,17 @@
     <script src="/js/settings-manage.js?v=ASSET_VERSION"></script>
     <script>
         (async () => {
-            await loadSeries();
-            await loadGrandSeries();
-            await loadStorageLocations();
-            await loadLabels();
-            await loadBooks();
-            await loadCds();
-            await loadBorrowers();
+            // The managers are independent: load their data concurrently instead
+            // of serializing seven round trips.
+            await Promise.all([
+                loadSeries(),
+                loadGrandSeries(),
+                loadStorageLocations(),
+                loadLabels(),
+                loadBooks(),
+                loadCds(),
+                loadBorrowers(),
+            ]);
             renderSeriesManager();
             renderStorageLocations();
             renderLabels();

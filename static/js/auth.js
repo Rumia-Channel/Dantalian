@@ -7,6 +7,8 @@
     var authSettings = document.getElementById("auth-settings");
     var originalFetch = window.fetch.bind(window);
     var authRequirementPromise = null;
+    var AUTH_REQUIRED_CACHE_KEY = "dantalian_auth_required";
+    var AUTH_REQUIRED_CACHE_TTL = 5 * 60 * 1000;
 
     function getAuthToken() {
         try {
@@ -62,8 +64,44 @@
         updateAuthButton();
     }
 
+    function readCachedAuthRequirement() {
+        try {
+            var raw = sessionStorage.getItem(AUTH_REQUIRED_CACHE_KEY);
+            if (!raw) return null;
+            var cached = JSON.parse(raw);
+            if (!cached || typeof cached.required !== "boolean") return null;
+            if (Date.now() - cached.at > AUTH_REQUIRED_CACHE_TTL) return null;
+            return cached.required;
+        } catch {
+            return null;
+        }
+    }
+
+    function writeCachedAuthRequirement(required) {
+        try {
+            sessionStorage.setItem(AUTH_REQUIRED_CACHE_KEY, JSON.stringify({
+                required: required,
+                at: Date.now(),
+            }));
+        } catch {}
+    }
+
+    function clearCachedAuthRequirement() {
+        try {
+            sessionStorage.removeItem(AUTH_REQUIRED_CACHE_KEY);
+        } catch {}
+    }
+
     function readAuthRequirement() {
         if (!authRequirementPromise) {
+            // The mode rarely changes; cache it so every page does not pay an
+            // extra /api/health round trip before its first data request.
+            var cached = readCachedAuthRequirement();
+            if (cached !== null) {
+                setAuthRequired(cached);
+                authRequirementPromise = Promise.resolve(cached);
+                return authRequirementPromise;
+            }
             authRequirementPromise = originalFetch("/api/health", {
                 cache: "no-store",
                 credentials: "same-origin",
@@ -77,6 +115,7 @@
                     return true;
                 })
                 .then(function (required) {
+                    writeCachedAuthRequirement(required);
                     setAuthRequired(required);
                     return required;
                 });
@@ -198,6 +237,7 @@
         var response = await originalFetch(input, requestInit);
         if (response.status === 401 && token === getAuthToken()) {
             clearAuthToken();
+            clearCachedAuthRequirement();
             authPromise = null;
             resolveAuth = null;
             showAuthDialog("APIトークンが無効です。正しいトークンを入力してください。");

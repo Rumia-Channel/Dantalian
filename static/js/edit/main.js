@@ -11,14 +11,15 @@ let editCdSeriesSelect = null;
 let editCdAuthorSelect = null;
 
 (async () => {
-    await loadBooks();
-    await loadCds();
-    await loadSeries();
-    await loadGrandSeries();
-    await loadStorageLocations();
-    await loadLabels();
-
-    const [aRes, bRes] = await Promise.all([
+    // These loads are independent; a serial chain added six round trips before
+    // the edit form could render.
+    const [, , , , , , aRes, bRes] = await Promise.all([
+        loadBooks(),
+        loadCds(),
+        loadSeries(),
+        loadGrandSeries(),
+        loadStorageLocations(),
+        loadLabels(),
         fetch("/api/authors"),
         fetch("/api/borrowers"),
     ]);

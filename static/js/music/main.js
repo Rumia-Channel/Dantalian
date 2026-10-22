@@ -304,18 +304,25 @@ function renderMusicLoadError(messages) {
 
 // 起動
 async function initMusicPage() {
-    await loadAudioDataSaverPolicy();
+    // The audio policy, CD list, and playlist list are independent; loading
+    // them serially delayed the grid by the sum of their latencies.
     let cdsLoaded = true;
-    try {
-        const res = await fetch("/api/cds");
-        if (!res.ok) throw new Error(`CD一覧: HTTP ${res.status}`);
-        allAlbums = await res.json();
-    } catch (error) {
-        console.error("music cds load failed:", error);
-        allAlbums = [];
-        cdsLoaded = false;
-    }
-    const playlistsLoaded = await loadPlaylists();
+    const cdsPromise = (async () => {
+        try {
+            const res = await fetch("/api/cds");
+            if (!res.ok) throw new Error(`CD一覧: HTTP ${res.status}`);
+            allAlbums = await res.json();
+        } catch (error) {
+            console.error("music cds load failed:", error);
+            allAlbums = [];
+            cdsLoaded = false;
+        }
+    })();
+    const [, playlistsLoaded] = await Promise.all([
+        loadAudioDataSaverPolicy(),
+        loadPlaylists(),
+        cdsPromise,
+    ]);
     if (!cdsLoaded || !playlistsLoaded) {
         const messages = [];
         if (!cdsLoaded) messages.push("CD/オーディオブック一覧の取得に失敗");
