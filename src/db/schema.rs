@@ -5,6 +5,26 @@ use std::sync::Arc;
 
 const SCHEMA_VERSION: u32 = 13;
 
+/// Idempotent indexes for the hot read paths (list/detail pages, lending
+/// counts, playlist playback). Executed on every open so existing databases
+/// pick them up without a schema version bump.
+const READ_INDEXES_SQL: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_copies_book_id ON copies(book_id);
+CREATE INDEX IF NOT EXISTS idx_lending_history_copy_returned ON lending_history(copy_id, returned_date);
+CREATE INDEX IF NOT EXISTS idx_lending_history_borrower ON lending_history(borrower_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_book_id ON tracks(book_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_cd_id ON tracks(cd_id);
+CREATE INDEX IF NOT EXISTS idx_book_authors_author_id ON book_authors(author_id);
+CREATE INDEX IF NOT EXISTS idx_cd_authors_author_id ON cd_authors(author_id);
+CREATE INDEX IF NOT EXISTS idx_playlist_tracks_track_id ON playlist_tracks(track_id);
+CREATE INDEX IF NOT EXISTS idx_books_series_id ON books(series_id);
+CREATE INDEX IF NOT EXISTS idx_books_storage_location_id ON books(storage_location_id);
+CREATE INDEX IF NOT EXISTS idx_books_label_id ON books(label_id);
+CREATE INDEX IF NOT EXISTS idx_cds_parent_book_id ON cds(parent_book_id);
+CREATE INDEX IF NOT EXISTS idx_cds_series_id ON cds(series_id);
+CREATE INDEX IF NOT EXISTS idx_grand_series_items_item ON grand_series_items(item_type, item_id);
+"#;
+
 const GRAND_SERIES_INTEGRITY_SQL: &str = r#"
 DELETE FROM grand_series_items
 WHERE (item_type = 'series' AND NOT EXISTS (SELECT 1 FROM series WHERE id = item_id))
@@ -595,6 +615,8 @@ impl Db {
                 )),
             ));
         }
+
+        conn.execute_batch(READ_INDEXES_SQL)?;
 
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
