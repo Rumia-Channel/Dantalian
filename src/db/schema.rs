@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 13;
+const SCHEMA_VERSION: u32 = 14;
 
 /// Idempotent indexes for the hot read paths (list/detail pages, lending
 /// counts, playlist playback). Executed on every open so existing databases
@@ -203,7 +203,8 @@ CREATE TABLE IF NOT EXISTS cds (
     updated_at TEXT,
     parent_book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
     media_type TEXT NOT NULL DEFAULT 'cd',
-    series_id INTEGER REFERENCES series(id) ON DELETE SET NULL
+    series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
+    series_number INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS tracks (
@@ -520,6 +521,22 @@ fn ensure_track_metadata_columns(conn: &Connection) -> Result<(), rusqlite::Erro
     Ok(())
 }
 
+/// Audiobooks/CDs gained a user-series volume (`series_number`), matching books.
+/// Runs on every open so existing databases pick up the column regardless of the
+/// schema version they started from (the ALTER is skipped when it already
+/// exists, which keeps legacy-version test fixtures working).
+fn ensure_cd_series_number_column(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(cds)")?;
+        let rows = stmt.query_map([], |row| row.get(1))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    if !columns.iter().any(|column| column == "series_number") {
+        conn.execute("ALTER TABLE cds ADD COLUMN series_number INTEGER", [])?;
+    }
+    Ok(())
+}
+
 fn migrate_publish_dates(conn: &Connection) -> Result<(), rusqlite::Error> {
     for table in ["books", "cds"] {
         let rows: Vec<(i64, String)> = {
@@ -617,6 +634,7 @@ impl Db {
         }
 
         conn.execute_batch(READ_INDEXES_SQL)?;
+        ensure_cd_series_number_column(&conn)?;
 
         Ok(Self(Arc::new(Mutex::new(conn))))
     }

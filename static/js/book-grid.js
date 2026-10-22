@@ -55,7 +55,7 @@ function normalizeCd(cd) {
         has_toc: false,
         primary_author: null,
         volume: null,
-        series_number: null,
+        series_number: cd.series_number != null ? cd.series_number : null,
         jpno: null,
         ndl_url: null,
         toc_url: null,

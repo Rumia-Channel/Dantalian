@@ -34,6 +34,7 @@ pub struct CdRegisterRequest {
     pub parent_book_id: Option<i64>,
     pub media_type: Option<String>,
     pub series_id: Option<i64>,
+    pub series_number: Option<i64>,
     pub grand_series_id: Option<i64>,
     pub author_ids: Option<Vec<i64>>,
     pub tracks: Option<Vec<ManualCdTrackRequest>>,
@@ -159,6 +160,7 @@ pub async fn cd_register(
             parent_book_id: req.parent_book_id,
             media_type: req.media_type.clone(),
             series_id: req.series_id,
+            series_number: req.series_number,
         };
 
         let author_ids = req.author_ids.unwrap_or_default();
@@ -449,6 +451,7 @@ pub async fn cd_register(
         parent_book_id: req.parent_book_id,
         media_type: req.media_type.clone(),
         series_id: req.series_id,
+        series_number: req.series_number,
     };
 
     let cd = state.db.insert_cd(&new_cd).map_err(|e| {
@@ -640,6 +643,7 @@ pub async fn update_cd(
     let parent_book_id = present_i64(&body, "parent_book_id", existing.parent_book_id);
     let media_type = present_str(&body, "media_type", existing.media_type.as_deref());
     let series_id = present_i64(&body, "series_id", existing.series_id);
+    let series_number = present_i64(&body, "series_number", existing.series_number);
     let metadata = match body.get("metadata") {
         None => None,
         Some(value) if value.is_object() => Some(CdMetadata::from_json(id, value)),
@@ -668,6 +672,7 @@ pub async fn update_cd(
             parent_book_id,
             media_type.as_deref(),
             series_id,
+            series_number,
             metadata.as_ref(),
         )
         .map_err(|e| {
@@ -1150,6 +1155,7 @@ async fn synchronize_cd_core_metadata(
             cd.parent_book_id,
             cd.media_type.as_deref(),
             cd.series_id,
+            cd.series_number,
         )?;
 
         db.update_track(track_id, non_empty(extracted.title.as_ref()), None)?;
