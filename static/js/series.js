@@ -149,13 +149,24 @@ async function deleteSeries(id) {
 
     try {
         const res = await fetch(`/api/series/${id}`, { method: "DELETE" });
-        if (res.ok) {
+        // 404 means the row is already gone (for example a retry after a stale
+        // list render). Refresh unconditionally so the UI converges.
+        if (res.ok || res.status === 404) {
+            if (!res.ok) {
+                console.warn(`series ${id} was already deleted; refreshing the list`);
+            }
             await loadSeries();
             await loadGrandSeries();
             renderSeriesManager();
             loadBooks();
+        } else {
+            console.error("series delete failed:", res.status, await res.text().catch(() => ""));
+            alert(`シリーズの削除に失敗しました (HTTP ${res.status})`);
         }
-    } catch {}
+    } catch (error) {
+        console.error("series delete request failed:", error);
+        alert("シリーズの削除中に通信エラーが発生しました。");
+    }
 }
 
 function renderGrandSeriesManager() {
@@ -330,12 +341,22 @@ async function deleteGrandSeries(id) {
 
     try {
         const res = await fetch(`/api/grand-series/${id}`, { method: "DELETE" });
-        if (res.ok) {
+        // A retry after a stale list render can see 404; refresh either way.
+        if (res.ok || res.status === 404) {
+            if (!res.ok) {
+                console.warn(`grand series ${id} was already deleted; refreshing the list`);
+            }
             await loadGrandSeries();
             renderGrandSeriesManager();
             loadBooks();
+        } else {
+            console.error("grand series delete failed:", res.status, await res.text().catch(() => ""));
+            alert(`大シリーズの削除に失敗しました (HTTP ${res.status})`);
         }
-    } catch {}
+    } catch (error) {
+        console.error("grand series delete request failed:", error);
+        alert("大シリーズの削除中に通信エラーが発生しました。");
+    }
 }
 
 async function addGrandSeriesItem(gsId) {
