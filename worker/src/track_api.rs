@@ -43,7 +43,12 @@ fn id_type(id: i64, label: &str) -> std::result::Result<D1Type<'static>, AppErro
     Ok(D1Type::Integer(value))
 }
 
-async fn list_for(ctx: &RouteContext<()>, column: &str, param: &str) -> Result<Response> {
+async fn list_for(
+    req: &Request,
+    ctx: &RouteContext<()>,
+    column: &str,
+    param: &str,
+) -> Result<Response> {
     let raw = match parse_id(ctx, param) {
         Ok(value) => value,
         Err(response) => return Ok(response),
@@ -55,8 +60,9 @@ async fn list_for(ctx: &RouteContext<()>, column: &str, param: &str) -> Result<R
     let sql = format!(
         "SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE {column} = ? ORDER BY disc_number, track_number, id"
     );
-    let rows = ctx
-        .d1("DB")?
+    let db = ctx.d1("DB")?;
+    let db = crate::d1_read::read_db(req, &db)?;
+    let rows = db
         .prepare(&sql)
         .bind_refs(&id)
         .map_err(db_error)?
@@ -68,11 +74,11 @@ async fn list_for(ctx: &RouteContext<()>, column: &str, param: &str) -> Result<R
     Response::from_json(&rows)
 }
 
-pub async fn list_book(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    list_for(&ctx, "book_id", "id").await
+pub async fn list_book(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    list_for(&req, &ctx, "book_id", "id").await
 }
-pub async fn list_cd(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    list_for(&ctx, "cd_id", "id").await
+pub async fn list_cd(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    list_for(&req, &ctx, "cd_id", "id").await
 }
 
 pub async fn add_cd(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {

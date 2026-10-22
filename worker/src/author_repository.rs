@@ -1,3 +1,4 @@
+use crate::d1_read::D1Prepare;
 use dantalian::{
     application::error::AppError, domain::author::Author,
     ports::author_repository::AuthorRepository,
@@ -11,12 +12,12 @@ struct IdRow {
     _id: i32,
 }
 
-pub struct D1AuthorRepository {
-    db: D1Database,
+pub struct D1AuthorRepository<D: D1Prepare> {
+    db: D,
 }
 
-impl D1AuthorRepository {
-    pub fn new(db: D1Database) -> Self {
+impl<D: D1Prepare> D1AuthorRepository<D> {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 
@@ -60,7 +61,7 @@ pub(crate) async fn find_author_by_normalized_name(
         .find(|author| normalize_author_name(&author.name) == key))
 }
 
-impl AuthorRepository for D1AuthorRepository {
+impl<D: D1Prepare> AuthorRepository for D1AuthorRepository<D> {
     async fn list(&self) -> Result<Vec<Author>, AppError> {
         let result = self
             .db

@@ -1,15 +1,16 @@
+use crate::d1_read::D1Prepare;
 use dantalian::{
     application::error::AppError, domain::series::Series,
     ports::series_repository::SeriesRepository,
 };
-use worker::{D1Database, D1Type};
+use worker::D1Type;
 
-pub struct D1SeriesRepository {
-    db: D1Database,
+pub struct D1SeriesRepository<D: D1Prepare> {
+    db: D,
 }
 
-impl D1SeriesRepository {
-    pub fn new(db: D1Database) -> Self {
+impl<D: D1Prepare> D1SeriesRepository<D> {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 
@@ -24,7 +25,7 @@ impl D1SeriesRepository {
     }
 }
 
-impl SeriesRepository for D1SeriesRepository {
+impl<D: D1Prepare> SeriesRepository for D1SeriesRepository<D> {
     async fn list(&self) -> Result<Vec<Series>, AppError> {
         let result = self
             .db

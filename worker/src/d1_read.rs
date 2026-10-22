@@ -1,5 +1,24 @@
 use worker::{D1Database, D1DatabaseSession, D1PreparedStatement, Request, Result};
 
+/// Minimal prepare surface shared by the primary database and a read-replica
+/// session; repository read methods are generic over this so they can be used
+/// from either path.
+pub(crate) trait D1Prepare {
+    fn prepare<T: Into<String>>(&self, query: T) -> D1PreparedStatement;
+}
+
+impl D1Prepare for D1Database {
+    fn prepare<T: Into<String>>(&self, query: T) -> D1PreparedStatement {
+        D1Database::prepare(self, query)
+    }
+}
+
+impl D1Prepare for D1DatabaseSession {
+    fn prepare<T: Into<String>>(&self, query: T) -> D1PreparedStatement {
+        D1DatabaseSession::prepare(self, query)
+    }
+}
+
 /// A read-only D1 handle used by GET handlers.
 ///
 /// Queries normally run through a D1 session constrained with
@@ -21,6 +40,12 @@ impl ReadDb<'_> {
     }
 }
 
+impl D1Prepare for ReadDb<'_> {
+    fn prepare<T: Into<String>>(&self, query: T) -> D1PreparedStatement {
+        ReadDb::prepare(self, query)
+    }
+}
+
 /// Build the read handle for a GET request.
 ///
 /// Falls back to the primary database when the runtime does not support the D1
@@ -36,7 +61,7 @@ pub(crate) fn read_db<'a>(req: &Request, db: &'a D1Database) -> Result<ReadDb<'a
     }
 }
 
-fn prefers_primary(req: &Request) -> bool {
+pub(crate) fn prefers_primary(req: &Request) -> bool {
     req.headers()
         .get("cookie")
         .ok()

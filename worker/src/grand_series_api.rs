@@ -1,7 +1,9 @@
 use dantalian::application::error::AppError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
+use crate::d1_read;
 use crate::error::{error_response, parse_id, parse_json};
 
 #[derive(Debug, Deserialize)]
@@ -56,8 +58,17 @@ fn validate_name(name: &str) -> std::result::Result<String, AppError> {
     Ok(name.to_string())
 }
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+#[derive(Debug, Deserialize)]
+struct ItemRow {
+    grand_series_id: i64,
+    item_type: String,
+    item_id: i64,
+    name: String,
+}
+
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
     let rows = db
         .prepare("SELECT id, name FROM grand_series ORDER BY name, id")
         .all()
@@ -65,41 +76,43 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         .map_err(map_db)?
         .results::<GrandSeries>()
         .map_err(map_db)?;
-    let mut result = Vec::with_capacity(rows.len());
-    for grand_series in rows {
-        let id = match bind_id(grand_series.id, "grand series id") {
-            Ok(id) => id,
-            Err(error) => return error_response(error),
-        };
-        let items = db
-            .prepare(
-                "SELECT gsi.item_type, gsi.item_id,
-                        CASE gsi.item_type
-                          WHEN 'series' THEN s.name
-                          WHEN 'book' THEN b.title
-                          WHEN 'cd' THEN c.title
-                        END AS name
-                 FROM grand_series_items gsi
-                 LEFT JOIN series s ON gsi.item_type = 'series' AND s.id = gsi.item_id
-                 LEFT JOIN books b ON gsi.item_type = 'book' AND b.id = gsi.item_id
-                 LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
-                 WHERE gsi.grand_series_id = ?
-                   AND CASE gsi.item_type WHEN 'series' THEN s.id WHEN 'book' THEN b.id WHEN 'cd' THEN c.id END IS NOT NULL
-                 ORDER BY gsi.item_type, gsi.item_id",
-            )
-            .bind_refs(&id)
-            .map_err(map_db)?
-            .all()
-            .await
-            .map_err(map_db)?
-            .results::<Item>()
-            .map_err(map_db)?;
-        result.push(GrandSeriesWithItems {
-            id: grand_series.id,
-            name: grand_series.name,
-            items,
+    // Load every item in one query instead of one query per grand series.
+    let item_rows = db
+        .prepare(
+            "SELECT gsi.grand_series_id, gsi.item_type, gsi.item_id,
+                    CASE gsi.item_type
+                      WHEN 'series' THEN s.name
+                      WHEN 'book' THEN b.title
+                      WHEN 'cd' THEN c.title
+                    END AS name
+             FROM grand_series_items gsi
+             LEFT JOIN series s ON gsi.item_type = 'series' AND s.id = gsi.item_id
+             LEFT JOIN books b ON gsi.item_type = 'book' AND b.id = gsi.item_id
+             LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
+             WHERE CASE gsi.item_type WHEN 'series' THEN s.id WHEN 'book' THEN b.id WHEN 'cd' THEN c.id END IS NOT NULL
+             ORDER BY gsi.grand_series_id, gsi.item_type, gsi.item_id",
+        )
+        .all()
+        .await
+        .map_err(map_db)?
+        .results::<ItemRow>()
+        .map_err(map_db)?;
+    let mut grouped: HashMap<i64, Vec<Item>> = HashMap::new();
+    for row in item_rows {
+        grouped.entry(row.grand_series_id).or_default().push(Item {
+            item_type: row.item_type,
+            item_id: row.item_id,
+            name: row.name,
         });
     }
+    let result = rows
+        .into_iter()
+        .map(|grand_series| GrandSeriesWithItems {
+            id: grand_series.id,
+            name: grand_series.name,
+            items: grouped.remove(&grand_series.id).unwrap_or_default(),
+        })
+        .collect::<Vec<_>>();
     Response::from_json(&result)
 }
 

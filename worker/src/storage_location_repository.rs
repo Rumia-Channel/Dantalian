@@ -1,15 +1,16 @@
+use crate::d1_read::D1Prepare;
 use dantalian::{
     application::error::AppError, domain::storage_location::StorageLocation,
     ports::storage_location_repository::StorageLocationRepository,
 };
-use worker::{D1Database, D1Type};
+use worker::D1Type;
 
-pub struct D1StorageLocationRepository {
-    db: D1Database,
+pub struct D1StorageLocationRepository<D: D1Prepare> {
+    db: D,
 }
 
-impl D1StorageLocationRepository {
-    pub fn new(db: D1Database) -> Self {
+impl<D: D1Prepare> D1StorageLocationRepository<D> {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 
@@ -24,7 +25,7 @@ impl D1StorageLocationRepository {
     }
 }
 
-impl StorageLocationRepository for D1StorageLocationRepository {
+impl<D: D1Prepare> StorageLocationRepository for D1StorageLocationRepository<D> {
     async fn list(&self) -> Result<Vec<StorageLocation>, AppError> {
         let result = self
             .db

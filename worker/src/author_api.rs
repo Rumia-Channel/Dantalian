@@ -6,11 +6,14 @@ use worker::{Request, Response, Result, RouteContext};
 
 use crate::{
     author_repository::D1AuthorRepository,
+    d1_read,
     error::{error_response, parse_id, parse_json},
 };
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = AuthorService::new(D1AuthorRepository::new(ctx.d1("DB")?));
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    let service = AuthorService::new(D1AuthorRepository::new(db));
     service
         .list()
         .await

@@ -5,12 +5,15 @@ use dantalian::{
 use worker::{Request, Response, Result, RouteContext};
 
 use crate::{
+    d1_read,
     error::{error_response, parse_id, parse_json},
     series_repository::D1SeriesRepository,
 };
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = SeriesService::new(D1SeriesRepository::new(ctx.d1("DB")?));
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    let service = SeriesService::new(D1SeriesRepository::new(db));
     service
         .list()
         .await

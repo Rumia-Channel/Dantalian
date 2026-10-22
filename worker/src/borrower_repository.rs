@@ -1,15 +1,16 @@
+use crate::d1_read::D1Prepare;
 use dantalian::{
     application::error::AppError, domain::borrower::Borrower,
     ports::borrower_repository::BorrowerRepository,
 };
-use worker::{D1Database, D1Type};
+use worker::D1Type;
 
-pub struct D1BorrowerRepository {
-    db: D1Database,
+pub struct D1BorrowerRepository<D: D1Prepare> {
+    db: D,
 }
 
-impl D1BorrowerRepository {
-    pub fn new(db: D1Database) -> Self {
+impl<D: D1Prepare> D1BorrowerRepository<D> {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 
@@ -24,7 +25,7 @@ impl D1BorrowerRepository {
     }
 }
 
-impl BorrowerRepository for D1BorrowerRepository {
+impl<D: D1Prepare> BorrowerRepository for D1BorrowerRepository<D> {
     async fn list(&self) -> Result<Vec<Borrower>, AppError> {
         let result = self
             .db
