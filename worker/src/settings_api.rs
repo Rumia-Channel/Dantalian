@@ -4,6 +4,7 @@ use dantalian::application::error::AppError;
 use serde::Deserialize;
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
+use crate::d1_read::{self, D1Prepare};
 use crate::error::{error_response, parse_json};
 
 const ALLOWED_SETTING_KEYS: &[&str] = &[
@@ -120,7 +121,7 @@ fn validate(key: &str, value: &str) -> std::result::Result<(), AppError> {
     Ok(())
 }
 
-async fn public_settings(db: &worker::D1Database) -> Result<HashMap<String, String>> {
+async fn public_settings<D: D1Prepare>(db: &D) -> Result<HashMap<String, String>> {
     let rows = db
         .prepare("SELECT key, value FROM settings")
         .all()
@@ -144,8 +145,10 @@ async fn public_settings(db: &worker::D1Database) -> Result<HashMap<String, Stri
     Ok(settings)
 }
 
-pub async fn get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let settings = match public_settings(&ctx.d1("DB")?).await {
+pub async fn get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    let settings = match public_settings(&db).await {
         Ok(settings) => settings,
         Err(error) => return Err(error),
     };

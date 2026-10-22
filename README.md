@@ -105,9 +105,17 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 | 変数 | 説明 | デフォルト |
 |------|------|------------|
 | `DATA_DIR` | データ保存ディレクトリ | `~/Documents` (Windows: `C:\Users\{user}\Documents`) |
+| `BIND_ADDR` | 待受アドレス。ループバック以外を指定する場合は `DANTALIAN_API_TOKEN` が必須 | `127.0.0.1` |
 | `PORT` | サーバー待受ポート | `3000` |
+| `DANTALIAN_API_TOKEN` | Native API の認証トークン。設定すると `/api`（`/api/health` を除く）・`/audio`・`/images`・`/epubs` に Bearer または `dantalian_api_token` Cookie を要求する | 未設定（ループバック利用時のみ認証なし） |
 | `RUST_LOG` | ログレベル | `dantalian=debug` でデバッグ出力 |
 | `OPEN_LIBRARY_CONTACT` | Open Library に送信する公開連絡先（メール等）。Worker では Vars に設定。変更後は再起動／再デプロイする | 未設定（プロジェクト URL のみ） |
+
+> **ネットワーク公開について**: Native サーバーは既定で `127.0.0.1` にのみ待ち受けます。
+> LAN などから利用する場合は `DANTALIAN_API_TOKEN` を設定したうえで `BIND_ADDR=0.0.0.0`
+> などを明示してください。トークン未設定で非ループバックを指定した場合、起動を拒否します。
+> ブラウザの API ログイン欄（`static/js/auth.js`）に同じトークンを入力すると、API・音声・
+> 画像・EPUB の取得に認証が付与されます。
 
 ## データ構成
 

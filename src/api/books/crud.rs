@@ -224,10 +224,15 @@ pub async fn upload_cover(
         )
     })?;
 
+    let cover_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_COVER_MB,
+        crate::api::COVER_MAX_BYTES,
+    );
     let mut data: Option<Vec<u8>> = None;
     let mut content_type: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -236,22 +241,26 @@ pub async fn upload_cover(
         let name = field.name().unwrap_or("").to_string();
         if name == "cover" {
             let ct = field.content_type().unwrap_or("image/jpeg").to_string();
-            let bytes = field
-                .bytes()
+            let read_limit = if chunk_info.is_some() {
+                crate::api::upload_chunks::MAX_CHUNK_BYTES
+            } else {
+                cover_max
+            };
+            let bytes = crate::api::upload_chunks::read_field_limited(&mut field, read_limit)
                 .await
-                .map_err(|e| {
+                .map_err(|error| {
                     (
                         StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e.to_string()})),
+                        Json(serde_json::json!({"error": error})),
                     )
-                })?
-                .to_vec();
+                })?;
             let bytes = match chunk_info.as_ref() {
                 Some(info) => match crate::api::upload_chunks::store_chunk(
                     state.uploads_dir.as_str(),
                     "cover",
                     info.clone(),
                     &bytes,
+                    cover_max,
                 )
                 .map_err(|_| {
                     (
@@ -280,11 +289,6 @@ pub async fn upload_cover(
                 },
                 None => bytes,
             };
-            let cover_max = crate::api::upload_limit_bytes(
-                &state,
-                crate::api::KEY_UPLOAD_COVER_MB,
-                crate::api::COVER_MAX_BYTES,
-            );
             if bytes.len() > cover_max {
                 return Err((
                     StatusCode::BAD_REQUEST,
@@ -412,11 +416,16 @@ pub async fn upload_epub(
         )
     })?;
 
+    let file_max = crate::api::upload_limit_bytes(
+        &state,
+        crate::api::KEY_UPLOAD_FILE_MB,
+        crate::api::EPUB_MAX_BYTES,
+    );
     let mut data: Option<Vec<u8>> = None;
     let mut chunked_path: Option<(std::path::PathBuf, std::path::PathBuf)> = None;
     let mut original_name: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -428,22 +437,26 @@ pub async fn upload_epub(
                 .file_name()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "upload.epub".to_string());
-            let bytes = field
-                .bytes()
+            let read_limit = if chunk_info.is_some() {
+                crate::api::upload_chunks::MAX_CHUNK_BYTES
+            } else {
+                file_max
+            };
+            let bytes = crate::api::upload_chunks::read_field_limited(&mut field, read_limit)
                 .await
-                .map_err(|e| {
+                .map_err(|error| {
                     (
                         StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e.to_string()})),
+                        Json(serde_json::json!({"error": error})),
                     )
-                })?
-                .to_vec();
+                })?;
             match chunk_info.as_ref() {
                 Some(info) => match crate::api::upload_chunks::store_chunk(
                     state.uploads_dir.as_str(),
                     "file",
                     info.clone(),
                     &bytes,
+                    file_max,
                 )
                 .map_err(|_| {
                     (
@@ -471,11 +484,6 @@ pub async fn upload_epub(
 
     let original_name = original_name.unwrap_or_else(|| "upload.epub".to_string());
 
-    let file_max = crate::api::upload_limit_bytes(
-        &state,
-        crate::api::KEY_UPLOAD_FILE_MB,
-        crate::api::EPUB_MAX_BYTES,
-    );
     let (saved_name, _ext) = if let Some((path, cleanup_dir)) = chunked_path {
         let result = crate::external::save_uploaded_file_path(
             &path,

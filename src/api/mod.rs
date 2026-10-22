@@ -17,7 +17,7 @@ pub(crate) mod track_access;
 pub(crate) mod tracks;
 pub(crate) mod upload_chunks;
 
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::routing::{delete, get, post, put};
 
 pub(crate) const COVER_MAX_BYTES: usize = 10 * 1024 * 1024;
@@ -53,8 +53,18 @@ pub fn cleanup_stale_uploads(uploads_dir: &str) {
     upload_chunks::cleanup_stale_uploads(uploads_dir);
 }
 
+/// フロントエンド (`static/js/auth.js`) が認証要否を判定するための公開エンドポイント。
+async fn health(State(state): State<crate::AppState>) -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "ok": true,
+        "version": env!("CARGO_PKG_VERSION"),
+        "authentication_required": state.auth.required(),
+    }))
+}
+
 pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
+        .route("/health", get(health))
         .route("/reader-navigation", get(reader_navigation::get))
         .route("/audio/stream/{file_hash}", get(audio::stream))
         .route("/audio/playability/{file_hash}", get(audio::playability))

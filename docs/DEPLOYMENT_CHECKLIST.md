@@ -4,16 +4,18 @@
 
 - [ ] `develop` is the reviewed source branch; merges to `master` are reviewed release candidates, `master` pushes deploy staging, and only `v*` tags deploy production.
 - [ ] Native database backup completed and restore tested.
+- [ ] Native is bound to loopback by default; if it must listen beyond loopback, `DANTALIAN_API_TOKEN` is set and `BIND_ADDR` is explicit (the Native server refuses to start unauthenticated on a non-loopback address).
 - [ ] Native writes are frozen for the migration snapshot.
 - [ ] Current Worker migrations are applied to the target D1 database.
 - [ ] Wasabi bucket, region, endpoint, and a unique migration prefix are confirmed.
 - [ ] D1 and Wasabi credentials are stored only in the deployment secret store.
 - [x] No credential, Authorization header, cookie token, signing key, or full presigned URL appears in logs or artifacts.
-- [ ] Production custom domain is protected by a Cloudflare Access application with an explicit allow policy.
+- [ ] Production custom domain is protected by a Cloudflare Access application with an explicit allow policy. The production deploy now fails if unauthenticated `GET /api/health` reaches the application or if the `workers.dev` route answers 200.
 - [x] Production Worker uses Cloudflare Access as its user-facing authentication boundary; local/CI can require the app token fail-closed.
 - [ ] Presigned URL routes are only reachable after the Access-protected application boundary.
 - [x] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
 - [x] Worker upload routes reject the native chunk query protocol (`upload_id`/`part`/`total_parts`) with HTTP 400 instead of storing a partial chunk as a complete media object.
+- [x] The audio controller proxies only the internal audio-job paths (plus `/api/health`) with the processor token; other paths are rejected before the token is attached.
 
 ## MyDeploy production inputs
 
@@ -94,6 +96,15 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
 - [ ] Verify one EPUB larger than 95 MiB through the Access-protected domain: the
       browser uploads parts straight to Wasabi, `POST /api/books/:id/epub/finalize`
       returns 200, and `/epubs/<hash>.epub` afterwards serves the object.
+- [ ] Open one book in the reader through the Access-protected domain and confirm the
+      browser console shows no Content-Security-Policy violation. The static `_headers`
+      CSP allows `https:` for `connect-src`/`img-src`/`media-src` because `/epubs`,
+      `/images`, and `/audio` redirect to the signed Wasabi origin (CSP checks redirect
+      targets); the bucket CORS rules below must expose the redirected GET response.
+- [ ] Confirm `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and
+      `Content-Security-Policy` are present on a static page response. The Worker
+      itself only answers `/api`, `/audio`, `/images`, `/epubs`; static assets inherit
+      `_headers`.
 - [ ] Known limit: cover uploads stay on the Worker direct route (their own cap
       is 10 MiB); any cover file larger than `WORKER_DIRECT_UPLOAD_MAX_BYTES` is
       rejected before sending. Audio and EPUB no longer have that cap because

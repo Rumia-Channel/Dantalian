@@ -35,6 +35,7 @@ pub async fn get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Err(error) => return response(Err(error)),
     };
     let db = ctx.env.d1("DB")?;
+    let db = crate::d1_read::read_db(&req, &db)?;
     let large_id;
     let id = match i32::try_from(request.id) {
         Ok(id) => D1Type::Integer(id),

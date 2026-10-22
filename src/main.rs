@@ -66,6 +66,24 @@ async fn main() {
         )
         .init();
 
+    let auth_config = dantalian::auth::AuthConfig::from_env();
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let bind_ip: IpAddr = bind_addr.parse().unwrap_or_else(|_| {
+        eprintln!("BIND_ADDR が不正です: {bind_addr} (例: 127.0.0.1, 0.0.0.0)");
+        std::process::exit(1);
+    });
+    if auth_config.required() {
+        tracing::info!("Native API authentication is enabled (DANTALIAN_API_TOKEN)");
+    } else if !bind_ip.is_loopback() {
+        eprintln!(
+            "BIND_ADDR={bind_ip} はネットワークに公開されます。認証なしでは起動しません。\
+             DANTALIAN_API_TOKEN を設定するか、BIND_ADDR=127.0.0.1 で起動してください。"
+        );
+        std::process::exit(1);
+    } else {
+        tracing::info!(%bind_ip, "Native API authentication is disabled (loopback bind only)");
+    }
+
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| {
         dirs::document_dir()
             .or_else(dirs::data_dir)
@@ -173,6 +191,7 @@ async fn main() {
         uploads_dir: uploads_dir_arc.clone(),
         discogs_token,
         musicbrainz_contact,
+        auth: auth_config.clone(),
     };
 
     let _audio_encoding_worker = audio_encoding::start_background_worker(
@@ -180,6 +199,24 @@ async fn main() {
         state.audio_dir.as_ref().clone(),
         state.audio_encoding_notify.clone(),
     );
+
+    // 中断したチャンクアップロードを定期的に破棄する（起動時にも一度実行済み）。
+    let cleanup_uploads_dir = uploads_dir_arc.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60 * 60));
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let directory = cleanup_uploads_dir.as_ref().clone();
+            if let Err(error) = tokio::task::spawn_blocking(move || {
+                dantalian::api::cleanup_stale_uploads(&directory);
+            })
+            .await
+            {
+                tracing::warn!("stale upload cleanup failed: {error}");
+            }
+        }
+    });
 
     let shutdown_db = state.db.clone();
 
@@ -208,17 +245,24 @@ async fn main() {
         .nest_service("/audio", ServeDir::new(audio_dir_arc.as_ref()))
         .nest("/epubs", epub::routes(epubs_dir_arc).with_state(()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
+        .layer(axum::middleware::from_fn_with_state(
+            auth_config.clone(),
+            dantalian::auth::require_auth,
+        ))
+        .layer(axum::middleware::from_fn(
+            dantalian::http_security::security_headers,
+        ))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(3000);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+    let listener = tokio::net::TcpListener::bind((bind_ip, port))
         .await
         .unwrap();
-    eprintln!("Server running on http://localhost:{}", port);
-    tracing::info!("Server running on http://localhost:{}", port);
+    eprintln!("Server running on http://{}:{}", bind_ip, port);
+    tracing::info!("Server running on http://{}:{}", bind_ip, port);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             tokio::signal::ctrl_c().await.ok();

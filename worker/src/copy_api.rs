@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
+use crate::d1_read;
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use dantalian::application::error::AppError;
 use dantalian::domain::patch::deserialize_nullable;
@@ -40,7 +41,7 @@ fn db_error(error: worker::Error) -> worker::Error {
     error
 }
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let book_id = match parse_id(&ctx, "book_id") {
         Ok(value) => value,
         Err(response) => return Ok(response),
@@ -49,8 +50,9 @@ pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
-    let rows = ctx
-        .d1("DB")?
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    let rows = db
         .prepare(
             "SELECT c.id, c.book_id, c.copy_type, c.location, c.notes,
                     l.borrower_id, l.lent_date, l.due_date,
@@ -329,7 +331,7 @@ pub async fn return_copy(_req: Request, ctx: RouteContext<()>) -> Result<Respons
     Ok(Response::empty()?.with_status(204))
 }
 
-pub async fn history(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn history(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let copy_id = match parse_id(&ctx, "id") {
         Ok(value) => value,
         Err(response) => return Ok(response),
@@ -338,8 +340,9 @@ pub async fn history(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
-    let rows = ctx
-        .d1("DB")?
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    let rows = db
         .prepare(
             "SELECT l.*, b.name AS borrower_name
              FROM lending_history l

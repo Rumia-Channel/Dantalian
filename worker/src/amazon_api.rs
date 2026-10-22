@@ -16,7 +16,7 @@ use url::Url;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Result, RouteContext};
 
 use crate::{
-    external_api::fetch_with_timeout,
+    external_api::{fetch_with_timeout, read_bytes_capped, read_text_limited},
     wasabi::{WasabiConfig, WasabiStorage},
 };
 use dantalian::ports::object_storage::{ObjectKind, object_key};
@@ -77,25 +77,25 @@ fn image_content_type(value: &str) -> Option<(&'static str, &'static str)> {
 }
 
 async fn fetch_detail_html(detail_url: &str) -> Result<Option<String>> {
-    let mut detail_response =
+    let detail_response =
         fetch_with_timeout(Fetch::Request(amazon_request(detail_url)?), "Amazon detail").await?;
     if !(200..300).contains(&detail_response.status_code()) {
         return Ok(None);
     }
-    let detail_html = detail_response.text().await?;
+    let detail_html = read_text_limited(detail_response, "Amazon detail").await?;
     if !needs_black_curtain_eligibility(&detail_html) {
         return Ok(Some(detail_html));
     }
 
     let eligibility_url = black_curtain_eligibility_url(detail_url);
-    let mut eligibility_response = fetch_with_timeout(
+    let eligibility_response = fetch_with_timeout(
         Fetch::Request(amazon_request(&eligibility_url)?),
         "Amazon age eligibility",
     )
     .await?;
-    let _ = eligibility_response.text().await?;
+    let _ = read_text_limited(eligibility_response, "Amazon age eligibility").await?;
 
-    let mut retry_response = fetch_with_timeout(
+    let retry_response = fetch_with_timeout(
         Fetch::Request(amazon_request(detail_url)?),
         "Amazon detail retry",
     )
@@ -103,7 +103,9 @@ async fn fetch_detail_html(detail_url: &str) -> Result<Option<String>> {
     if !(200..300).contains(&retry_response.status_code()) {
         return Ok(None);
     }
-    Ok(Some(retry_response.text().await?))
+    Ok(Some(
+        read_text_limited(retry_response, "Amazon detail retry").await?,
+    ))
 }
 async fn lookup_amazon_info(
     search_keys: &[&str],
@@ -117,7 +119,7 @@ async fn lookup_amazon_info(
     });
     let mut attempted_details = Vec::new();
     'search: for search_url in amazon_search_urls(search_keys) {
-        let Ok(mut search_response) = fetch_with_timeout(
+        let Ok(search_response) = fetch_with_timeout(
             Fetch::Request(amazon_request(&search_url)?),
             "Amazon search",
         )
@@ -128,7 +130,7 @@ async fn lookup_amazon_info(
         if !(200..300).contains(&search_response.status_code()) {
             continue;
         }
-        let Ok(search_html) = search_response.text().await else {
+        let Ok(search_html) = read_text_limited(search_response, "Amazon search").await else {
             continue;
         };
         for href in parse_amazon_search_results(&search_html) {
@@ -181,7 +183,7 @@ async fn fetch_cover(url: &str) -> Result<Option<AmazonCover>> {
     if !is_allowed_amazon_url(url) {
         return Ok(None);
     }
-    let mut image_response =
+    let image_response =
         fetch_with_timeout(Fetch::Request(amazon_request(url)?), "Amazon cover").await?;
     if !(200..300).contains(&image_response.status_code()) {
         return Ok(None);
@@ -201,8 +203,10 @@ async fn fetch_cover(url: &str) -> Result<Option<AmazonCover>> {
     {
         return Ok(None);
     }
-    let bytes = image_response.bytes().await?;
-    if bytes.is_empty() || bytes.len() > AMAZON_MAX_COVER_BYTES {
+    let Some(bytes) = read_bytes_capped(image_response, AMAZON_MAX_COVER_BYTES).await? else {
+        return Ok(None);
+    };
+    if bytes.is_empty() {
         return Ok(None);
     }
     let digest = Sha256::digest(&bytes);

@@ -819,6 +819,22 @@ jobs:
             "https://$SERVICE_DOMAIN/api/cds/1/tracks/1/audio/multipart")"
           echo "audio multipart route status: $status"
           test "$status" != "404"
+      - name: Verify production Access boundary
+        env:
+          SERVICE_DOMAIN: ${{ secrets.SERVICE_DOMAIN }}
+        run: |
+          # Production disables the Worker's own token authentication and relies
+          # on Cloudflare Access as the only user-facing boundary. If Access is
+          # missing or bypassed, /api/health answers 200 unauthenticated and the
+          # whole API is public. Fail the deploy instead of shipping that state.
+          health_status="$(curl --silent --show-error --output /tmp/dantalian-health.json \
+            --write-out '%{http_code}' "https://$SERVICE_DOMAIN/api/health" || true)"
+          if [ "$health_status" = "200" ] && grep -q '"authentication_required":false' /tmp/dantalian-health.json; then
+            echo "production access boundary is missing: /api/health is publicly reachable"
+            cat /tmp/dantalian-health.json
+            exit 1
+          fi
+          echo "production access boundary OK (unauthenticated health status: $health_status)"
       - name: Resolve workers.dev subdomain
         id: subdomain
         run: |
@@ -827,6 +843,19 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
             | python -c 'import json, sys; print(json.load(sys.stdin)["result"]["subdomain"])')"
           echo "subdomain=$subdomain" >> "$GITHUB_OUTPUT"
+      - name: Verify production workers.dev route is disabled
+        env:
+          SUBDOMAIN: ${{ steps.subdomain.outputs.subdomain }}
+        run: |
+          # workers_dev = false must keep the production Worker off the public
+          # workers.dev hostname; otherwise Access on the custom domain is moot.
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "https://dantalian-worker.$SUBDOMAIN.workers.dev/api/health" || true)"
+          if [ "$status" = "200" ]; then
+            echo "production workers.dev endpoint is reachable; workers_dev must stay false"
+            exit 1
+          fi
+          echo "workers.dev disabled (status: $status)"
       - name: Render production audio controller config
         env:
           DANTALIAN_DEPLOY_TARGET: production

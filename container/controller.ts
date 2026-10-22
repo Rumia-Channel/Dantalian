@@ -3,6 +3,11 @@ import { Container } from "@cloudflare/containers";
 const QUEUE_MESSAGE_VERSION = 1;
 const JOB_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const INTERNAL_API_PREFIX = "/internal-api";
+const HEALTH_PATH = `${INTERNAL_API_PREFIX}/api/health`;
+const AUDIO_JOB_PATH_PATTERN = new RegExp(
+  `^${INTERNAL_API_PREFIX}/api/internal/audio/jobs/[0-9a-f]{32}/(?:claim|renew|complete|fail)$`,
+  "i",
+);
 
 type AudioJobMessage = {
   version: number;
@@ -141,6 +146,12 @@ export default {
     if (!url.pathname.startsWith(`${INTERNAL_API_PREFIX}/`)) {
       return new Response("Not Found", { status: 404 });
     }
+    // The processor token is only valid for the audio-job consumer boundary and
+    // the health probe. Reject anything else before the token is attached so a
+    // leaked container credential cannot reach the rest of the Worker API.
+    if (!isAllowedProcessorPath(url.pathname)) {
+      return new Response("Not Found", { status: 404 });
+    }
 
     const processorToken = env.DANTALIAN_PROCESSOR_TOKEN?.trim();
     if (!processorToken) {
@@ -183,6 +194,10 @@ function parseJobId(message: AudioJobMessage): string {
     throw new Error("invalid audio queue message");
   }
   return message.job_id.toLowerCase();
+}
+
+function isAllowedProcessorPath(pathname: string): boolean {
+  return pathname === HEALTH_PATH || AUDIO_JOB_PATH_PATTERN.test(pathname);
 }
 
 function constantTimeBearerEqual(value: string, expected: string): boolean {

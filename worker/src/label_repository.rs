@@ -1,14 +1,15 @@
+use crate::d1_read::D1Prepare;
 use dantalian::{
     application::error::AppError, domain::label::Label, ports::label_repository::LabelRepository,
 };
-use worker::{D1Database, D1Type};
+use worker::D1Type;
 
-pub struct D1LabelRepository {
-    db: D1Database,
+pub struct D1LabelRepository<D: D1Prepare> {
+    db: D,
 }
 
-impl D1LabelRepository {
-    pub fn new(db: D1Database) -> Self {
+impl<D: D1Prepare> D1LabelRepository<D> {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 
@@ -23,7 +24,7 @@ impl D1LabelRepository {
     }
 }
 
-impl LabelRepository for D1LabelRepository {
+impl<D: D1Prepare> LabelRepository for D1LabelRepository<D> {
     async fn list(&self) -> Result<Vec<Label>, AppError> {
         let result = self
             .db

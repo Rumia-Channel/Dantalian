@@ -93,6 +93,18 @@ function escapeJs(text) {
         .replace(/\u2029/g, "\\u2029");
 }
 
+// 二重引用符で囲んだインラインイベントハンドラ属性に、JS の文字列リテラルとして
+// 値を埋め込む用 (onclick="fn(${jsStringAttr(x)})")。
+// JSON.stringify で JS 側のエスケープを確保したうえで escapeAttr で HTML 属性を
+// 保護する。escapeJs を属性へ直接埋めると、バックスラッシュは HTML パーサに
+// 意味を持たないため `"` で属性を脱出できてしまう。
+function jsStringAttr(text) {
+    const json = JSON.stringify(String(text == null ? "" : text));
+    return escapeAttr(json)
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+}
+
 // 検索・グループキー用の正規化: 小文字化 + NFKC + 半角カタカナ→全角 + 空白除去。
 function normalizeSearchText(value) {
     return String(value || "")

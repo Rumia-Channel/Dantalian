@@ -49,6 +49,19 @@ fn is_allowed_key(key: &str) -> bool {
     ALLOWED_SETTING_KEYS.contains(&key)
 }
 
+/// WebDAV バックアップは Basic 認証を送るため、平文 http はループバックのみ許可する。
+fn is_allowed_webdav_url(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return false;
+    };
+    let host = rest.split(['/', ':', '?', '#']).next().unwrap_or_default();
+    matches!(host, "localhost" | "127.0.0.1" | "::1")
+}
+
 fn is_secret_key(key: &str) -> bool {
     SECRET_SETTING_KEYS.contains(&key)
 }
@@ -112,6 +125,15 @@ fn validate_setting(key: &str, value: &str) -> Result<(), String> {
         "backup.dest_type" => {
             if !matches!(value.trim(), "local" | "webdav" | "s3") {
                 return Err("backup.dest_type は local/webdav/s3 のいずれかです".to_string());
+            }
+        }
+        "backup.webdav_url" => {
+            let value = value.trim();
+            if !value.is_empty() && !is_allowed_webdav_url(value) {
+                return Err(
+                    "backup.webdav_url は https:// を指定してください（localhost/127.0.0.1 のみ http:// 可）"
+                        .to_string(),
+                );
             }
         }
         "media_sync.types" => {
@@ -201,5 +223,19 @@ mod tests {
         assert!(validate_setting("backup.schedule_time", "not-a-time").is_err());
         assert!(validate_setting("backup.schedule_tz", "Asia/Tokyo").is_ok());
         assert!(validate_setting("backup.schedule_tz", "Mars/Nope").is_err());
+    }
+
+    #[test]
+    fn requires_tls_for_non_loopback_webdav_urls() {
+        assert!(
+            validate_setting("backup.webdav_url", "https://webdav.example.com/backups/").is_ok()
+        );
+        assert!(validate_setting("backup.webdav_url", "http://localhost:8080/webdav").is_ok());
+        assert!(validate_setting("backup.webdav_url", "http://127.0.0.1/webdav").is_ok());
+        assert!(validate_setting("backup.webdav_url", "").is_ok());
+        assert!(
+            validate_setting("backup.webdav_url", "http://webdav.example.com/backups/").is_err()
+        );
+        assert!(validate_setting("backup.webdav_url", "ftp://example.com/x").is_err());
     }
 }

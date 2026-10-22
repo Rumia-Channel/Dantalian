@@ -11,14 +11,15 @@ let editCdSeriesSelect = null;
 let editCdAuthorSelect = null;
 
 (async () => {
-    await loadBooks();
-    await loadCds();
-    await loadSeries();
-    await loadGrandSeries();
-    await loadStorageLocations();
-    await loadLabels();
-
-    const [aRes, bRes] = await Promise.all([
+    // These loads are independent; a serial chain added six round trips before
+    // the edit form could render.
+    const [, , , , , , aRes, bRes] = await Promise.all([
+        loadBooks(),
+        loadCds(),
+        loadSeries(),
+        loadGrandSeries(),
+        loadStorageLocations(),
+        loadLabels(),
         fetch("/api/authors"),
         fetch("/api/borrowers"),
     ]);
@@ -73,7 +74,7 @@ async function renderBookEdit(id) {
             <div class="edit-cover-wrap">
                 <div class="edit-cover" id="edit-cover-display">
                     ${book.cover_url
-                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="">`
+                        ? `<img class="book-cover" src="/images/${escapeAttr(book.cover_url)}" alt="">`
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">
@@ -714,7 +715,7 @@ async function renderCdEdit(cdId) {
             <div class="edit-cover-wrap">
                 <div class="edit-cover" id="edit-cover-display">
                     ${cd.cover_url
-                        ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="">`
+                        ? `<img class="book-cover" src="/images/${escapeAttr(cd.cover_url)}" alt="">`
                         : '<div class="book-cover-placeholder">No Image</div>'}
                 </div>
                 <div class="edit-cover-actions">

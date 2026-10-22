@@ -19,13 +19,15 @@ function renderHomeLoadError() {
 }
 
 async function initializeHome() {
+    // The books-only catalogue does not render CDs or CD labels, so loading
+    // them only delays the first meaningful render (CDs was the slowest call).
+    const booksOnly = document.body.dataset.catalogue === "books";
     const results = await Promise.all([
         loadSeries(),
         loadGrandSeries(),
         loadStorageLocations(),
-        loadLabels(),
+        ...(booksOnly ? [] : [loadLabels(), loadCds()]),
         loadBooks(),
-        loadCds(),
     ]);
     if (results.every(Boolean)) renderItems();
     else renderHomeLoadError();

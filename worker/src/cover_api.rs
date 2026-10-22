@@ -198,6 +198,9 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         Err(error) => return error_response(error),
     };
     if metadata.content_length != Some(record.expected_size as u64) {
+        // A rejected upload must not leave the presigned object orphaned; the
+        // delete is best effort like the multipart finalize path.
+        let _ = storage.delete_object(&record.object_key).await;
         return error_response(AppError::Conflict(
             "Wasabi object size does not match upload metadata".to_string(),
         ));
@@ -207,6 +210,7 @@ pub async fn complete(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         .as_deref()
         .is_some_and(|value| !value.eq_ignore_ascii_case(&record.content_type))
     {
+        let _ = storage.delete_object(&record.object_key).await;
         return error_response(AppError::Conflict(
             "Wasabi object content type does not match upload metadata".to_string(),
         ));

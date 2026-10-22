@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::amazon_api;
+use crate::d1_read;
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use crate::musicbrainz_api;
 use dantalian::application::error::AppError;
@@ -266,8 +267,9 @@ const LIST_SELECT: &str = "SELECT c.id, c.jan, c.title, c.artist, c.publisher, c
     (SELECT tm.album_artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.album_artist IS NOT NULL AND tm.album_artist <> '' ORDER BY t.disc_number, t.track_number LIMIT 1) AS album_artist
     FROM cds c ORDER BY c.id DESC";
 
-pub async fn list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
     let rows = db
         .prepare(LIST_SELECT)
         .all()

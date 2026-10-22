@@ -1,10 +1,33 @@
+use crate::d1_read::ReadDb;
 use serde::Deserialize;
+use std::collections::HashMap;
 use worker::{D1Database, D1PreparedStatement, D1Type, Result};
 
 const PLAYLIST_SELECT: &str = "SELECT p.id,p.name,p.description,p.cover_cd_id,c.cover_url,p.created_at,p.updated_at FROM playlists p LEFT JOIN cds c ON c.id=p.cover_cd_id";
 
+const TRACK_SELECT: &str = "SELECT pt.playlist_id,
+         pt.position,
+         json_object('id',t.id,'book_id',COALESCE(t.book_id,0),'cd_id',t.cd_id,
+                     'disc_number',t.disc_number,'track_number',t.track_number,
+                     'title',t.title,'duration',t.duration,'file_hash',t.file_hash,'file_name',t.file_name) AS track,
+         json_object('id',c.id,'jan',c.jan,'title',c.title,'artist',c.artist,
+                     'publisher',c.publisher,'label',c.label,'catalog_number',c.catalog_number,
+                     'publish_date',c.publish_date,'cover_url',c.cover_url,'description',c.description,
+                     'disc_count',c.disc_count,'volume',c.volume,'created_at',c.created_at,
+                     'updated_at',c.updated_at,'parent_book_id',c.parent_book_id,
+                     'media_type',c.media_type,'series_id',c.series_id) AS cd
+         FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id JOIN cds c ON c.id=t.cd_id";
+
 #[derive(Deserialize)]
 struct TrackRow {
+    position: i64,
+    track: String,
+    cd: String,
+}
+
+#[derive(Deserialize)]
+struct PlaylistTrackRow {
+    playlist_id: i64,
     position: i64,
     track: String,
     cd: String,
@@ -44,21 +67,35 @@ pub async fn load(db: &D1Database, id: i64) -> Result<Option<serde_json::Value>>
     Ok(Some(playlist))
 }
 
-pub async fn list(db: &D1Database) -> Result<Vec<serde_json::Value>> {
-    #[derive(Deserialize)]
-    struct IdRow {
-        id: i64,
-    }
-    let rows = db
-        .prepare("SELECT id FROM playlists ORDER BY id DESC")
+pub async fn list(db: &ReadDb<'_>) -> Result<Vec<serde_json::Value>> {
+    // Two queries total regardless of the playlist count: the previous
+    // implementation ran two queries per playlist (an N+1 pattern that cost
+    // about one second for a handful of playlists).
+    let mut playlists = db
+        .prepare(format!("{PLAYLIST_SELECT} ORDER BY p.id DESC"))
         .all()
         .await?
-        .results::<IdRow>()?;
-    let mut playlists = Vec::with_capacity(rows.len());
-    for row in rows {
-        if let Some(playlist) = load(db, row.id).await? {
-            playlists.push(playlist);
-        }
+        .results::<serde_json::Value>()?;
+    let track_rows = db
+        .prepare(format!(
+            "{TRACK_SELECT} ORDER BY pt.playlist_id, pt.position, pt.rowid"
+        ))
+        .all()
+        .await?
+        .results::<PlaylistTrackRow>()?;
+    let mut grouped: HashMap<i64, Vec<serde_json::Value>> = HashMap::new();
+    for row in track_rows {
+        let track: serde_json::Value = serde_json::from_str(&row.track)?;
+        let cd: serde_json::Value = serde_json::from_str(&row.cd)?;
+        grouped
+            .entry(row.playlist_id)
+            .or_default()
+            .push(serde_json::json!({"position":row.position,"track":track,"cd":cd}));
+    }
+    for playlist in playlists.iter_mut() {
+        let id = playlist.get("id").and_then(serde_json::Value::as_i64);
+        let tracks = id.and_then(|id| grouped.remove(&id)).unwrap_or_default();
+        playlist["tracks"] = serde_json::Value::Array(tracks);
     }
     Ok(playlists)
 }

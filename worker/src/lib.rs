@@ -12,6 +12,7 @@ mod borrower_repository;
 mod cd_api;
 mod copy_api;
 mod cover_api;
+mod d1_read;
 mod error;
 mod external_api;
 mod grand_series_api;
@@ -23,6 +24,7 @@ mod musicbrainz_api;
 mod ndl_coordinator;
 mod object_api;
 mod playlist_api;
+mod read_cache;
 mod reader_navigation_api;
 mod series_api;
 mod series_repository;
@@ -39,6 +41,15 @@ use worker::*;
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = req.path();
+    // Defense in depth: the processor token is scoped to the internal audio-job
+    // endpoints (plus the public health probe). Reject it everywhere else so a
+    // container credential can never act as a general API token.
+    if !path.starts_with("/api/internal/audio/jobs/")
+        && path != "/api/health"
+        && auth::presents_processor_token(&env, &req)?
+    {
+        return Response::error("Forbidden", 403);
+    }
     let auth_response = if path.starts_with("/api/internal/audio/jobs/") {
         auth::authorize_processor(&env, &req)?
     } else {
@@ -50,7 +61,14 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         return Ok(response);
     }
-    Router::new()
+    let cache_plan = read_cache::plan(&req).ok().flatten();
+    if let Some(plan) = cache_plan.as_ref() {
+        if let Some(hit) = read_cache::lookup(plan).await {
+            return Ok(hit);
+        }
+    }
+    let method = req.method();
+    let mut response = Router::new()
         .get_async("/api/health", |_req, ctx| async move {
             Response::from_json(&serde_json::json!({
                 "ok": true,
@@ -260,7 +278,24 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             playlist_api::remove_track,
         )
         .run(req, env)
-        .await
+        .await?;
+    if let Some(plan) = cache_plan.as_ref() {
+        read_cache::store(plan, &mut response).await;
+    }
+    // After a successful write, prefer the primary database for a short window
+    // so a following GET observes the change even though reads normally use a
+    // D1 read replica (`d1_read::read_db`).
+    if matches!(
+        method,
+        Method::Post | Method::Put | Method::Delete | Method::Patch
+    ) && response.status_code() < 400
+    {
+        let _ = response.headers_mut().append(
+            "set-cookie",
+            "dantalian_d1_primary=1; Path=/; Max-Age=30; HttpOnly; SameSite=Strict",
+        );
+    }
+    Ok(response)
 }
 
 // The Worker has no local filesystem or SQLite backup API; D1 backups stay

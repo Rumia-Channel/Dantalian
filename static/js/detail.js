@@ -41,7 +41,7 @@ function showGrandSeriesModal(gsId) {
                 ${sortedBooks.map((b) => `
                     <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
                         ${b.cover_url
-                            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                            ? `<img class="book-cover" src="/images/${escapeAttr(b.cover_url)}" alt="" loading="lazy">`
                             : '<div class="book-cover-placeholder">No Image</div>'}
                         <div class="volume-title">${escapeHtml(b.title)}</div>
                     </div>`
@@ -59,7 +59,7 @@ function showGrandSeriesModal(gsId) {
                 ${sortedIndividuals.map((b) => `
                     <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
                         ${b.cover_url
-                            ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                            ? `<img class="book-cover" src="/images/${escapeAttr(b.cover_url)}" alt="" loading="lazy">`
                             : '<div class="book-cover-placeholder">No Image</div>'}
                         <div class="volume-title">${escapeHtml(b.title)}</div>
                     </div>`
@@ -87,7 +87,7 @@ function showSeriesModal(seriesId) {
         <div class="series-modal-item" onclick="${catalogueItemClickHandler(b)}">
             ${
                 b.cover_url
-                    ? `<img class="book-cover" src="/images/${b.cover_url}" alt="" loading="lazy">`
+                    ? `<img class="book-cover" src="/images/${escapeAttr(b.cover_url)}" alt="" loading="lazy">`
                     : '<div class="book-cover-placeholder">No Image</div>'
             }
             <div class="volume-title">${escapeHtml(b.title)}</div>
@@ -217,7 +217,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
                             ${t.file_hash ? `
                                 <span class="detail-track-actions">
-                                    <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${encodeURIComponent(t.file_hash)}','${escapeJs(t.title)}',this)" aria-label="再生" title="再生">
+                                    <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${encodeURIComponent(t.file_hash)}',${jsStringAttr(t.title)},this)" aria-label="再生" title="再生">
                                         <span class="material-icons" aria-hidden="true">play_arrow</span>
                                     </button>
                                     <a class="btn btn-xs btn-ghost detail-track-download" href="/audio/${encodeURIComponent(t.file_hash)}" download="${escapeAttr(t.file_name || t.title || "audio")}" onclick="event.stopPropagation()" aria-label="ダウンロード" title="ダウンロード">
@@ -236,7 +236,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
             <div class="detail-cover">
                 ${
                     book.cover_url
-                        ? `<img class="book-cover" src="/images/${book.cover_url}" alt="${escapeAttr(book.title)}">`
+                        ? `<img class="book-cover" src="/images/${escapeAttr(book.cover_url)}" alt="${escapeAttr(book.title)}">`
                         : '<div class="book-cover-placeholder">No Image</div>'
                 }
             </div>
@@ -463,7 +463,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
                             ${t.duration ? `<span class="detail-track-duration">${escapeHtml(t.duration)}</span>` : ""}
                             ${t.file_hash ? `
                                 <span class="detail-track-actions">
-                                    <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${encodeURIComponent(t.file_hash)}','${escapeJs(t.title)}',this)" aria-label="再生" title="再生">
+                                    <button class="btn btn-xs btn-ghost detail-track-play" onclick="event.stopPropagation();playPreviewAudio('/audio/${encodeURIComponent(t.file_hash)}',${jsStringAttr(t.title)},this)" aria-label="再生" title="再生">
                                         <span class="material-icons" aria-hidden="true">play_arrow</span>
                                     </button>
                                     <a class="btn btn-xs btn-ghost detail-track-download" href="/audio/${encodeURIComponent(t.file_hash)}" download="${escapeAttr(t.file_name || t.title || "audio")}" onclick="event.stopPropagation()" aria-label="ダウンロード" title="ダウンロード">
@@ -481,7 +481,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
         <div class="detail-header">
             <div class="detail-cover">
                 ${cd.cover_url
-                    ? `<img class="book-cover" src="/images/${cd.cover_url}" alt="${escapeAttr(cd.title)}">`
+                    ? `<img class="book-cover" src="/images/${escapeAttr(cd.cover_url)}" alt="${escapeAttr(cd.title)}">`
                     : '<div class="book-cover-placeholder">No Image</div>'}
             </div>
             <div class="detail-title-block">

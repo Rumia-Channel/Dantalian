@@ -185,6 +185,20 @@ pub fn authorize_processor(env: &Env, request: &Request) -> Result<Option<Respon
     }
 }
 
+/// Whether the request presents the audio-processor credential. That credential
+/// is scoped to the internal audio-job boundary, so the caller can reject it on
+/// every other path even when it is otherwise valid.
+pub fn presents_processor_token(env: &Env, request: &Request) -> Result<bool> {
+    let Some(token) = env_string(env, PROCESSOR_TOKEN_SECRET) else {
+        return Ok(false);
+    };
+    let authorization = request.headers().get("authorization")?;
+    Ok(authorization
+        .as_deref()
+        .and_then(bearer_value)
+        .is_some_and(|supplied| constant_time_equal(supplied, &token)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{bearer_value, constant_time_equal, cookie_value, requires_auth};

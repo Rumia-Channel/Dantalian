@@ -78,7 +78,7 @@ function renderAlbumCard(cd) {
         ? '<span class="music-album-badge music-album-badge--audiobook">AB</span>'
         : '<span class="music-album-badge">CD</span>';
     const cover = cd.cover_url
-        ? `<img class="music-album-cover" src="/images/${cd.cover_url}" alt="${escapeAttr(cd.title)}" loading="lazy">`
+        ? `<img class="music-album-cover" src="/images/${escapeAttr(cd.cover_url)}" alt="${escapeAttr(cd.title)}" loading="lazy">`
         : `<div class="music-album-coverfallback"><span class="material-icons">album</span></div>`;
     const trackCount = (cd.tracks || []).filter((t) => t.file_hash).length;
     const artistName = getCdArtistName(cd);
@@ -304,18 +304,25 @@ function renderMusicLoadError(messages) {
 
 // 起動
 async function initMusicPage() {
-    await loadAudioDataSaverPolicy();
+    // The audio policy, CD list, and playlist list are independent; loading
+    // them serially delayed the grid by the sum of their latencies.
     let cdsLoaded = true;
-    try {
-        const res = await fetch("/api/cds");
-        if (!res.ok) throw new Error(`CD一覧: HTTP ${res.status}`);
-        allAlbums = await res.json();
-    } catch (error) {
-        console.error("music cds load failed:", error);
-        allAlbums = [];
-        cdsLoaded = false;
-    }
-    const playlistsLoaded = await loadPlaylists();
+    const cdsPromise = (async () => {
+        try {
+            const res = await fetch("/api/cds");
+            if (!res.ok) throw new Error(`CD一覧: HTTP ${res.status}`);
+            allAlbums = await res.json();
+        } catch (error) {
+            console.error("music cds load failed:", error);
+            allAlbums = [];
+            cdsLoaded = false;
+        }
+    })();
+    const [, playlistsLoaded] = await Promise.all([
+        loadAudioDataSaverPolicy(),
+        loadPlaylists(),
+        cdsPromise,
+    ]);
     if (!cdsLoaded || !playlistsLoaded) {
         const messages = [];
         if (!cdsLoaded) messages.push("CD/オーディオブック一覧の取得に失敗");
