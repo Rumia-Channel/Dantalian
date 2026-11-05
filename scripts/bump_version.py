@@ -6,7 +6,7 @@ Usage:
 
 Updates:
     Cargo.toml              package version
-    worker/Cargo.toml       package version + dantalian dependency version
+    worker/Cargo.toml       package version + dantalian major-version requirement
     about.hbs               license page header ("Dantalian X.Y.Z")
     Cargo.lock              regenerated via `cargo check`
     worker/Cargo.lock       regenerated via `cargo check`
@@ -65,8 +65,8 @@ def main() -> None:
     )
     replace_once(
         ROOT / "worker" / "Cargo.toml",
-        re.compile(r'dantalian = \{ version = "[0-9]+\.[0-9]+\.[0-9]+"'),
-        f'dantalian = {{ version = "{version}"',
+        re.compile(r'dantalian = \{ version = "[0-9]+(?:\.[0-9]+\.[0-9]+)?"'),
+        f'dantalian = {{ version = "{version.split(".")[0]}"',
     )
     replace_once(
         ROOT / "about.hbs",
