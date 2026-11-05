@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.2.2** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.2.2/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.0** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.0/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -29,6 +29,8 @@ Bibi **2.2.2** のホスト連携機能を使用する。固定した repository
 2.2.1 では、小数幅のペインを直交フローのページ送りと誤判定する問題、横書き本文内の画像配置、単独表紙の位置、メニューバーからの pointer 離脱・window blur 後に hover 表示が残る問題を修正した。公開 API の schemaVersion は変わらない。Dantalian の独自 preset にも上下・左右の既定余白を明示し、上流の `default.js` だけに定義された設定が取り込みから漏れないようにしている。
 2.2.2 では、幅を百分率指定した前付け挿絵の分類に固有寸法を使い、フィット後の端切れを防ぐ。見開きは全高の一組として配置・focus し、終端を含む前後移動でページ順を保つ。schemaVersion 1 の位置・ホストナビ API は変更しない。
 
+2.3.0 では PDF の取得・ページ描画・テキスト選択・検索が追加された。PDF.js 本体・Worker・フォント・CMap・Wasm と各ライセンスを含む配布物全体を取り込み、ホスト preset で `accept-pdf: yes` を明示する。位置・ホストナビ API の schemaVersion は 1 のまま。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -36,7 +38,7 @@ Bibi **2.2.2** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.2.2
+git checkout --detach v2.3.0
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -50,7 +52,7 @@ node scripts/import_bibi.mjs .tmp/bibi-source
 node scripts/import_bibi.mjs --verify
 ```
 
-確認環境は Bun 1.4.3 / Node.js 24.22.0。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
+固定 toolchain は Bun 1.4.2 / Node.js 24.22.1。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
 固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
@@ -60,7 +62,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.2.2` であること。 |
+| `schemaVersion` / `version` | `1` / `2.3.0` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |

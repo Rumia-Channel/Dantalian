@@ -1,6 +1,7 @@
 Bibi.preset({
     'extract-if-necessary': ['*'],
     'autostart': 'yes',
+    'accept-pdf': 'yes',
     'resume-from-last-position': 'yes',
     'keep-settings': 'yes',
     'item-padding-top': 48,
