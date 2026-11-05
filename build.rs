@@ -61,6 +61,7 @@ fn main() {
         "static/js/authors.js",
         "static/js/edit/copies.js",
         "static/js/edit/tracks.js",
+        "static/js/edit/book-files.js",
         "static/js/edit/main.js",
         "static/js/borrowers.js",
         "static/js/settings-manage.js",

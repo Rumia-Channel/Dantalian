@@ -576,7 +576,7 @@ async function describeUploadError(res, label) {
 }
 
 document.getElementById("edit-content").addEventListener("change", async (e) => {
-    if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
+    if (e.target.id !== "edit-cover-input") return;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -587,36 +587,6 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const bid = parseInt(params.get("book"), 10);
     const cid = parseInt(params.get("cd"), 10);
 
-    if (e.target.id === "edit-epub-input") {
-        if (!bid) {
-            e.target.value = "";
-            if (coverDisplay) coverDisplay.style.opacity = "1";
-            return;
-        }
-        try {
-            const input = e.target;
-            input.disabled = true;
-            try {
-                for (const attachment of Array.from(input.files)) {
-                    const res = await uploadFileWithChunks(`/api/books/${bid}/files`, "file", attachment, "epub");
-                    if (!res.ok) {
-                        alert(`${attachment.name}: ${await describeUploadError(res, "ファイル")}`);
-                        break;
-                    }
-                }
-            } finally {
-                input.disabled = false;
-            }
-            await loadBooks();
-            renderBookEdit(bid);
-        } catch (err) {
-            console.error("File upload error:", err);
-            alert("ファイルのアップロード中に通信エラーが発生しました");
-        }
-        e.target.value = "";
-        if (coverDisplay) coverDisplay.style.opacity = "1";
-        return;
-    }
 
     if (cid) {
         try {
@@ -662,22 +632,6 @@ async function deleteCover(bookId) {
     } catch {}
 }
 
-async function deleteBookFile(bookId, fileId) {
-    const ok = await showConfirm({ message: "このファイルを削除しますか？", okLabel: "削除" });
-    if (!ok) return;
-
-    try {
-        const res = await fetch(`/api/books/${bookId}/files/${fileId}`, { method: "DELETE" });
-        if (res.ok) {
-            await loadBooks();
-            renderBookEdit(bookId);
-        } else {
-            alert("ファイルを削除できませんでした");
-        }
-    } catch {
-        alert("ファイルの削除中に通信エラーが発生しました");
-    }
-}
 
 let currentCdTags = null; // 編集中CDの track_metadata 由来アルバムタグ合意(参考)
 
