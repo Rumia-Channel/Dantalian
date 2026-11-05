@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 14;
+const SCHEMA_VERSION: u32 = 15;
 
 /// Idempotent indexes for the hot read paths (list/detail pages, lending
 /// counts, playlist playback). Executed on every open so existing databases
@@ -138,14 +138,22 @@ CREATE TABLE IF NOT EXISTS books (
     artist TEXT,
     label TEXT,
     disc_count INTEGER,
-    epub_file_hash TEXT,
-    epub_file_name TEXT,
     reading_status TEXT DEFAULT 'unread',
     storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
     label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL,
     created_at TEXT,
     updated_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS book_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    file_hash TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(book_id, file_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_book_files_hash ON book_files(file_hash);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_isdn ON books(isdn) WHERE isdn IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_jan ON books(jan) WHERE jan IS NOT NULL;
@@ -621,6 +629,27 @@ impl Db {
             if current_version < 13 {
                 conn.execute_batch(GRAND_SERIES_INTEGRITY_SQL)?;
             }
+            if current_version < 15 {
+                conn.execute_batch(
+                    "BEGIN;
+                     CREATE TABLE book_files (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                         file_hash TEXT NOT NULL,
+                         file_name TEXT NOT NULL,
+                         created_at TEXT,
+                         UNIQUE(book_id, file_hash)
+                     );
+                     CREATE INDEX idx_book_files_hash ON book_files(file_hash);
+                     INSERT INTO book_files(book_id, file_hash, file_name, created_at)
+                     SELECT id, epub_file_hash, COALESCE(epub_file_name, epub_file_hash), updated_at
+                     FROM books WHERE epub_file_hash IS NOT NULL AND epub_file_hash <> '';
+                     ALTER TABLE books DROP COLUMN epub_file_hash;
+                     ALTER TABLE books DROP COLUMN epub_file_name;
+                     COMMIT;",
+                )?;
+            }
+
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
@@ -672,6 +701,13 @@ mod tests {
                 params!["legacy cd", "２０２６年２月１３日"],
             )
             .expect("insert legacy cd");
+            conn.execute_batch(
+                "DROP TABLE book_files;
+                 ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
+                 ALTER TABLE books ADD COLUMN epub_file_name TEXT;
+                 UPDATE books SET epub_file_hash = 'legacy.epub', epub_file_name = '元の本.epub';",
+            )
+            .expect("restore legacy attachment schema");
             conn.execute_batch("PRAGMA user_version = 11;")
                 .expect("set legacy schema version");
         }
@@ -696,6 +732,17 @@ mod tests {
 
         assert_eq!(book_date, "2007-01-NN");
         assert_eq!(cd_date, "2026-02-13");
+        let migrated_file: (i64, String, String) = conn
+            .query_row(
+                "SELECT book_id, file_hash, file_name FROM book_files",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            migrated_file,
+            (1, "legacy.epub".to_owned(), "元の本.epub".to_owned())
+        );
 
         drop(conn);
         drop(migrated);
@@ -757,6 +804,12 @@ mod tests {
                  INSERT INTO grand_series_items VALUES (1,'book',1),(1,'series',1),(1,'cd',1),(1,'book',999);
                  PRAGMA user_version=12;"
             ).unwrap();
+            conn.execute_batch(
+                "DROP TABLE book_files;
+                 ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
+                 ALTER TABLE books ADD COLUMN epub_file_name TEXT;",
+            )
+            .unwrap();
         }
         drop(db);
         let migrated = Db::new(path.to_str().unwrap()).unwrap();

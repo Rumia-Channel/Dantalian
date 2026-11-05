@@ -14,11 +14,11 @@ async function request(method, path, body) {
 async function upload(id, name = 'fixture.epub', bytes = epub) {
     const form = new FormData();
     form.append(process.env.READER_NAVIGATION_BACKEND === 'native' ? 'epub' : 'file', new Blob([bytes]), name);
-    const response = await fetch(`${baseUrl}/api/books/${id}/epub`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
+    const response = await fetch(`${baseUrl}/api/books/${id}/files`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
     assert.equal(response.status, 200, await response.text());
     return (await request('GET', `/api/books/${id}`)).body;
 }
-const navigation = (book, returnTo = '/books/?search=作品#selected', hash = book.epub_file_hash) => request('GET', '/api/reader-navigation?' + new URLSearchParams({ book_key: 'book:' + book.id, content_hash: hash, return_to: returnTo }));
+const navigation = (book, returnTo = '/books/?search=作品#selected', hash = book.files?.[0]?.file_hash ?? 'unknown') => request('GET', '/api/reader-navigation?' + new URLSearchParams({ book_key: 'book:' + book.id, content_hash: hash, return_to: returnTo }));
 function check(result, status, code) {
     assert.equal(result.status, status, JSON.stringify(result.body));
     assert.equal(result.headers.get('cache-control'), 'no-store');
@@ -47,10 +47,15 @@ test('reader navigation selects immediate registered volumes, preserves origin a
         assert.equal(result.body.next.bookKey, 'book:' + books[2].id); assert.equal(result.body.next.status, 'missing-file'); assert.equal(result.body.next.href, null);
         result = await navigation(first); check(result, 200); assert.equal(result.body.previous, null); assert.equal(result.body.next.bookKey, 'book:' + current.id);
         result = await navigation(last); check(result, 200); assert.equal(result.body.previous.bookKey, 'book:' + books[2].id); assert.equal(result.body.next, null);
-        check(await navigation({ ...books[2], epub_file_hash: 'unknown' }), 422, 'BOOK_UNAVAILABLE');
-        await upload(books[2].id, 'unsupported.pdf', pdf); result = await navigation(current); check(result, 200); assert.equal(result.body.next.status, 'unsupported-format'); assert.equal(result.body.next.href, null);
+        check(await navigation(books[2]), 422, 'BOOK_UNAVAILABLE');
+        await upload(books[2].id, 'supported.pdf', pdf); result = await navigation(current); check(result, 200); assert.equal(result.body.next.status, 'ready'); assert.ok(result.body.next.href);
         const changedBytes = Buffer.from(epub); changedBytes.writeUInt16LE(2, changedBytes.length - 2);
-        const replacement = await upload(current.id, 'replacement.epub', Buffer.concat([changedBytes, Buffer.from('v2')]));
+        const appended = await upload(current.id, 'additional.epub', Buffer.concat([changedBytes, Buffer.from('v2')]));
+        assert.deepEqual(appended.files.map(file => file.file_name), ['fixture.epub', 'additional.epub']);
+        check(await navigation(current), 200);
+        check(await navigation(appended, '/books/', appended.files[1].file_hash), 200);
+        assert.equal((await request('DELETE', `/api/books/${current.id}/files/${current.files[0].id}`)).status, 204);
+        const replacement = (await request('GET', `/api/books/${current.id}`)).body;
         check(await navigation(current), 409, 'CONTENT_CHANGED'); check(await navigation(replacement), 200);
         assert.equal((await request('DELETE', '/api/books/' + books[2].id)).status, 204);
         result = await navigation(replacement); check(result, 200); assert.equal(result.body.next.bookKey, 'book:' + last.id); assert.equal(new URL(result.body.next.href, baseUrl).searchParams.get('entry'), 'start');

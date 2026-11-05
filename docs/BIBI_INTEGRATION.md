@@ -4,7 +4,7 @@
 
 Bibi **2.3.0** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.0/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
-- **Bibi**: EPUB の取得・展開・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
+- **Bibi**: EPUB・PDF の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
 - Dantalian 側では固定成果物の検証・取り込み、独自 preset、Native/Worker の静的配信と CI の共通成果物化に加え、**本一覧の本のクリック、または詳細・編集画面の「読む」から Bibi の standalone 専用ページを起動し、既存書籍 API の登録済み EPUB を開く導線を接続済み**。トップページのクリックは従来の詳細表示を維持する。Jo / iframe にリーダーを埋め込まない。進捗・ブラウザ内の再開位置は Bibi 自身が管理する。**サーバーへの位置保存・同期、アカウント別の位置管理は未接続**。Bibi は Dantalian の保存 API を直接呼ばない。
 
@@ -225,9 +225,9 @@ linear spine item 数を N、0-based item index を i とする。
 
 - [`static/js/book-links.js`](../static/js/book-links.js) が本の読書 URL と一覧内のクリック動作を組み立てる。トップページ (`/`) の本カード・シリーズ・大シリーズ内の本は従来の `showDetail` を開き、詳細・編集画面の「読む」から読書を開始する。本専用一覧 (`/books/`) の本カード・シリーズ・大シリーズ内の本は `/reader/?book=<id>&from=<戻り先>` を開き、カードの「詳細」も維持する。CD・オーディオブックは従来どおり詳細を開く。
 - [`static/reader/index.html`](../static/reader/index.html)・[`static/css/reader.css`](../static/css/reader.css)・[`static/js/reader.js`](../static/js/reader.js) は起動・エラー案内ページを構成する。Native は `/reader`・`/reader/` を配信し、Worker は既存 ASSETS 配信を使用する。
-- 既存の `/api/books/{id}` で書籍・`epub_file_hash` を取得し、同一 origin の `/epubs/{hash}` を指定した `/vendor/bibi/` へ `location.replace` で遷移する。Jo / Bucket と外側の iframe・一覧ヘッダー・独自ツールバーは廃止した。目次・表示設定・位置表示は Bibi 自身の UI に任せる。
-- API 認証は `header.js` から分離した共通の `auth.js` を全ページで使用する。書籍不存在・EPUB 未登録・PDF は起動ページに表示し、書籍情報や元ファイルへの導線を残す。EPUB 読み込み後のエラーは Bibi が表示する。エラー案内の戻り先は同一 origin の一覧・本一覧・編集に限定する。一覧から開いた正常な読書画面では、ブラウザの「戻る」で起動ページを挟まず一覧に戻る。
-- Automark は `storage-namespace=dantalian`、`storage-user=local`、`book-key=book:<id>`、`content-hash=<epub_file_hash>` で分離する。現時点の `local` はブラウザ内の共通区分であり、ログインユーザーの識別子ではない。読書位置 DB や `reading_status` は更新しない。
+- `/api/books/{id}` の `files` 配列から対象ファイルを取得する。詳細・編集画面の各ファイルは `/reader/?book=<id>&file=<file_id>&from=...` を開く。`file` 省略時は最初に登録したファイルを選ぶ。起動後は同一 origin の `/epubs/{file_hash}` を指定した `/vendor/bibi/` へ `location.replace` で遷移する。Jo / Bucket と外側の iframe・一覧ヘッダー・独自ツールバーは使用しない。
+- API 認証は共通の `auth.js` を全ページで使用する。書籍不存在・ファイル未登録・削除済みファイルの指定は起動ページに表示する。EPUB・ZIP・PDF の読み込み・形式エラーは Bibi が表示する。戻り先は同一 origin の一覧・本一覧・編集に限定する。
+- Automark は `storage-namespace=dantalian`、`storage-user=local`、`book-key=book:<id>`、`content-hash=<選択したfile_hash>` で分離する。同じ本の複数ファイルもファイル版ごとに位置を保持する。`local` はブラウザ内の共通区分であり、ログインユーザーの識別子ではない。読書位置 DB や `reading_status` は更新しない。
 
 ### 残る追加・接続作業
 
@@ -251,10 +251,11 @@ linear spine item 数を N、0-based item index を i とする。
 | query | 契約 |
 | --- | --- |
 | `book_key` | 必須。正規形の正の i64 `book:<id>`。 |
-| `content_hash` | 必須。起動時の `book.epub_file_hash`。違う版は `409 CONTENT_CHANGED`。 |
+| `content_hash` | 必須。選択した `files` 内の `file_hash`。登録中のどのファイルでも検証でき、削除済みの版は `409 CONTENT_CHANGED`。 |
 | `return_to` | 起動元の path/query/fragment。`/`・`/books/`・`/edit/` 以外や外部 URL は `/books/`。 |
 
 応答は schemaVersion 1 の `{bookKey,contentHash,series,previous,next,returnTo}`。前後が存在しない場合だけ `null`。存在する未登録・非対応巻は `status:missing-file|unsupported-format`、`href:null` として返し、後の巻へ飛ばさない。閲覧可能な隣接巻は `/reader/?book=<id>&entry=start|end&from=...` を返す。`entry` は既存の Automark より優先する `edge=head|foot` に変換する。`returnTo` は最初の起動元を保持する。
+隣接巻へのリンクでは、その本の最初に登録したファイルを開く。PDF も閲覧可能な形式として扱う。
 
 全応答は `Cache-Control:no-store`。不正 query は `400 INVALID_REQUEST`、不存在は `404 BOOK_NOT_FOUND`、現本の未登録/非対応は `422 BOOK_UNAVAILABLE`、DB 失敗は `500 DATABASE_ERROR`。Worker の既存認証を使用し、未認証の `401` にも no-store を付ける。lookup と遷移は `reading_status` やサーバー読書位置を書き換えない。
 

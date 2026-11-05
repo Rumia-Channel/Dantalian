@@ -255,15 +255,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         ${renderChildrenInDetail(book.id)}
         <div class="detail-epub">
             <div class="detail-epub-title">ファイル</div>
-            ${
-                book.epub_file_hash
-                    ? `<div class="detail-epub-info">
-                        <span class="detail-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                        <a class="btn btn-xs btn-outline-accent detail-epub-open" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
-                        <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
-                    </div>`
-                    : `<div class="detail-epub-empty">ファイル未登録</div>`
-            }
+            ${renderBookFileList(book)}
         </div>
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${

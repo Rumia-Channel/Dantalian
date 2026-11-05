@@ -1,10 +1,10 @@
 use super::*;
 use rusqlite::{Connection, Row, params};
 
-const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, epub_file_hash, epub_file_name, reading_status, storage_location_id, label_id, created_at, updated_at";
+const BOOK_SELECT_COLUMNS: &str = "id, isbn, isdn, title, publisher, publish_date, cover_url, description, title_transcription, series_title, series_title_transcription, alternative, alternative_transcription, volume, volume_transcription, price, extent, jpno, ndl_url, series_id, series_number, isdn_region, isdn_class, isdn_type, isdn_rating_gender, isdn_rating_age, isdn_genre_code, isdn_genre_name, isdn_genre_user, isdn_c_code, isdn_author, isdn_shape, isdn_contents, isdn_barcode2, isdn_sample_image_url, isdn_useroption, isdn_external_links, jan, media_type, catalog_number, artist, label, disc_count, reading_status, storage_location_id, label_id, created_at, updated_at";
 
 impl Db {
-    fn row_to_book(row: &Row<'_>) -> rusqlite::Result<Book> {
+    fn row_to_book(conn: &Connection, row: &Row<'_>) -> rusqlite::Result<Book> {
         Ok(Book {
             id: row.get(0)?,
             isbn: row.get(1)?,
@@ -49,13 +49,12 @@ impl Db {
             artist: row.get(40)?,
             label: row.get(41)?,
             disc_count: row.get(42)?,
-            epub_file_hash: row.get(43)?,
-            epub_file_name: row.get(44)?,
-            reading_status: row.get(45)?,
-            storage_location_id: row.get(46)?,
-            label_id: row.get(47)?,
-            created_at: row.get(48)?,
-            updated_at: row.get(49)?,
+            files: Self::book_files_on(conn, row.get(0)?)?,
+            reading_status: row.get(43)?,
+            storage_location_id: row.get(44)?,
+            label_id: row.get(45)?,
+            created_at: row.get(46)?,
+            updated_at: row.get(47)?,
         })
     }
 
@@ -77,7 +76,10 @@ impl Db {
                     "SELECT {} FROM books WHERE isbn = ?1",
                     BOOK_SELECT_COLUMNS
                 ))?;
-                if let Some(row) = stmt.query_map(params![isbn], Self::row_to_book)?.next() {
+                if let Some(row) = stmt
+                    .query_map(params![isbn], |row| Self::row_to_book(&conn, row))?
+                    .next()
+                {
                     return row;
                 }
             }
@@ -86,7 +88,10 @@ impl Db {
                     "SELECT {} FROM books WHERE isdn = ?1",
                     BOOK_SELECT_COLUMNS
                 ))?;
-                if let Some(row) = stmt.query_map(params![isdn], Self::row_to_book)?.next() {
+                if let Some(row) = stmt
+                    .query_map(params![isdn], |row| Self::row_to_book(&conn, row))?
+                    .next()
+                {
                     return row;
                 }
             }
@@ -142,8 +147,7 @@ impl Db {
             artist: book.artist.clone(),
             label: book.label.clone(),
             disc_count: book.disc_count,
-            epub_file_hash: None,
-            epub_file_name: None,
+            files: Vec::new(),
             reading_status: Some("unread".to_string()),
             storage_location_id: None,
             label_id: None,
@@ -202,7 +206,7 @@ impl Db {
             "SELECT {} FROM books ORDER BY id DESC",
             BOOK_SELECT_COLUMNS
         ))?;
-        let rows = stmt.query_map([], Self::row_to_book)?;
+        let rows = stmt.query_map([], |row| Self::row_to_book(&conn, row))?;
         rows.collect()
     }
 
@@ -218,7 +222,9 @@ impl Db {
             "SELECT {} FROM books WHERE (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let rows = stmt.query_map(params![limit as i64, before_id], Self::row_to_book)?;
+        let rows = stmt.query_map(params![limit as i64, before_id], |row| {
+            Self::row_to_book(&conn, row)
+        })?;
         rows.collect()
     }
 
@@ -228,7 +234,7 @@ impl Db {
             "SELECT {} FROM books WHERE isbn = ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let mut rows = stmt.query_map(params![isbn], Self::row_to_book)?;
+        let mut rows = stmt.query_map(params![isbn], |row| Self::row_to_book(&conn, row))?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
@@ -241,7 +247,7 @@ impl Db {
             "SELECT {} FROM books WHERE isdn = ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let mut rows = stmt.query_map(params![isdn], Self::row_to_book)?;
+        let mut rows = stmt.query_map(params![isdn], |row| Self::row_to_book(&conn, row))?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
@@ -254,7 +260,7 @@ impl Db {
             "SELECT {} FROM books WHERE id = ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let mut rows = stmt.query_map(params![id], Self::row_to_book)?;
+        let mut rows = stmt.query_map(params![id], |row| Self::row_to_book(&conn, row))?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
@@ -267,7 +273,7 @@ impl Db {
             "SELECT {} FROM books WHERE jan = ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let mut rows = stmt.query_map(params![jan], Self::row_to_book)?;
+        let mut rows = stmt.query_map(params![jan], |row| Self::row_to_book(&conn, row))?;
         match rows.next() {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
@@ -413,21 +419,6 @@ impl Db {
         Ok(affected > 0)
     }
 
-    pub fn set_book_epub(
-        &self,
-        id: i64,
-        file_hash: Option<&str>,
-        file_name: Option<&str>,
-    ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock();
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        let affected = conn.execute(
-            "UPDATE books SET epub_file_hash = ?1, epub_file_name = ?2, updated_at = ?3 WHERE id = ?4",
-            params![file_hash, file_name, now, id],
-        )?;
-        Ok(affected > 0)
-    }
-
     pub fn set_book_label(&self, id: i64, label_id: Option<i64>) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
@@ -441,7 +432,7 @@ impl Db {
     pub fn count_books_by_epub_hash(&self, hash: &str) -> Result<i64, rusqlite::Error> {
         let conn = self.0.lock();
         let n: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM books WHERE epub_file_hash = ?1",
+            "SELECT COUNT(*) FROM book_files WHERE file_hash = ?1",
             params![hash],
             |row| row.get(0),
         )?;

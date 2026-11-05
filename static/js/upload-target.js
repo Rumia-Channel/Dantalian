@@ -44,7 +44,7 @@ function uploadTargetAudioFinalizeUrl(uploadUrl) {
 // `/api/uploads/multipart` を使う (Worker 側の object_kind は epub)。
 const UPLOAD_GENERIC_MULTIPART_PATH = "/api/uploads/multipart";
 // EPUB (書籍ファイル) のアップロード先か。カバー (`…/cover`) や音声は含めない。
-const UPLOAD_EPUB_PATH_PATTERN = /\/api\/books\/\d+\/epub(?:\?|$)/;
+const UPLOAD_EPUB_PATH_PATTERN = /\/api\/books\/\d+\/files(?:\?|$)/;
 
 function uploadTargetIsEpubUpload(uploadUrl) {
     return typeof uploadUrl === "string" && UPLOAD_EPUB_PATH_PATTERN.test(uploadUrl);
@@ -85,6 +85,8 @@ const UPLOAD_EXTENSION_CONTENT_TYPES = {
     opus: "audio/ogg",
     webm: "audio/webm",
     epub: "application/epub+zip",
+    pdf: "application/pdf",
+    zip: "application/zip",
 };
 
 // 送信する content_type。ブラウザの申告値は環境依存なので拡張子を優先する。

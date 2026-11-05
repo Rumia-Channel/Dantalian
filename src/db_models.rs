@@ -60,8 +60,8 @@ pub struct Book {
     pub artist: Option<String>,
     pub label: Option<String>,
     pub disc_count: Option<i64>,
-    pub epub_file_hash: Option<String>,
-    pub epub_file_name: Option<String>,
+    #[serde(default)]
+    pub files: Vec<crate::domain::media::BookFile>,
     pub reading_status: Option<String>,
     pub storage_location_id: Option<i64>,
     pub label_id: Option<i64>,

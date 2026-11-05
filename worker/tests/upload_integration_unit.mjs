@@ -160,7 +160,7 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
     if (target === "/api/health") {
       return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
     }
-    if (target === "/api/books/7/epub/finalize") {
+    if (target === "/api/books/7/files/finalize") {
       return new Response(JSON.stringify({ file_hash: "c.epub" }), { status: 200 });
     }
     if (target.startsWith("https://wasabi.test/")) {
@@ -185,7 +185,7 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
   };
 
   const response = await uploadFileWithChunks(
-    "/api/books/7/epub",
+    "/api/books/7/files",
     "file",
     fakeFile(120 * 1024 * 1024, "big-book.epub", "application/epub+zip"),
     "epub",
@@ -204,11 +204,11 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
   assert.equal(initBody.expected_size, 120 * 1024 * 1024);
 
   // Worker の直アップロード (/api/books/7/epub) には本文を送らない。
-  assert.equal(urls.includes("/api/books/7/epub"), false, urls.join("\n"));
+  assert.equal(urls.includes("/api/books/7/files"), false, urls.join("\n"));
   assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/parts/1/sign`), true, urls.join("\n"));
   assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/complete`), true, urls.join("\n"));
 
-  const finalize = calls.find((call) => call.url === "/api/books/7/epub/finalize");
+  const finalize = calls.find((call) => call.url === "/api/books/7/files/finalize");
   assert.ok(finalize, urls.join("\n"));
   const finalizeBody = JSON.parse(String(finalize.body));
   assert.equal(finalizeBody.session_id, sessionId);
@@ -218,10 +218,10 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
 test("an EPUB under the direct limit keeps the single Worker upload", async () => {
   const calls = recordedFetch([
     { prefix: "/api/health", body: { runtime: "cloudflare-worker" } },
-    { prefix: "/api/books/7/epub", body: { file_hash: "x" } },
+    { prefix: "/api/books/7/files", body: { file_hash: "x" } },
   ]);
   const response = await uploadFileWithChunks(
-    "/api/books/7/epub",
+    "/api/books/7/files",
     "file",
     fakeFile(20 * 1024 * 1024, "book.epub", "application/epub+zip"),
     "epub",
@@ -229,7 +229,7 @@ test("an EPUB under the direct limit keeps the single Worker upload", async () =
   assert.equal(response.status, 200);
   assert.deepEqual(
     calls.filter((call) => call.method === "POST").map((call) => call.url),
-    ["/api/books/7/epub"],
+    ["/api/books/7/files"],
   );
   assert.equal(calls.some((call) => call.url.includes("/multipart")), false);
 });
@@ -322,7 +322,7 @@ test("an EPUB over the direct limit fails closed when the multipart route is mis
   };
 
   const response = await uploadFileWithChunks(
-    "/api/books/7/epub",
+    "/api/books/7/files",
     "file",
     fakeFile(120 * 1024 * 1024, "big-book.epub", "application/epub+zip"),
     "epub",

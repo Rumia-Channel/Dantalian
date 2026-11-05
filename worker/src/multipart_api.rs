@@ -329,10 +329,17 @@ fn validate_init(request: &MultipartInitRequest) -> Result<String, AppError> {
             }
         }
         _ => {
-            if content_type != "application/epub+zip" && content_type != "application/octet-stream"
+            if ![
+                "application/epub+zip",
+                "application/pdf",
+                "application/zip",
+                "application/x-zip-compressed",
+                "application/octet-stream",
+            ]
+            .contains(&content_type.as_str())
             {
                 return Err(AppError::Validation(
-                    "multipart uploads currently support EPUB content only".to_string(),
+                    "book multipart uploads require EPUB, PDF or ZIP content".to_string(),
                 ));
             }
         }
@@ -388,9 +395,9 @@ fn extension_for(request: &MultipartInitRequest, kind: ObjectKind) -> Result<Str
             }
         }
         _ => {
-            if extension != EPUB_OBJECT_KIND {
+            if !["epub", "pdf", "zip"].contains(&extension.as_str()) {
                 return Err(AppError::Validation(
-                    "multipart epub objects must end with .epub".to_string(),
+                    "book objects must end with .epub, .pdf or .zip".to_string(),
                 ));
             }
         }
@@ -603,7 +610,7 @@ mod tests {
         assert!(
             validate_init(&init_request(
                 Some("epub"),
-                Some("book.pdf"),
+                Some("book.exe"),
                 "application/epub+zip"
             ))
             .is_err()

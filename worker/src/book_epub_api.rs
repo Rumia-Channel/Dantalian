@@ -116,7 +116,7 @@ pub async fn finalize(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         .as_deref()
         .unwrap_or(&session.object_name);
     db.prepare(
-        "UPDATE books SET epub_file_hash = ?, epub_file_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "INSERT INTO book_files(file_hash, file_name, book_id, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(book_id, file_hash) DO UPDATE SET file_name = excluded.file_name",
     )
     .bind_refs([
         &D1Type::Text(&session.object_name),
@@ -127,6 +127,10 @@ pub async fn finalize(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     .run()
     .await
     .map_err(db_error)?;
+    db.prepare("UPDATE books SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind_refs(&book)?
+        .run()
+        .await?;
     db.prepare(
         "INSERT OR REPLACE INTO object_uploads
          (object_key, object_kind, entity_id, content_type, extension, expected_size, original_name, status, created_at)
@@ -245,9 +249,9 @@ fn epub_key_parts(object_key: &str) -> std::result::Result<(String, String), App
         return Err(AppError::Validation("invalid epub object name".to_string()));
     }
     let extension = extension.to_ascii_lowercase();
-    if extension != "epub" {
+    if !["epub", "pdf", "zip"].contains(&extension.as_str()) {
         return Err(AppError::Validation(
-            "epub objects must end with .epub".to_string(),
+            "book objects must end with .epub, .pdf or .zip".to_string(),
         ));
     }
     Ok((stem.to_string(), extension))
@@ -283,7 +287,7 @@ mod tests {
     use super::{epub_key_parts, sanitize_original_name, valid_session_id};
 
     #[test]
-    fn epub_key_parts_accepts_only_canonical_epub_objects() {
+    fn book_keys_accept_supported_formats_and_reject_unsafe_paths() {
         assert_eq!(
             epub_key_parts("epubs/0123456789abcdef0123456789abcdef.epub").expect("canonical key"),
             (
@@ -300,7 +304,15 @@ mod tests {
             ("book".to_string(), "epub".to_string())
         );
         assert!(epub_key_parts("audio/abc.mp3").is_err());
-        assert!(epub_key_parts("epubs/book.pdf").is_err());
+        assert_eq!(
+            epub_key_parts("epubs/book.pdf").unwrap(),
+            ("book".to_owned(), "pdf".to_owned())
+        );
+        assert_eq!(
+            epub_key_parts("epubs/book.zip").unwrap(),
+            ("book".to_owned(), "zip".to_owned())
+        );
+        assert!(epub_key_parts("epubs/book.exe").is_err());
         assert!(epub_key_parts("epubs/book").is_err());
         assert!(epub_key_parts("epubs/..epub").is_err());
         assert!(epub_key_parts("epubs/../secret.epub").is_err());

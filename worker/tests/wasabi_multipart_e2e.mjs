@@ -143,7 +143,7 @@ test("Wasabi EPUB multipart finalize binds the object to a book", { skip: !enabl
     const objectName = objectKey.split("/").at(-1);
 
     // Nothing may be attached before the multipart completion.
-    const premature = await jsonRequest("POST", `/api/books/${bookId}/epub/finalize`, {
+    const premature = await jsonRequest("POST", `/api/books/${bookId}/files/finalize`, {
       session_id: sessionId,
       name: "Finalized Book.epub",
     });
@@ -174,7 +174,7 @@ test("Wasabi EPUB multipart finalize binds the object to a book", { skip: !enabl
     );
     assert.equal(completed.response.status, 200);
 
-    const finalized = await jsonRequest("POST", `/api/books/${bookId}/epub/finalize`, {
+    const finalized = await jsonRequest("POST", `/api/books/${bookId}/files/finalize`, {
       session_id: sessionId,
       name: "Finalized Book.epub",
     });
@@ -184,11 +184,11 @@ test("Wasabi EPUB multipart finalize binds the object to a book", { skip: !enabl
 
     const loaded = await jsonRequest("GET", `/api/books/${bookId}`);
     assert.equal(loaded.response.status, 200);
-    assert.equal(loaded.body.epub_file_hash, objectName);
-    assert.equal(loaded.body.epub_file_name, "Finalized Book.epub");
+    assert.equal(loaded.body.files[0].file_hash, objectName);
+    assert.equal(loaded.body.files[0].file_name, "Finalized Book.epub");
 
     // One object must not be attached twice.
-    const repeated = await jsonRequest("POST", `/api/books/${bookId}/epub/finalize`, {
+    const repeated = await jsonRequest("POST", `/api/books/${bookId}/files/finalize`, {
       session_id: sessionId,
       name: "Finalized Book.epub",
     });

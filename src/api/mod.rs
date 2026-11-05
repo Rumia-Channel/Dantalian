@@ -89,11 +89,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
                 .delete(books::delete_cover),
         )
         .route(
-            "/books/{id}/epub",
-            post(books::upload_epub)
-                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
-                .delete(books::delete_epub),
+            "/books/{id}/files",
+            post(books::upload_epub).layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES)),
         )
+        .route("/books/{id}/files/{file_id}", delete(books::delete_epub))
         .route("/authors", get(authors::list))
         .route("/authors", post(authors::create))
         .route("/authors/merge", post(authors::merge))

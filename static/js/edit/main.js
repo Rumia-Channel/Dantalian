@@ -304,25 +304,13 @@ async function renderBookEdit(id) {
             <div class="edit-section">
                 <h3 class="edit-section-title">ファイル</h3>
                 <div class="edit-epub-info" id="edit-epub-info">
-                    ${
-                        book.epub_file_hash
-                            ? `<div class="edit-epub-current">
-                                <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                                <a class="btn btn-xs btn-ghost" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
-                            </div>`
-                            : `<div class="edit-epub-empty">ファイル未登録</div>`
-                    }
+                    ${renderBookFileList(book, true)}
                 </div>
                 <div class="edit-epub-actions">
                     <label class="btn btn-xs btn-outline-accent edit-epub-upload-label">
-                        ${book.epub_file_hash ? "差し替え" : "アップロード"}
-                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" hidden>
+                        ファイルを追加
+                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" multiple hidden>
                     </label>
-                    ${
-                        book.epub_file_hash
-                            ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteEpub(${book.id})">削除</button>`
-                            : ""
-                    }
                 </div>
             </div>
             <div class="edit-section" id="edit-tracks-section">
@@ -602,10 +590,18 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
             return;
         }
         try {
-            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file, "epub");
-            if (!res.ok) {
-                console.error("File upload failed:", res.status);
-                alert(await describeUploadError(res, "ファイル"));
+            const input = e.target;
+            input.disabled = true;
+            try {
+                for (const attachment of Array.from(input.files)) {
+                    const res = await uploadFileWithChunks(`/api/books/${bid}/files`, "file", attachment, "epub");
+                    if (!res.ok) {
+                        alert(`${attachment.name}: ${await describeUploadError(res, "ファイル")}`);
+                        break;
+                    }
+                }
+            } finally {
+                input.disabled = false;
             }
             await loadBooks();
             renderBookEdit(bid);
@@ -662,17 +658,21 @@ async function deleteCover(bookId) {
     } catch {}
 }
 
-async function deleteEpub(bookId) {
-    const ok = await showConfirm({ message: "EPUBを削除しますか？", okLabel: "削除" });
+async function deleteBookFile(bookId, fileId) {
+    const ok = await showConfirm({ message: "このファイルを削除しますか？", okLabel: "削除" });
     if (!ok) return;
 
     try {
-        const res = await fetch(`/api/books/${bookId}/epub`, { method: "DELETE" });
+        const res = await fetch(`/api/books/${bookId}/files/${fileId}`, { method: "DELETE" });
         if (res.ok) {
             await loadBooks();
             renderBookEdit(bookId);
+        } else {
+            alert("ファイルを削除できませんでした");
         }
-    } catch {}
+    } catch {
+        alert("ファイルの削除中に通信エラーが発生しました");
+    }
 }
 
 let currentCdTags = null; // 編集中CDの track_metadata 由来アルバムタグ合意(参考)

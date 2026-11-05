@@ -90,11 +90,11 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
       so the Worker never buffers a full audio object. EPUB above
       `WORKER_DIRECT_UPLOAD_MAX_BYTES` (95 MiB) uses
       `POST /api/uploads/multipart/init` with `object_kind: "epub"` → direct part
-      `PUT` → `complete` → `POST /api/books/:id/epub/finalize`, so a large EPUB
+      `PUT` → `complete` → `POST /api/books/:id/files/finalize`, so a large EPUB
       never passes through the Worker either. Cover uploads still use the Worker
       route because they are capped at 10 MiB.
 - [ ] Verify one EPUB larger than 95 MiB through the Access-protected domain: the
-      browser uploads parts straight to Wasabi, `POST /api/books/:id/epub/finalize`
+      browser uploads parts straight to Wasabi, `POST /api/books/:id/files/finalize`
       returns 200, and `/epubs/<hash>.epub` afterwards serves the object.
 - [ ] Open one book in the reader through the Access-protected domain and confirm the
       browser console shows no Content-Security-Policy violation. The static `_headers`
