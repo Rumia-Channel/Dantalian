@@ -76,6 +76,8 @@ pub struct UpdateBookRequest {
     #[serde(default, deserialize_with = "deserialize_nullable")]
     pub isdn: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub dlsite_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
     pub jan: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     pub publisher: Option<Option<String>>,
@@ -178,6 +180,7 @@ pub async fn update_book(
     resolve_fields!(
         isbn,
         isdn,
+        dlsite_id,
         jan,
         publisher,
         publish_date,
@@ -231,8 +234,13 @@ pub async fn update_book(
     let isdn = isdn
         .map(|s| s.trim().replace(['-', ' '], ""))
         .filter(|s| !s.is_empty());
-    if isbn.is_none() && isdn.is_none() {
-        return Err(error(StatusCode::BAD_REQUEST, "ISBN or ISDN is required"));
+    let dlsite_id = crate::dlsite::normalize_product_id(dlsite_id.as_deref())
+        .map_err(|message| error(StatusCode::BAD_REQUEST, message))?;
+    if isbn.is_none() && isdn.is_none() && dlsite_id.is_none() {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "ISBN, ISDN or DLsite ID is required",
+        ));
     }
     if req.title.trim().is_empty() {
         return Err(error(StatusCode::BAD_REQUEST, "Title is required"));
@@ -305,6 +313,7 @@ pub async fn update_book(
             storage_location_id,
             label_id,
             req.grand_series_id,
+            dlsite_id.as_deref(),
         )
         .map_err(database_error)?;
     if !updated {

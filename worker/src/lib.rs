@@ -13,6 +13,7 @@ mod cd_api;
 mod copy_api;
 mod cover_api;
 mod d1_read;
+mod dlsite_api;
 mod error;
 mod external_api;
 mod grand_series_api;
@@ -104,6 +105,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/api/books", book_api::list)
         .get_async("/api/books/:id", book_api::get)
         .post_async("/api/books", book_api::register_book)
+        .post_async("/api/dlsite", dlsite_api::register)
         .post_async("/api/books/isdn", book_api::register_isdn)
         .post_async("/api/books/manual", book_api::register_manual)
         .put_async("/api/books/:id", book_api::update)
@@ -114,11 +116,14 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .put_async("/api/books/:id/authors/:author_id", book_api::author_order)
         .post_async("/api/books/:id/cover", object_api::book_cover)
         .delete_async("/api/books/:id/cover", object_api::delete_book_cover)
-        .post_async("/api/books/:id/epub", object_api::book_epub)
-        .delete_async("/api/books/:id/epub", object_api::delete_book_epub)
+        .post_async("/api/books/:id/files", object_api::book_epub)
+        .delete_async(
+            "/api/books/:id/files/:file_id",
+            object_api::delete_book_epub,
+        )
         // Large EPUBs skip the Worker body limit: the browser uploads parts
         // straight to Wasabi, then this binds the completed object to the book.
-        .post_async("/api/books/:id/epub/finalize", book_epub_api::finalize)
+        .post_async("/api/books/:id/files/finalize", book_epub_api::finalize)
         .get_async("/api/audio/stream/:file_hash", object_api::stream)
         .get_async("/api/audio/playability/:file_hash", audio_api::playability)
         .get_async("/audio/:file_hash", object_api::stream)

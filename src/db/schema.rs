@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 14;
+const SCHEMA_VERSION: u32 = 17;
 
 /// Idempotent indexes for the hot read paths (list/detail pages, lending
 /// counts, playlist playback). Executed on every open so existing databases
@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS books (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     isbn TEXT UNIQUE,
     isdn TEXT,
+    dlsite_id TEXT,
     jan TEXT,
     title TEXT NOT NULL,
     publisher TEXT,
@@ -138,8 +139,6 @@ CREATE TABLE IF NOT EXISTS books (
     artist TEXT,
     label TEXT,
     disc_count INTEGER,
-    epub_file_hash TEXT,
-    epub_file_name TEXT,
     reading_status TEXT DEFAULT 'unread',
     storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
     label_id INTEGER REFERENCES labels(id) ON DELETE SET NULL,
@@ -147,8 +146,19 @@ CREATE TABLE IF NOT EXISTS books (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS book_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    file_hash TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(book_id, file_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_book_files_hash ON book_files(file_hash);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_isdn ON books(isdn) WHERE isdn IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_jan ON books(jan) WHERE jan IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_books_dlsite_id ON books(dlsite_id) WHERE dlsite_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS book_authors (
     book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -189,6 +199,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS cds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     jan TEXT UNIQUE,
+    dlsite_id TEXT,
     title TEXT NOT NULL,
     artist TEXT,
     publisher TEXT,
@@ -206,6 +217,7 @@ CREATE TABLE IF NOT EXISTS cds (
     series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
     series_number INTEGER
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cds_dlsite_id ON cds(dlsite_id) WHERE dlsite_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -621,6 +633,38 @@ impl Db {
             if current_version < 13 {
                 conn.execute_batch(GRAND_SERIES_INTEGRITY_SQL)?;
             }
+            if current_version < 15 {
+                conn.execute_batch(
+                    "BEGIN;
+                     CREATE TABLE book_files (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                         file_hash TEXT NOT NULL,
+                         file_name TEXT NOT NULL,
+                         created_at TEXT,
+                         UNIQUE(book_id, file_hash)
+                     );
+                     CREATE INDEX idx_book_files_hash ON book_files(file_hash);
+                     INSERT INTO book_files(book_id, file_hash, file_name, created_at)
+                     SELECT id, epub_file_hash, COALESCE(epub_file_name, epub_file_hash), updated_at
+                     FROM books WHERE epub_file_hash IS NOT NULL AND epub_file_hash <> '';
+                     ALTER TABLE books DROP COLUMN epub_file_hash;
+                     ALTER TABLE books DROP COLUMN epub_file_name;
+                     COMMIT;",
+                )?;
+            }
+            if current_version < 16 {
+                conn.execute_batch(
+                    "ALTER TABLE books ADD COLUMN dlsite_id TEXT;
+                     CREATE UNIQUE INDEX idx_books_dlsite_id ON books(dlsite_id) WHERE dlsite_id IS NOT NULL;",
+                )?;
+            }
+            if current_version < 17 {
+                conn.execute_batch(
+                    "ALTER TABLE cds ADD COLUMN dlsite_id TEXT;
+                     CREATE UNIQUE INDEX idx_cds_dlsite_id ON cds(dlsite_id) WHERE dlsite_id IS NOT NULL;",
+                )?;
+            }
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
@@ -672,6 +716,17 @@ mod tests {
                 params!["legacy cd", "２０２６年２月１３日"],
             )
             .expect("insert legacy cd");
+            conn.execute_batch(
+                "DROP TABLE book_files;
+                 DROP INDEX idx_books_dlsite_id;
+                 ALTER TABLE books DROP COLUMN dlsite_id;
+                 DROP INDEX idx_cds_dlsite_id;
+                 ALTER TABLE cds DROP COLUMN dlsite_id;
+                 ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
+                 ALTER TABLE books ADD COLUMN epub_file_name TEXT;
+                 UPDATE books SET epub_file_hash = 'legacy.epub', epub_file_name = '元の本.epub';",
+            )
+            .expect("restore legacy attachment schema");
             conn.execute_batch("PRAGMA user_version = 11;")
                 .expect("set legacy schema version");
         }
@@ -696,6 +751,17 @@ mod tests {
 
         assert_eq!(book_date, "2007-01-NN");
         assert_eq!(cd_date, "2026-02-13");
+        let migrated_file: (i64, String, String) = conn
+            .query_row(
+                "SELECT book_id, file_hash, file_name FROM book_files",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            migrated_file,
+            (1, "legacy.epub".to_owned(), "元の本.epub".to_owned())
+        );
 
         drop(conn);
         drop(migrated);
@@ -757,6 +823,16 @@ mod tests {
                  INSERT INTO grand_series_items VALUES (1,'book',1),(1,'series',1),(1,'cd',1),(1,'book',999);
                  PRAGMA user_version=12;"
             ).unwrap();
+            conn.execute_batch(
+                "DROP TABLE book_files;
+                 DROP INDEX idx_books_dlsite_id;
+                 ALTER TABLE books DROP COLUMN dlsite_id;
+                 DROP INDEX idx_cds_dlsite_id;
+                 ALTER TABLE cds DROP COLUMN dlsite_id;
+                 ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
+                 ALTER TABLE books ADD COLUMN epub_file_name TEXT;",
+            )
+            .unwrap();
         }
         drop(db);
         let migrated = Db::new(path.to_str().unwrap()).unwrap();

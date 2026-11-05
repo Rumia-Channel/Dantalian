@@ -73,10 +73,10 @@ fn absent_changed_or_unreadable_current_book_does_not_return_context() {
         resolve(Some(book()), request(2, "old-revision", None)).unwrap_err(),
         NavigationError::ContentChanged
     );
-    let mut pdf = book();
-    pdf.epub_file_name = Some("book.PDF".to_owned());
+    let mut unsupported = book();
+    unsupported.epub_file_name = Some("book.exe".to_owned());
     assert_eq!(
-        resolve(Some(pdf), request(2, "revision-2", None)).unwrap_err(),
+        resolve(Some(unsupported), request(2, "revision-2", None)).unwrap_err(),
         NavigationError::BookUnavailable
     );
     let mut missing = book();
@@ -140,9 +140,9 @@ fn an_existing_unreadable_neighbor_is_not_a_missing_neighbor() {
     row.previous_id = Some(1);
     row.previous_title = Some("未登録の巻".to_owned());
     row.next_id = Some(3);
-    row.next_title = Some("PDF の巻".to_owned());
+    row.next_title = Some("未対応形式の巻".to_owned());
     row.next_hash = Some("revision-3".to_owned());
-    row.next_file_name = Some("three.pdf".to_owned());
+    row.next_file_name = Some("three.exe".to_owned());
     let context = resolve(Some(row), request(2, "revision-2", None)).unwrap();
     let previous = context.previous.unwrap();
     assert_eq!(previous.status, "missing-file");

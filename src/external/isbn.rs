@@ -63,6 +63,7 @@ pub async fn lookup_isbn(
         source
     };
     let book = NewBook {
+        dlsite_id: None,
         isbn: Some(isbn.to_string()),
         isdn: None,
         jan: None,

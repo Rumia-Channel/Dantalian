@@ -33,6 +33,7 @@
 
 #register-status,
 #isdn-status,
+#dlsite-status,
 #cd-status,
 #audiobook-status {
     margin-top: 0.5rem;
@@ -42,6 +43,7 @@
 
 #register-status.pending,
 #isdn-status.pending,
+#dlsite-status.pending,
 #cd-status.pending,
 #audiobook-status.pending {
     color: var(--color-text-secondary);
@@ -49,6 +51,7 @@
 
 #register-status.success,
 #isdn-status.success,
+#dlsite-status.success,
 #cd-status.success,
 #audiobook-status.success {
     color: var(--color-success);
@@ -56,6 +59,7 @@
 
 #register-status.error,
 #isdn-status.error,
+#dlsite-status.error,
 #cd-status.error,
 #audiobook-status.error {
     color: var(--color-danger);

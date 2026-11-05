@@ -782,6 +782,16 @@ jobs:
           DANTALIAN_D1_DATABASE_ID: ${{ steps.resources.outputs.database_id }}
           DANTALIAN_AUDIO_JOB_QUEUE: ${{ steps.resources.outputs.queue_name }}
         run: python ci/render_config.py
+      - name: Record production D1 recovery point before migrations
+        working-directory: worker
+        run: |
+          npx wrangler d1 time-travel info "${{ steps.resources.outputs.database_name }}" --json --config wrangler.ci.toml > d1-recovery-point.json
+          {
+            echo '## Production D1 recovery point before migrations'
+            echo '```json'
+            cat d1-recovery-point.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Apply production D1 migrations
         working-directory: worker
         run: npx wrangler d1 migrations apply "${{ steps.resources.outputs.database_name }}" --remote --config wrangler.ci.toml
@@ -922,7 +932,19 @@ jobs:
           done
           test "$status" = 200
           test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 401
-          test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null -H "Authorization: Bearer $DANTALIAN_PROCESSOR_TOKEN" "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 200
+          status="$(curl --silent --show-error --write-out '%{http_code}' --output /tmp/dantalian-production-health.json -H "Authorization: Bearer $DANTALIAN_PROCESSOR_TOKEN" "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")"
+          test "$status" = 200
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          actual = json.loads(Path("/tmp/dantalian-production-health.json").read_text())["version"]
+          if actual != expected:
+              raise SystemExit(f"Production version mismatch: expected {expected}, got {actual}")
+          print(f"Production Worker version: {actual}")
+          PY
       - name: Clean production deployment files
         if: always()
-        run: rm -f wrangler.audio.ci.toml audio-controller-secrets.json audio-deploy.log worker/wrangler.ci.toml worker/production-secrets.json
+        run: rm -f wrangler.audio.ci.toml audio-controller-secrets.json audio-deploy.log worker/wrangler.ci.toml worker/production-secrets.json worker/d1-recovery-point.json

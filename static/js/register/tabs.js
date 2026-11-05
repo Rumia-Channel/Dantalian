@@ -2,6 +2,7 @@
 const tabs = document.querySelectorAll(".register-tab");
 const isbnPanel = document.getElementById("isbn-panel");
 const isdnPanel = document.getElementById("isdn-panel");
+const dlsitePanel = document.getElementById("dlsite-panel");
 const manualPanel = document.getElementById("manual-panel");
 
 const cdPanel = document.getElementById("cd-panel");
@@ -15,6 +16,7 @@ tabs.forEach((tab) => {
         tabs.forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
         isbnPanel.hidden = target !== "isbn";
         isdnPanel.hidden = target !== "isdn";
+        dlsitePanel.hidden = target !== "dlsite";
         cdPanel.hidden = target !== "cd";
         audiobookPanel.hidden = target !== "audiobook";
         manualPanel.hidden = target !== "manual";

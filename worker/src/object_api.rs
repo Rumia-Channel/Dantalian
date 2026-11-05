@@ -362,7 +362,7 @@ async fn upload(
             .map_err(db_error)?;
         }
         ("book-epub", None) => {
-            db.prepare("UPDATE books SET epub_file_hash = ?, epub_file_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            db.prepare("INSERT INTO book_files(file_hash, file_name, book_id, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(book_id, file_hash) DO UPDATE SET file_name = excluded.file_name")
                 .bind_refs([
                     &D1Type::Text(&file_name),
                     &D1Type::Text(&original_name),
@@ -372,6 +372,10 @@ async fn upload(
                 .run()
                 .await
                 .map_err(db_error)?;
+            db.prepare("UPDATE books SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind_refs(&entity_id)?
+                .run()
+                .await?;
         }
         ("cd-cover", None) => {
             db.prepare("UPDATE cds SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -529,14 +533,64 @@ pub async fn delete_book_cover(_req: Request, ctx: RouteContext<()>) -> Result<R
 }
 
 pub async fn delete_book_epub(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    delete_named_object(
-        &ctx,
-        "books",
-        "epub_file_hash",
-        Some("epub_file_name"),
-        ObjectKind::Epub,
-    )
-    .await
+    let book_id = match parse_id(&ctx, "id")
+        .and_then(|id| id_type(id, "book id").map_err(|_| bad_request("invalid book id")))
+    {
+        Ok(id) => id,
+        Err(response) => return Ok(response),
+    };
+    let file_id = match parse_id(&ctx, "file_id")
+        .and_then(|id| id_type(id, "file id").map_err(|_| bad_request("invalid file id")))
+    {
+        Ok(id) => id,
+        Err(response) => return Ok(response),
+    };
+    let db = ctx.d1("DB")?;
+    let file = db
+        .prepare("DELETE FROM book_files WHERE book_id = ? AND id = ? RETURNING file_hash")
+        .bind_refs([&book_id, &file_id])?
+        .first::<serde_json::Value>(None)
+        .await?;
+    let Some(hash) = file
+        .as_ref()
+        .and_then(|file| file.get("file_hash"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return error_response(AppError::NotFound);
+    };
+    db.prepare("UPDATE books SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind_refs(&book_id)?
+        .run()
+        .await?;
+    cleanup_book_file(&ctx, hash).await?;
+    Ok(Response::empty()?.with_status(204))
+}
+
+pub(crate) async fn cleanup_book_file(ctx: &RouteContext<()>, hash: &str) -> Result<()> {
+    let db = ctx.d1("DB")?;
+    if db
+        .prepare("SELECT 1 FROM book_files WHERE file_hash = ? LIMIT 1")
+        .bind_refs(&D1Type::Text(hash))?
+        .first::<serde_json::Value>(None)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let config = WasabiConfig::from_env(&ctx.env)
+        .await
+        .map_err(|error| worker::Error::from(error.to_string()))?;
+    let key = key_for_name(&config, ObjectKind::Epub, hash)
+        .map_err(|error| worker::Error::from(error.to_string()))?;
+    match WasabiStorage::new(config).delete_object(&key).await {
+        Ok(()) | Err(AppError::NotFound) => {}
+        Err(error) => return Err(worker::Error::from(error.to_string())),
+    }
+    db.prepare("DELETE FROM object_uploads WHERE object_kind = 'epub' AND object_key = ?")
+        .bind_refs(&D1Type::Text(&key))?
+        .run()
+        .await?;
+    Ok(())
 }
 
 pub async fn delete_cd_cover(_req: Request, ctx: RouteContext<()>) -> Result<Response> {

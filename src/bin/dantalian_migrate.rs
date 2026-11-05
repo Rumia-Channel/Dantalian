@@ -26,6 +26,7 @@ const TABLES: &[&str] = &[
     "storage_locations",
     "labels",
     "books",
+    "book_files",
     "book_authors",
     "copies",
     "borrowers",
@@ -293,8 +294,16 @@ where
 }
 
 fn read_table(connection: &Connection, table: &str) -> Result<Vec<SqlRow>, String> {
+    let sql = if table == "book_files" && !has_book_files(connection)? {
+        "SELECT id, id AS book_id, epub_file_hash AS file_hash,
+         COALESCE(epub_file_name, epub_file_hash) AS file_name, updated_at AS created_at
+         FROM books WHERE epub_file_hash IS NOT NULL AND epub_file_hash <> ''"
+            .to_string()
+    } else {
+        format!("SELECT * FROM \"{table}\"")
+    };
     let mut statement = connection
-        .prepare(&format!("SELECT * FROM \"{table}\""))
+        .prepare(&sql)
         .map_err(|_| format!("could not read SQLite table {table}"))?;
     let columns = statement
         .column_names()
@@ -315,6 +324,11 @@ fn read_table(connection: &Connection, table: &str) -> Result<Vec<SqlRow>, Strin
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| format!("could not decode SQLite table {table}"))?;
     Ok(rows)
+}
+
+fn has_book_files(connection: &Connection) -> Result<bool, String> {
+    connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'book_files')", [], |row| row.get(0))
+        .map_err(|_| "could not inspect attachment schema".to_string())
 }
 
 #[derive(Debug)]
@@ -357,9 +371,29 @@ impl SqlRow {
             columns: self.columns.clone(),
             values: self.values.clone(),
         };
+        if table == "books" {
+            let keep = row
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, column)| {
+                    !matches!(column.as_str(), "epub_file_hash" | "epub_file_name")
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            return Self {
+                columns: keep
+                    .iter()
+                    .map(|&index| row.columns[index].clone())
+                    .collect(),
+                values: keep
+                    .iter()
+                    .map(|&index| row.values[index].clone())
+                    .collect(),
+            };
+        }
         let hash_column = match table {
-            "books" => "epub_file_hash",
-            "tracks" => "file_hash",
+            "book_files" | "tracks" => "file_hash",
             _ => return row,
         };
         let Some(hash_index) = row.columns.iter().position(|column| column == hash_column) else {
@@ -380,11 +414,7 @@ impl SqlRow {
         if hash.contains('.') {
             return row;
         }
-        let name_column = if table == "books" {
-            "epub_file_name"
-        } else {
-            "file_name"
-        };
+        let name_column = "file_name";
         let extension = row
             .columns
             .iter()
@@ -395,7 +425,7 @@ impl SqlRow {
             })
             .and_then(|extension| extension.to_str())
             .filter(|extension| !extension.is_empty())
-            .unwrap_or(if table == "books" { "epub" } else { "bin" });
+            .unwrap_or(if table == "book_files" { "epub" } else { "bin" });
         row.values[hash_index] = Value::Text(format!("{hash}.{extension}"));
         row
     }
@@ -480,8 +510,8 @@ fn discover_media(
         root,
         &mut objects,
         object_prefix,
-        "books",
-        "epub_file_hash",
+        "book_files",
+        "file_hash",
         "epubs",
     )?;
     add_audio_rows(connection, root, &mut objects, object_prefix)?;
@@ -514,14 +544,15 @@ fn add_media_rows(
     column: &str,
     directory: &str,
 ) -> Result<(), String> {
-    if table == "books" && column == "epub_file_hash" {
+    if table == "book_files" {
+        let sql = if has_book_files(connection)? {
+            "SELECT file_hash, file_name FROM book_files"
+        } else {
+            "SELECT epub_file_hash, epub_file_name FROM books WHERE epub_file_hash IS NOT NULL AND epub_file_hash <> ''"
+        };
         let mut statement = connection
-            .prepare(
-                "SELECT epub_file_hash, epub_file_name
-                 FROM books
-                 WHERE epub_file_hash IS NOT NULL AND epub_file_hash <> ''",
-            )
-            .map_err(|_| "could not inspect books.epub_file_hash".to_string())?;
+            .prepare(sql)
+            .map_err(|_| "could not inspect book files".to_string())?;
         let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
@@ -862,9 +893,11 @@ fn media_metadata_queries(
         }
         "epubs" => connection
             .query_row(
-                "SELECT id, epub_file_name FROM books
-                 WHERE epub_file_hash = ? OR epub_file_hash = ?
-                 LIMIT 1",
+                if has_book_files(connection)? {
+                    "SELECT book_id, file_name FROM book_files WHERE file_hash = ? OR file_hash = ? LIMIT 1"
+                } else {
+                    "SELECT id, epub_file_name FROM books WHERE epub_file_hash = ? OR epub_file_hash = ? LIMIT 1"
+                },
                 params![object_id, file_name],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
             )
@@ -1047,8 +1080,8 @@ mod tests {
         let row = SqlRow {
             columns: vec![
                 "id".to_string(),
-                "epub_file_hash".to_string(),
-                "epub_file_name".to_string(),
+                "file_hash".to_string(),
+                "file_name".to_string(),
             ],
             values: vec![
                 Value::Integer(7),
@@ -1056,7 +1089,7 @@ mod tests {
                 Value::Text("book.epub".to_string()),
             ],
         };
-        let destination = row.destination_row("books");
+        let destination = row.destination_row("book_files");
         assert_eq!(
             destination.values[1],
             Value::Text("abc123.epub".to_string())
@@ -1108,6 +1141,7 @@ mod tests {
                         epub_file_name TEXT
                     )"
                 .to_string(),
+                "book_files" => "CREATE TABLE book_files (id INTEGER PRIMARY KEY, book_id INTEGER, file_hash TEXT, file_name TEXT, created_at TEXT)".to_string(),
                 "cds" => "CREATE TABLE cds (id INTEGER PRIMARY KEY, cover_url TEXT)".to_string(),
                 "tracks" => "CREATE TABLE tracks (
                         id INTEGER PRIMARY KEY,

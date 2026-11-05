@@ -27,6 +27,7 @@
             <button class="register-tab" id="isdn-tab" role="tab" aria-selected="false" aria-controls="isdn-panel" data-tab="isdn">ISDN</button>
             <button class="register-tab" id="cd-tab" role="tab" aria-selected="false" aria-controls="cd-panel" data-tab="cd">CD</button>
             <button class="register-tab" id="audiobook-tab" role="tab" aria-selected="false" aria-controls="audiobook-panel" data-tab="audiobook">オーディオブック</button>
+            <button class="register-tab" id="dlsite-tab" role="tab" aria-selected="false" aria-controls="dlsite-panel" data-tab="dlsite">DLsite</button>
             <button class="register-tab" id="manual-tab" role="tab" aria-selected="false" aria-controls="manual-panel" data-tab="manual">手動</button>
         </div>
 
@@ -84,6 +85,21 @@
                 <ul class="bulk-queue" id="isdn-bulk-queue"></ul>
                 <div class="bulk-empty" id="isdn-bulk-empty">キューは空です</div>
             </section>
+        </section>
+
+        <section class="register" id="dlsite-panel" role="tabpanel" aria-labelledby="dlsite-tab" hidden>
+            <h2>DLsite IDで登録</h2>
+            <form id="dlsite-form">
+                <select id="dlsite-media-type" aria-label="DLsite の登録種別" required>
+                    <option value="">種別を選択</option>
+                    <option value="book">書籍</option>
+                    <option value="cd">CD</option>
+                    <option value="audiobook">オーディオブック・ASMR</option>
+                </select>
+                <input type="text" id="dlsite-input" aria-label="DLsite ID または作品URL" placeholder="RJ01676238 などの作品ID / DLsite作品URL" required>
+                <button type="submit" id="dlsite-btn" class="btn btn-primary" disabled>登録</button>
+            </form>
+            <p id="dlsite-status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="register" id="manual-panel" role="tabpanel" aria-labelledby="manual-tab" hidden>
@@ -148,6 +164,7 @@
     <script src="/js/register/tabs.js?v=ASSET_VERSION"></script>
     <script src="/js/register/isbn.js?v=ASSET_VERSION"></script>
     <script src="/js/register/isdn.js?v=ASSET_VERSION"></script>
+    <script src="/js/register/dlsite.js?v=ASSET_VERSION"></script>
     <script src="/js/register/cd-candidates.js?v=ASSET_VERSION"></script>
     <script src="/js/register/cd.js?v=ASSET_VERSION"></script>
     <script src="/js/register/audiobook.js?v=ASSET_VERSION"></script>

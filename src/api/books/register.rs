@@ -241,6 +241,7 @@ pub async fn isdn_register(
 pub struct ManualRegisterRequest {
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
     pub publish_date: Option<String>,
@@ -290,10 +291,17 @@ pub async fn manual_register(
         .isdn
         .map(|s| s.trim().replace(['-', ' '], ""))
         .filter(|s| !s.is_empty());
-    if isbn.is_none() && isdn.is_none() {
+    let dlsite_id =
+        crate::dlsite::normalize_product_id(req.dlsite_id.as_deref()).map_err(|message| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": message})),
+            )
+        })?;
+    if isbn.is_none() && isdn.is_none() && dlsite_id.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "ISBN or ISDN is required"})),
+            Json(serde_json::json!({"error": "ISBN, ISDN or DLsite ID is required"})),
         ));
     }
     if req.title.trim().is_empty() {
@@ -341,6 +349,7 @@ pub async fn manual_register(
     }
 
     let new_book = NewBook {
+        dlsite_id,
         isbn,
         isdn,
         title: req.title.trim().to_string(),

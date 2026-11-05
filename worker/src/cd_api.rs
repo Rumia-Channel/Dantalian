@@ -11,6 +11,7 @@ use dantalian::application::error::AppError;
 struct CdRow {
     id: i64,
     jan: Option<String>,
+    dlsite_id: Option<String>,
     title: String,
     artist: Option<String>,
     publisher: Option<String>,
@@ -32,6 +33,7 @@ struct CdRow {
 #[derive(Debug, Deserialize)]
 struct CdRequest {
     jan: Option<String>,
+    dlsite_id: Option<String>,
     title: Option<String>,
     artist: Option<String>,
     publisher: Option<String>,
@@ -166,7 +168,7 @@ fn id_type(id: i64, label: &str) -> std::result::Result<D1Type<'static>, AppErro
 }
 
 async fn row(db: &worker::D1Database, id: &D1Type<'_>) -> Result<Option<CdRow>> {
-    db.prepare("SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds WHERE id = ?")
+    db.prepare("SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE id = ?")
         .bind_refs(id).map_err(db_error)?.first::<CdRow>(None).await.map_err(db_error)
 }
 
@@ -233,6 +235,7 @@ async fn with_children(db: &worker::D1Database, cd: CdRow) -> Result<serde_json:
 struct CdListRow {
     id: i64,
     jan: Option<String>,
+    dlsite_id: Option<String>,
     title: String,
     artist: Option<String>,
     publisher: Option<String>,
@@ -261,7 +264,7 @@ struct CdListRow {
 /// correlated subqueries so the endpoint costs one D1 round trip regardless of
 /// how many CDs exist. The previous per-CD loop issued 1 + 3N sequential
 /// statements, which dominates latency when each D1 round trip is ~180ms.
-const LIST_SELECT: &str = "SELECT c.id, c.jan, c.title, c.artist, c.publisher, c.label, c.catalog_number, c.publish_date, c.cover_url, c.description, c.disc_count, c.volume, c.created_at, c.updated_at, c.parent_book_id, c.media_type, c.series_id, c.series_number,
+const LIST_SELECT: &str = "SELECT c.id, c.jan, c.dlsite_id, c.title, c.artist, c.publisher, c.label, c.catalog_number, c.publish_date, c.cover_url, c.description, c.disc_count, c.volume, c.created_at, c.updated_at, c.parent_book_id, c.media_type, c.series_id, c.series_number,
     (SELECT json_group_array(json_object('id', t.id, 'book_id', t.book_id, 'cd_id', t.cd_id, 'disc_number', t.disc_number, 'track_number', t.track_number, 'title', t.title, 'duration', t.duration, 'file_hash', t.file_hash, 'file_name', t.file_name))
      FROM tracks t WHERE t.cd_id = c.id ORDER BY t.disc_number, t.track_number, t.id LIMIT -1) AS tracks_json,
     (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ca.sort_order))
@@ -306,9 +309,21 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let mut body = match parse_json::<CdRequest>(&mut req).await {
+    let body = match parse_json::<CdRequest>(&mut req).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
+    };
+    create_body(body, ctx, "manual").await
+}
+
+async fn create_body(
+    mut body: CdRequest,
+    ctx: RouteContext<()>,
+    initial_source: &'static str,
+) -> Result<Response> {
+    body.dlsite_id = match dantalian::dlsite::normalize_product_id(body.dlsite_id.as_deref()) {
+        Ok(id) => id,
+        Err(message) => return Ok(bad_request(message)),
     };
     let jan = body
         .jan
@@ -319,7 +334,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
 
     if let Some(jan) = jan.as_deref() {
         if let Some(existing) = db
-            .prepare("SELECT id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id,series_number FROM cds WHERE jan = ?")
+            .prepare("SELECT id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id,series_number,dlsite_id FROM cds WHERE jan = ?")
             .bind_refs(&D1Type::Text(jan))
             .map_err(db_error)?
             .first::<CdRow>(None)
@@ -340,7 +355,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     let mut cover_url = body.cover_url.clone();
     let mut disc_count = body.disc_count;
     let mut tracks = body.tracks.take();
-    let mut source = "manual";
+    let mut source = initial_source;
 
     let external_lookup = title.is_none();
     if title.is_none() {
@@ -476,7 +491,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     };
     let jan_value = jan.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null);
     let row = db
-        .prepare("INSERT INTO cds (jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,parent_book_id,media_type,series_id,series_number) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id,series_number")
+        .prepare("INSERT INTO cds (jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,parent_book_id,media_type,series_id,series_number,dlsite_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id,series_number,dlsite_id")
         .bind_refs([
             &jan_value,
             &D1Type::Text(&title),
@@ -493,6 +508,7 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
             &D1Type::Text(body.media_type.as_deref().unwrap_or("cd")),
             &body.series_id.map(|value| id_type(value, "series_id")).transpose().map_err(|error| worker::Error::from(error.to_string()))?.unwrap_or(D1Type::Null),
             &body.series_number.map(|value| D1Type::Integer(i32::try_from(value).unwrap_or(i32::MAX))).unwrap_or(D1Type::Null),
+            &body.dlsite_id.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
         ])
         .map_err(db_error)?
         .first::<CdRow>(None)
@@ -552,37 +568,39 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
                 .map_err(db_error)?;
         }
     }
-    // JAN lookup carries only a text artist credit: link it (normalized reuse)
-    // like native so lists group by author ID. Whole credit as one entity.
-    if let Some(name) = artist
-        .as_deref()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-    {
-        let d1 = ctx.d1("DB")?;
-        let existing = super::author_repository::find_author_by_normalized_name(&d1, name)
-            .await
-            .map_err(db_error)?;
-        let author_id = match existing.map(|author| author.id) {
-            Some(id) => Some(id),
-            None => d1
-                .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
-                .bind_refs(&D1Type::Text(name))
-                .map_err(db_error)?
-                .first::<serde_json::Value>(None)
-                .await
-                .map_err(db_error)?
-                .and_then(|value| value.get("id").and_then(|value| value.as_i64())),
-        };
-        if let Some(author_id) = author_id {
-            let author_id = id_type(author_id, "author id")
-                .map_err(|error| worker::Error::from(error.to_string()))?;
-            d1.prepare("INSERT OR IGNORE INTO cd_authors (cd_id, author_id) VALUES (?,?)")
-                .bind_refs([&cd_id, &author_id])
-                .map_err(db_error)?
-                .run()
+    if initial_source != "dlsite" {
+        // JAN lookup carries only a text artist credit: link it (normalized reuse)
+        // like native so lists group by author ID. Whole credit as one entity.
+        if let Some(name) = artist
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            let d1 = ctx.d1("DB")?;
+            let existing = super::author_repository::find_author_by_normalized_name(&d1, name)
                 .await
                 .map_err(db_error)?;
+            let author_id = match existing.map(|author| author.id) {
+                Some(id) => Some(id),
+                None => d1
+                    .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
+                    .bind_refs(&D1Type::Text(name))
+                    .map_err(db_error)?
+                    .first::<serde_json::Value>(None)
+                    .await
+                    .map_err(db_error)?
+                    .and_then(|value| value.get("id").and_then(|value| value.as_i64())),
+            };
+            if let Some(author_id) = author_id {
+                let author_id = id_type(author_id, "author id")
+                    .map_err(|error| worker::Error::from(error.to_string()))?;
+                d1.prepare("INSERT OR IGNORE INTO cd_authors (cd_id, author_id) VALUES (?,?)")
+                    .bind_refs([&cd_id, &author_id])
+                    .map_err(db_error)?
+                    .run()
+                    .await
+                    .map_err(db_error)?;
+            }
         }
     }
     if let Some(grand_series_id) = body.grand_series_id.filter(|value| *value > 0) {
@@ -601,6 +619,88 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     let value = with_children(&db, cd).await?;
     Response::from_json(&serde_json::json!({"cd": value, "source": source}))
         .map(|response| response.with_status(201))
+}
+
+pub(crate) async fn register_dlsite(
+    id: &str,
+    kind: &'static str,
+    ctx: RouteContext<()>,
+) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let existing = db.prepare("SELECT id,jan,title,artist,publisher,label,catalog_number,publish_date,cover_url,description,disc_count,volume,created_at,updated_at,parent_book_id,media_type,series_id,series_number,dlsite_id FROM cds WHERE dlsite_id = ?")
+        .bind_refs(&D1Type::Text(id)).map_err(db_error)?
+        .first::<CdRow>(None).await.map_err(db_error)?;
+    if let Some(cd) = existing {
+        if cd.media_type.as_deref() != Some(kind) {
+            return error_response(AppError::Conflict(
+                "DLsite work is already registered with another audio type".to_owned(),
+            ));
+        }
+        return Response::from_json(&serde_json::json!({
+            "cd": with_children(&db, cd).await?,
+            "source": "cache",
+        }));
+    }
+    let mut body = match crate::dlsite_api::lookup(&ctx, id).await {
+        Ok(Some(body)) => body,
+        Ok(None) => return error_response(AppError::NotFound),
+        Err(error) => {
+            return Response::from_json(&serde_json::json!({"error":error.to_string()}))
+                .map(|response| response.with_status(502));
+        }
+    };
+    let mut artist = String::new();
+    if let Some(actors) = body.get("voice_actors").and_then(|value| value.as_array()) {
+        for name in actors.iter().filter_map(|value| value.as_str()) {
+            if !artist.is_empty() {
+                artist.push_str(" / ");
+            }
+            artist.push_str(name);
+        }
+    }
+    body["artist"] = if artist.is_empty() {
+        serde_json::Value::Null
+    } else {
+        artist.into()
+    };
+    body["media_type"] = kind.into();
+    if let Some(tracks) = body
+        .get_mut("tracks")
+        .and_then(|value| value.as_array_mut())
+    {
+        for (index, track) in tracks.iter_mut().enumerate() {
+            track["track_number"] = (index as i64 + 1).into();
+            track["disc_number"] = 1.into();
+        }
+    }
+    let mut author_ids = Vec::new();
+    if let Some(authors) = body.get("_ndl_authors").and_then(|value| value.as_array()) {
+        for name in authors
+            .iter()
+            .filter_map(|author| author.get("name").and_then(|name| name.as_str()))
+        {
+            let existing = crate::author_repository::find_author_by_normalized_name(&db, name)
+                .await
+                .map_err(db_error)?;
+            let author_id = match existing {
+                Some(author) => author.id,
+                None => db
+                    .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
+                    .bind_refs(&D1Type::Text(name))
+                    .map_err(db_error)?
+                    .first::<serde_json::Value>(None)
+                    .await
+                    .map_err(db_error)?
+                    .and_then(|value| value.get("id").and_then(|value| value.as_i64()))
+                    .ok_or_else(|| worker::Error::from("author insert returned no row"))?,
+            };
+            author_ids.push(author_id);
+        }
+    }
+    let mut body: CdRequest =
+        serde_json::from_value(body).map_err(|error| worker::Error::from(error.to_string()))?;
+    body.author_ids = Some(author_ids);
+    create_body(body, ctx, "dlsite").await
 }
 
 const CD_MUTABLE_COLUMNS: &[&str] = &[

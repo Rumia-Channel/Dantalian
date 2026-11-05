@@ -4,6 +4,7 @@ pub(crate) mod books;
 pub(crate) mod borrowers;
 pub(crate) mod cds;
 pub(crate) mod copies;
+pub(crate) mod dlsite;
 pub(crate) mod error;
 pub(crate) mod grand_series;
 pub(crate) mod labels;
@@ -72,6 +73,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
         .route("/books/isdn", post(books::isdn_register))
         .route("/books/manual", post(books::manual_register))
         .route("/books", get(books::list))
+        .route("/dlsite", post(dlsite::register))
         .route("/books/{id}", get(books::get))
         .route("/books/{id}", delete(books::delete))
         .route("/books/{id}", put(books::update_book))
@@ -89,11 +91,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
                 .delete(books::delete_cover),
         )
         .route(
-            "/books/{id}/epub",
-            post(books::upload_epub)
-                .layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES))
-                .delete(books::delete_epub),
+            "/books/{id}/files",
+            post(books::upload_epub).layer(DefaultBodyLimit::max(UPLOAD_ROUTE_LIMIT_BYTES)),
         )
+        .route("/books/{id}/files/{file_id}", delete(books::delete_epub))
         .route("/authors", get(authors::list))
         .route("/authors", post(authors::create))
         .route("/authors/merge", post(authors::merge))

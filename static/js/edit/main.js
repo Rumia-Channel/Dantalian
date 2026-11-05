@@ -147,6 +147,10 @@ async function renderBookEdit(id) {
                 <label>説明</label>
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
             </div>
+            <div class="edit-field">
+                <label>DLsite ID</label>
+                <input type="text" name="dlsite_id" value="${escapeAttr(book.dlsite_id || '')}" placeholder="RJ01676238 またはDLsite作品URL">
+            </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">ISBN / NDL 固有</h3>
                 <div class="edit-row">
@@ -304,25 +308,13 @@ async function renderBookEdit(id) {
             <div class="edit-section">
                 <h3 class="edit-section-title">ファイル</h3>
                 <div class="edit-epub-info" id="edit-epub-info">
-                    ${
-                        book.epub_file_hash
-                            ? `<div class="edit-epub-current">
-                                <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                                <a class="btn btn-xs btn-ghost" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
-                            </div>`
-                            : `<div class="edit-epub-empty">ファイル未登録</div>`
-                    }
+                    ${renderBookFileList(book, true)}
                 </div>
                 <div class="edit-epub-actions">
                     <label class="btn btn-xs btn-outline-accent edit-epub-upload-label">
-                        ${book.epub_file_hash ? "差し替え" : "アップロード"}
-                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" hidden>
+                        ファイルを追加
+                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" multiple hidden>
                     </label>
-                    ${
-                        book.epub_file_hash
-                            ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteEpub(${book.id})">削除</button>`
-                            : ""
-                    }
                 </div>
             </div>
             <div class="edit-section" id="edit-tracks-section">
@@ -584,7 +576,7 @@ async function describeUploadError(res, label) {
 }
 
 document.getElementById("edit-content").addEventListener("change", async (e) => {
-    if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
+    if (e.target.id !== "edit-cover-input") return;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -595,28 +587,6 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const bid = parseInt(params.get("book"), 10);
     const cid = parseInt(params.get("cd"), 10);
 
-    if (e.target.id === "edit-epub-input") {
-        if (!bid) {
-            e.target.value = "";
-            if (coverDisplay) coverDisplay.style.opacity = "1";
-            return;
-        }
-        try {
-            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file, "epub");
-            if (!res.ok) {
-                console.error("File upload failed:", res.status);
-                alert(await describeUploadError(res, "ファイル"));
-            }
-            await loadBooks();
-            renderBookEdit(bid);
-        } catch (err) {
-            console.error("File upload error:", err);
-            alert("ファイルのアップロード中に通信エラーが発生しました");
-        }
-        e.target.value = "";
-        if (coverDisplay) coverDisplay.style.opacity = "1";
-        return;
-    }
 
     if (cid) {
         try {
@@ -662,18 +632,6 @@ async function deleteCover(bookId) {
     } catch {}
 }
 
-async function deleteEpub(bookId) {
-    const ok = await showConfirm({ message: "EPUBを削除しますか？", okLabel: "削除" });
-    if (!ok) return;
-
-    try {
-        const res = await fetch(`/api/books/${bookId}/epub`, { method: "DELETE" });
-        if (res.ok) {
-            await loadBooks();
-            renderBookEdit(bookId);
-        }
-    } catch {}
-}
 
 let currentCdTags = null; // 編集中CDの track_metadata 由来アルバムタグ合意(参考)
 
@@ -728,6 +686,7 @@ async function renderCdEdit(cdId) {
             </div>
             <div class="edit-header-info">
                 ${cd.jan ? `<div class="edit-isbn">JAN: ${escapeHtml(cd.jan)}</div>` : ''}
+                ${cd.dlsite_id ? `<div class="edit-isbn">DLsite ID: ${escapeHtml(cd.dlsite_id)}</div>` : ''}
                 <div class="edit-isbn" style="font-size:0.75rem;color:var(--color-text-dim);">種別: ${escapeHtml(cd.media_type || 'cd')}</div>
             </div>
         </div>

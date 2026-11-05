@@ -3,10 +3,20 @@ use serde::{Deserialize, Serialize};
 use super::author::Author;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BookFile {
+    pub id: i64,
+    pub book_id: i64,
+    pub file_hash: String,
+    pub file_name: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BookRecord {
     pub id: i64,
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
@@ -47,8 +57,8 @@ pub struct BookRecord {
     pub artist: Option<String>,
     pub label: Option<String>,
     pub disc_count: Option<i64>,
-    pub epub_file_hash: Option<String>,
-    pub epub_file_name: Option<String>,
+    #[serde(default)]
+    pub files: Vec<BookFile>,
     pub reading_status: Option<String>,
     pub storage_location_id: Option<i64>,
     pub label_id: Option<i64>,
@@ -93,6 +103,7 @@ pub struct Track {
 pub struct Cd {
     pub id: i64,
     pub jan: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub publisher: Option<String>,

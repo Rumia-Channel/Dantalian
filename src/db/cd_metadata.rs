@@ -133,6 +133,7 @@ mod tests {
 
     fn new_cd() -> NewCd {
         NewCd {
+            dlsite_id: None,
             jan: None,
             title: "test CD".to_string(),
             artist: None,

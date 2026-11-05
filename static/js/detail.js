@@ -146,6 +146,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
     if (book.extent) metaParts.push(`<div><span class="detail-meta-label">ページ数</span>${escapeHtml(book.extent)}</div>`);
     if (book.isbn) metaParts.push(`<div><span class="detail-meta-label">ISBN</span>${escapeHtml(book.isbn)}</div>`);
     if (book.isdn) metaParts.push(`<div><span class="detail-meta-label">ISDN</span>${escapeHtml(book.isdn)}</div>`);
+    if (book.dlsite_id) metaParts.push(`<div><span class="detail-meta-label">DLsite ID</span><a href="${escapeAttr(dlsiteWorkUrl(book.dlsite_id))}" target="_blank" rel="noopener">${escapeHtml(book.dlsite_id)}</a></div>`);
     if (book.jan) metaParts.push(`<div><span class="detail-meta-label">JAN</span>${escapeHtml(book.jan)}</div>`);
     if (book.artist) metaParts.push(`<div><span class="detail-meta-label">アーティスト</span>${escapeHtml(book.artist)}</div>`);
     if (book.label) metaParts.push(`<div><span class="detail-meta-label">レーベル</span>${escapeHtml(book.label)}</div>`);
@@ -255,15 +256,7 @@ function renderDetail(book, copies, currentSeries, currentGrandSeries, tracks) {
         ${renderChildrenInDetail(book.id)}
         <div class="detail-epub">
             <div class="detail-epub-title">ファイル</div>
-            ${
-                book.epub_file_hash
-                    ? `<div class="detail-epub-info">
-                        <span class="detail-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                        <a class="btn btn-xs btn-outline-accent detail-epub-open" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
-                        <a class="btn btn-xs btn-ghost detail-epub-download" href="/epubs/${encodeURIComponent(book.epub_file_hash)}" download="${escapeAttr(book.epub_file_name || book.epub_file_hash)}">ダウンロード</a>
-                    </div>`
-                    : `<div class="detail-epub-empty">ファイル未登録</div>`
-            }
+            ${renderBookFileList(book)}
         </div>
         ${book.description ? `<div class="detail-description">${escapeHtml(book.description)}</div>` : ""}
         ${
@@ -428,6 +421,7 @@ function renderCdDetail(cd, currentSeries, tracks) {
     if (cd.publisher) metaParts.push(`<div><span class="detail-meta-label">出版社</span>${escapeHtml(cd.publisher)}</div>`);
     if (cd.publish_date) metaParts.push(`<div><span class="detail-meta-label">出版日</span>${escapeHtml(cd.publish_date)}</div>`);
     if (cd.jan_code || cd.jan) metaParts.push(`<div><span class="detail-meta-label">JAN</span>${escapeHtml(cd.jan_code || cd.jan)}</div>`);
+    if (cd.dlsite_id) metaParts.push(`<div><span class="detail-meta-label">DLsite ID</span><a href="${escapeAttr(dlsiteWorkUrl(cd.dlsite_id))}" target="_blank" rel="noopener">${escapeHtml(cd.dlsite_id)}</a></div>`);
     if (cd.disc_count) metaParts.push(`<div><span class="detail-meta-label">ディスク</span>${cd.disc_count}枚</div>`);
     if (cd.label) metaParts.push(`<div><span class="detail-meta-label">レーベル</span>${escapeHtml(cd.label)}</div>`);
     if (cd.catalog_number) metaParts.push(`<div><span class="detail-meta-label">品番</span>${escapeHtml(cd.catalog_number)}</div>`);
