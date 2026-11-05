@@ -45,6 +45,7 @@ function normalizeCd(cd) {
         lent_count: cd.lent_count || 0,
         media_type: cd.media_type || "cd",
         jan_code: cd.jan,
+        dlsite_id: cd.dlsite_id,
         disc_count: cd.disc_count,
         parent_book_id: cd.parent_book_id,
         label: cd.label,
@@ -191,6 +192,8 @@ function getItemSearchText(item) {
     return [
         item.title,
         item.isbn,
+        item.isdn,
+        item.dlsite_id,
         item.jan_code,
         item.publisher,
         item.artist,
@@ -453,6 +456,9 @@ function renderCdCard(item) {
     }
     if (item.label || item.catalog_number) {
         subParts.push(escapeHtml([item.label, item.catalog_number].filter(Boolean).join(" · ")));
+    }
+    if (item.dlsite_id) {
+        subParts.push(escapeHtml(item.dlsite_id));
     }
 
     const hasAudio = tracks.some((track) => track.file_hash);

@@ -16,6 +16,7 @@ pub struct BookRecord {
     pub id: i64,
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
@@ -102,6 +103,7 @@ pub struct Track {
 pub struct Cd {
     pub id: i64,
     pub jan: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub publisher: Option<String>,

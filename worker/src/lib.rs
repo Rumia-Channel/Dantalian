@@ -13,6 +13,7 @@ mod cd_api;
 mod copy_api;
 mod cover_api;
 mod d1_read;
+mod dlsite_api;
 mod error;
 mod external_api;
 mod grand_series_api;
@@ -104,6 +105,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/api/books", book_api::list)
         .get_async("/api/books/:id", book_api::get)
         .post_async("/api/books", book_api::register_book)
+        .post_async("/api/dlsite", dlsite_api::register)
         .post_async("/api/books/isdn", book_api::register_isdn)
         .post_async("/api/books/manual", book_api::register_manual)
         .put_async("/api/books/:id", book_api::update)

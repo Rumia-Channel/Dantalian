@@ -147,6 +147,10 @@ async function renderBookEdit(id) {
                 <label>説明</label>
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
             </div>
+            <div class="edit-field">
+                <label>DLsite ID</label>
+                <input type="text" name="dlsite_id" value="${escapeAttr(book.dlsite_id || '')}" placeholder="RJ01676238 またはDLsite作品URL">
+            </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">ISBN / NDL 固有</h3>
                 <div class="edit-row">
@@ -728,6 +732,7 @@ async function renderCdEdit(cdId) {
             </div>
             <div class="edit-header-info">
                 ${cd.jan ? `<div class="edit-isbn">JAN: ${escapeHtml(cd.jan)}</div>` : ''}
+                ${cd.dlsite_id ? `<div class="edit-isbn">DLsite ID: ${escapeHtml(cd.dlsite_id)}</div>` : ''}
                 <div class="edit-isbn" style="font-size:0.75rem;color:var(--color-text-dim);">種別: ${escapeHtml(cd.media_type || 'cd')}</div>
             </div>
         </div>

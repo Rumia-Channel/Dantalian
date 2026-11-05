@@ -45,6 +45,7 @@ fn main() {
         "static/js/register/tabs.js",
         "static/js/register/isbn.js",
         "static/js/register/isdn.js",
+        "static/js/register/dlsite.js",
         "static/js/register/cd-candidates.js",
         "static/js/register/cd.js",
         "static/js/register/audiobook.js",

@@ -255,6 +255,7 @@ mod tests {
         let author = db.create_author("Test artist", None, None).expect("author");
         let cd = db
             .insert_cd(&NewCd {
+                dlsite_id: None,
                 jan: None,
                 title: "Test CD".to_string(),
                 artist: None,
@@ -317,6 +318,7 @@ mod tests {
             .id;
         let cd = db
             .insert_cd(&crate::db::NewCd {
+                dlsite_id: None,
                 jan: None,
                 title: "Test CD".to_string(),
                 artist: None,

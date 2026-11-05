@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 15;
+const SCHEMA_VERSION: u32 = 17;
 
 /// Idempotent indexes for the hot read paths (list/detail pages, lending
 /// counts, playlist playback). Executed on every open so existing databases
@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS books (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     isbn TEXT UNIQUE,
     isdn TEXT,
+    dlsite_id TEXT,
     jan TEXT,
     title TEXT NOT NULL,
     publisher TEXT,
@@ -157,6 +158,7 @@ CREATE INDEX IF NOT EXISTS idx_book_files_hash ON book_files(file_hash);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_isdn ON books(isdn) WHERE isdn IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_books_jan ON books(jan) WHERE jan IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_books_dlsite_id ON books(dlsite_id) WHERE dlsite_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS book_authors (
     book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -197,6 +199,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS cds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     jan TEXT UNIQUE,
+    dlsite_id TEXT,
     title TEXT NOT NULL,
     artist TEXT,
     publisher TEXT,
@@ -214,6 +217,7 @@ CREATE TABLE IF NOT EXISTS cds (
     series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
     series_number INTEGER
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cds_dlsite_id ON cds(dlsite_id) WHERE dlsite_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -649,7 +653,18 @@ impl Db {
                      COMMIT;",
                 )?;
             }
-
+            if current_version < 16 {
+                conn.execute_batch(
+                    "ALTER TABLE books ADD COLUMN dlsite_id TEXT;
+                     CREATE UNIQUE INDEX idx_books_dlsite_id ON books(dlsite_id) WHERE dlsite_id IS NOT NULL;",
+                )?;
+            }
+            if current_version < 17 {
+                conn.execute_batch(
+                    "ALTER TABLE cds ADD COLUMN dlsite_id TEXT;
+                     CREATE UNIQUE INDEX idx_cds_dlsite_id ON cds(dlsite_id) WHERE dlsite_id IS NOT NULL;",
+                )?;
+            }
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");
@@ -703,6 +718,10 @@ mod tests {
             .expect("insert legacy cd");
             conn.execute_batch(
                 "DROP TABLE book_files;
+                 DROP INDEX idx_books_dlsite_id;
+                 ALTER TABLE books DROP COLUMN dlsite_id;
+                 DROP INDEX idx_cds_dlsite_id;
+                 ALTER TABLE cds DROP COLUMN dlsite_id;
                  ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
                  ALTER TABLE books ADD COLUMN epub_file_name TEXT;
                  UPDATE books SET epub_file_hash = 'legacy.epub', epub_file_name = '元の本.epub';",
@@ -806,6 +825,10 @@ mod tests {
             ).unwrap();
             conn.execute_batch(
                 "DROP TABLE book_files;
+                 DROP INDEX idx_books_dlsite_id;
+                 ALTER TABLE books DROP COLUMN dlsite_id;
+                 DROP INDEX idx_cds_dlsite_id;
+                 ALTER TABLE cds DROP COLUMN dlsite_id;
                  ALTER TABLE books ADD COLUMN epub_file_hash TEXT;
                  ALTER TABLE books ADD COLUMN epub_file_name TEXT;",
             )

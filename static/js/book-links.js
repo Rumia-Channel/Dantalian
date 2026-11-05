@@ -27,3 +27,7 @@ function renderBookFileList(book, editable = false) {
         ${editable ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteBookFile(${book.id}, ${file.id})">削除</button>` : ""}
     </div>`).join("");
 }
+
+function dlsiteWorkUrl(productId) {
+    return `https://www.dlsite.com/home/work/=/product_id/${encodeURIComponent(productId)}.html`;
+}

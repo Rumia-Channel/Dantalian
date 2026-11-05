@@ -61,7 +61,7 @@ pub struct ManualCdTrackRequest {
     pub metadata: serde_json::Map<String, serde_json::Value>,
 }
 
-fn cd_tag_artists_from_metadata(
+pub(super) fn cd_tag_artists_from_metadata(
     db: &crate::db::Db,
     cd_id: i64,
 ) -> (Option<String>, Option<String>) {
@@ -145,6 +145,7 @@ pub async fn cd_register(
         }
 
         let new_cd = NewCd {
+            dlsite_id: None,
             jan,
             title,
             artist: req.artist,
@@ -436,6 +437,7 @@ pub async fn cd_register(
             )
         })?;
     let new_cd = NewCd {
+        dlsite_id: None,
         jan: Some(jan),
         title: cd_info.title,
         artist: cd_info.artist,

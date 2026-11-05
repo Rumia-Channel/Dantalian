@@ -203,7 +203,7 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
   assert.equal(initBody.file_name, "big-book.epub");
   assert.equal(initBody.expected_size, 120 * 1024 * 1024);
 
-  // Worker の直アップロード (/api/books/7/epub) には本文を送らない。
+  // Worker の直アップロード (/api/books/7/files) には本文を送らない。
   assert.equal(urls.includes("/api/books/7/files"), false, urls.join("\n"));
   assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/parts/1/sign`), true, urls.join("\n"));
   assert.equal(urls.includes(`/api/uploads/multipart/${sessionId}/complete`), true, urls.join("\n"));
