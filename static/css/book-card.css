@@ -4,6 +4,24 @@
     color: var(--color-text-secondary);
 }
 
+.book-id {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.4rem 0.75rem;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+}
+
+.book-id code {
+    user-select: text;
+}
+
+.book-id-status {
+    flex-basis: 100%;
+}
+
 .booklist-header {
     display: flex;
     align-items: center;

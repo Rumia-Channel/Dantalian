@@ -338,7 +338,7 @@ function renderBookCard(item) {
     const clickHandler = catalogueItemClickHandler(item);
     const cardOpening = readsBook
         ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(bookReaderUrl(item.id))}" aria-label="${escapeAttr(item.title)}を読む">`
-        : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">`;
+        : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();this.click();}">`;
     const authorLabel = item.sourceType === "book"
         ? getBookAuthorLabel(item)
         : (item.authors || []).map((author) => author.name).join(", ");
@@ -355,8 +355,21 @@ function renderBookCard(item) {
             ${authorLabel ? `<div class="book-author">${escapeHtml(authorLabel)}</div>` : ""}
             ${item.publisher ? `<div class="book-meta">${escapeHtml(item.publisher)}</div>` : ""}
         </div>
-    ${readsBook ? `</a><button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
+    ${readsBook ? "</a>" : ""}
+    ${item.sourceType === "book" ? `<div class="book-id" onclick="event.stopPropagation()">書籍ID: <code>${item.id}</code> <button type="button" class="btn btn-xs btn-ghost" aria-label="書籍ID ${item.id} をコピー" onclick="copyBookId(event, ${item.id}, this)">コピー</button><span class="book-id-status" role="status"></span></div>` : ""}
+    ${readsBook ? `<button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
     </div>`;
+}
+
+async function copyBookId(event, bookId, button) {
+    event.stopPropagation();
+    const status = button.parentElement.querySelector(".book-id-status");
+    try {
+        await navigator.clipboard.writeText(String(bookId));
+        status.textContent = "コピーしました";
+    } catch {
+        status.textContent = "コピーできません。IDを選択してコピーしてください";
+    }
 }
 
 function downloadCdOriginals(cdId) {
