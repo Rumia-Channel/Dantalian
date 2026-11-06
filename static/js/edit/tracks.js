@@ -368,16 +368,24 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
             return;
         }
-        const maxAudioMb = await getConfiguredAudioMaxMb();
-        const maxAudioBytes = maxAudioMb * 1024 * 1024;
-        if (file.size > maxAudioBytes) {
-            alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
-            return;
+        // Worker は Wasabi 直送。Native 専用設定の既定値 (100 MB) で止めない。
+        if (!await isWorkerRuntime()) {
+            const maxAudioMb = await getConfiguredAudioMaxMb();
+            const maxAudioBytes = maxAudioMb * 1024 * 1024;
+            if (file.size > maxAudioBytes) {
+                alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
+                return;
+            }
         }
         // このアップロードより新しい操作が始まったら、確認ダイアログや反映を
         // 中断する (別のアップロードの結果を混ぜない)。
         const operationToken = nextTrackOperationToken();
         await runTrackAudioUpload(editType, parentId, trackId, file, operationToken);
+    } catch (error) {
+        console.error("uploadTrackAudio error:", error);
+        alert(typeof describePresignedUploadError === "function"
+            ? describePresignedUploadError(error, "音声")
+            : "音声のアップロード中に通信エラーが発生しました");
     } finally {
         trackUploadsInFlight.delete(uploadKey);
     }

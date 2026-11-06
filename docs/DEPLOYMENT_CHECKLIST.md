@@ -94,6 +94,11 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
       cover all three book formats; the Worker receives only session metadata.
       Smaller audio and cover uploads still use the Worker route; covers are
       capped at 10 MiB. A failed direct upload must not fall back to proxying.
+- [ ] Select an audio file above 100 MiB and a book file above 100 MiB through
+      the actual edit-page file inputs, not only the upload helper. The Worker
+      must receive metadata only; Native-only `upload.audio_max_mb` and
+      `upload.file_max_mb` settings must not reject either file in the browser.
+      Confirm local WASM audio metadata is saved and the stored bytes match.
 - [ ] Verify an EPUB, a ZIP below 95 MiB, and a PDF below 5 MiB through the
       Access-protected domain: parts go straight to Wasabi, finalize returns 200,
       and `/epubs/<hash>.<extension>` serves identical bytes with the correct MIME.

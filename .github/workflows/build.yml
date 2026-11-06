@@ -246,7 +246,7 @@ jobs:
         run: node --test worker/tests/upload_target_unit.mjs worker/tests/upload_integration_unit.mjs
       - name: Test client track editing policy
         working-directory: .
-        run: node --test worker/tests/track_duration_unit.mjs worker/tests/track_position_unit.mjs
+        run: node --test worker/tests/track_duration_unit.mjs worker/tests/track_position_unit.mjs worker/tests/track_upload_unit.mjs
 
   develop:
     name: Deploy develop

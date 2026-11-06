@@ -217,9 +217,11 @@ async function renderSettingsForm() {
             </div>
         </div>
 
-        <div class="settings-form-section${workerSectionClass}">
-            <h3>アップロード上限</h3>
-            ${workerRuntimeNote}
+        <div class="settings-form-section">
+            <h3>アップロード</h3>
+            ${workerSettingsRuntime
+                ? '<p class="settings-runtime-note">音声（8 MiB以上）・書籍ファイルはブラウザから Wasabi へ直接送信します。Native 専用の音声100 MB・書籍500 MBの既定上限は適用されません。カバー画像の上限は10 MiBです。</p>'
+                : `
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-upload-cover-mb">カバー画像 (MB)</label>
                 <input type="number" id="s-upload-cover-mb" value="${escapeAttr(uploadCoverMb)}" min="1" max="4096" class="form-input" style="width:6rem"${workerDisabledAttr}>
@@ -235,6 +237,7 @@ async function renderSettingsForm() {
             <div class="settings-form-row">
                 <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</span>
             </div>
+            `}
         </div>
 
         <div class="settings-form-section">

@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.3.1** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.1/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.2** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.2/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -33,6 +33,8 @@ Bibi **2.3.1** のホスト連携機能を使用する。固定した repository
 
 2.3.1 では画像だけの ZIP を書籍として開けるようになった。EPUB 構成・BibiZine・画像ブックの順に判定し、PNG・JPEG・GIF・WebP・AVIF・BMP を固定レイアウトとして自然順（`1`,`2`,`10`）・サブフォルダ対応で描画する。Range 対応配信ではアーカイブを先に一覧して必要ページだけを取得し、非対応サーバーでは全体展開にフォールバックする。画像 ZIP も PDF と同じ左右読みの切替を持つ。位置・ホストナビ API の schemaVersion は 1 のまま。
 
+2.3.2 では `keep-settings` が有効な場合、PDF・画像ZIPの読み方向を位置と同じ本・ユーザー・ファイル版の識別子で保存し、初回レイアウト前に復元する。画像ZIPは見開きの両ページを一組として先読みし、順序を変更しても描画済みページを消去・再取得しない。ホスト preset は既に `keep-settings: yes` を明示しているため変更不要。位置・ホストナビ API の schemaVersion は 1 のまま。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -40,7 +42,7 @@ Bibi **2.3.1** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.1
+git checkout --detach v2.3.2
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -64,7 +66,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.3.1` であること。 |
+| `schemaVersion` / `version` | `1` / `2.3.2` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -346,6 +348,14 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - 画像 ZIP の `Range: bytes=-65557` は Native で `206 / bytes 0-2090/2091` を返した。
 - ローカル Worker にも画像 ZIP・EPUB を実 upload API から登録し、描画と位置取得を確認した。Worker の `/epubs/` は Wasabi 相当の署名付き URL へ 302 するため、ローカルの object transport は http であり Worker の CSP（`connect-src 'self' https:`）が遮る。確認中だけ生成済み `worker/public/_headers` に当該 origin を追加し、検証後に canonical な内容へ戻した。本番の署名先 origin は https で許可済み。live Wasabi の資格情報・署名期限は今回の検証対象外である。
 - `worker/tests/reader_navigation_contract.mjs` は Native・Worker とも 2 件成功した。Native の `cargo build --features native --bin dantalian`、Worker の assets 再生成と release Wasm build、Native / Worker 配置先の `import_bibi.mjs --verify` は成功した。追加の DB マイグレーションは不要である。
+
+### Dantalian 0.2.3 / Bibi 2.3.2 の検証
+
+- 公開済みの [Bibi v2.3.2](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.2) 配布物 `Bibi-v2.3.2.zip` の SHA-256 は GitHub release の `e7637a197df355f96325d787601b6f59396068301d0c1aabcd29aaed5b4eba63` と一致した。clean checkout の commit `42e4b52e23421bacd66951fdeb2b247c8c40757a`、時刻 `1793977904`、Git blob 由来の lock/license digest を公開 manifest と照合した。配布物の Node 24.22.2 / Bun 1.4.2 を pin に維持し、ソースをローカルで再ビルドせず公開成果物を取り込んだ。
+- 製品 importer で取り込み、Native / Worker 配置先の reader assets 222 件とホスト追加分を検証した。上流 unit tests 102 件（ローカル Bun 1.4.4）、取り込み・アップロード・トラック編集のテスト37件、実 Native / Worker の読書ナビ契約各2件が成功した。
+- Native build、Worker assets 再生成と release Wasm build が成功し、両方の `/api/health` は `version:"0.2.3"` を返した。
+- 使い捨て Native DB の EPUB・6ページPDF・10ページ画像ZIPを Firefox の `/reader/?book=<id>` から開き、ready/operable と位置 API を確認した。PDF・画像ZIPは UI で右読みへ変更後、再起動して方向が復元されることを確認した。画像ZIPの設定が別書籍のPDFへ漏れないことも確認した。
+- ローカル Worker でも3形式を実 upload API で登録し、描画・位置取得を確認した。画像ZIPは開いた時点で後続の見開きを先読みし、キー操作で次の見開きの両ページへ移動できた。object transport は同一 origin のローカル HTTP fixture で、正規 CSP を変更せず確認した。live Wasabi の署名・資格情報・期限は対象外である。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 

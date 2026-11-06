@@ -16,6 +16,12 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.2.3
+
+- Bibi を 2.3.2 へ更新しました。PDF・画像ZIPの読み方向を本・ユーザー・ファイル版ごとに保存し、開き直した際に復元します。
+- 画像ZIPは見開きの両ページをまとめて先読みし、読み込み順序の変更時も描画済みページを再読み込み・消去しません。
+- Worker の音声アップロードに Native 用の既定100 MB上限が適用され、S3直接送信前に拒否される問題を修正しました。Native の設定上限は維持し、Worker の設定画面には直接送信方式を表示します。
+
 ## v0.2.2
 
 - トラック編集は「ディスク番号 → トラック番号 → トラックタイトル → 時間」の順に表示し、ディスク番号とトラック番号を直接変更できます。
@@ -131,7 +137,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker のブラウザ UI は全書籍ファイルを presigned multipart で直送し、`POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。`object_kind: "epub"` と `epubs/` は EPUB・ZIP・PDF 共通の内部区分・保存先であり、EPUB 専用ではない。
 
-ZIP は Bibi 2.3.1 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。
+ZIP は Bibi 2.3.2 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
 
 ### DLsite 登録
 
@@ -211,7 +217,7 @@ DB の `settings` テーブル (`media_sync.*`) または環境変数 (`MEDIA_SY
 
 ### アップロード上限
 
-DB の `settings` テーブル (管理画面「設定」→「アップロード上限」からも変更可能) で指定します。単位は MB。
+Native ランタイムでは DB の `settings` テーブル (管理画面「設定」→「アップロード」からも変更可能) で指定します。単位は MB。
 
 | キー | デフォルト | 説明 |
 |------|-----------|------|
@@ -222,6 +228,8 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 上限は 4096MB (4GB) まで。これは**アプリ側**の上限です。前面のリバースプロキシ (nginx: `client_max_body_size` 等) や Cloudflare の上限も、これ以上に引き上げる必要があります (実効上限は両者の小さい方)。
 
 Worker ランタイムでは、すべての書籍ファイル（EPUB・ZIP・PDF）と8MiB以上の音声を presigned multipart でブラウザから Wasabi へ直接アップロードするため、ファイル本文は Worker を通らず、Cloudflare のリクエストボディ上限（Free/Pro 100MB）を受けません。8MiB未満の音声とカバー画像は Worker を経由します。直送経路が失敗しても Worker 経由には切り替えません。実行環境を確認できない場合も Native と推測せず送信を中断します。
+
+Worker の画面側でも、Native 専用の `upload.audio_max_mb`（既定100 MB）・`upload.file_max_mb`（既定500 MB）は適用しません。音声のメタデータはローカル WASM で解析し、大容量のファイル本文は Wasabi へ直接送信します。Worker の設定画面には Native 用の上限入力欄ではなく、この送信方式を表示します。
 
 ### 省データ再生
 
