@@ -1,8 +1,8 @@
-//! Presigned multipart finalize for book EPUB files.
+//! Presigned multipart finalize for book files (EPUB, ZIP and PDF).
 //!
-//! Large EPUBs are uploaded straight from the browser to Wasabi in parts, so the
-//! Worker never receives the file body. The finalize step verifies the completed
-//! multipart session against the object metadata and binds it to the book row.
+//! All three formats share the `epub` object kind and `epubs/` storage prefix.
+//! The browser uploads file bytes straight to Wasabi. Finalize verifies the
+//! completed session against the object metadata and binds it to the book row.
 //! Audio tracks use the same contract through `track_api::finalize_*`.
 
 use dantalian::application::error::AppError;
@@ -14,7 +14,7 @@ use crate::error::{bad_request, error_response, parse_id, parse_json};
 use crate::multipart_api::EPUB_OBJECT_KIND;
 use crate::wasabi::{WasabiConfig, WasabiStorage};
 
-/// Request body for the presigned EPUB finalize step. The browser uploads the
+/// Request body for the presigned book-file finalize step. The browser uploads
 /// parts directly to Wasabi, then hands the completed session back so the book
 /// row can reference the object.
 #[derive(Debug, Deserialize)]
@@ -37,9 +37,9 @@ struct CompletedEpubUpload {
     original_name: Option<String>,
 }
 
-/// Binds a completed presigned multipart EPUB object to a book.
+/// Binds a completed presigned multipart book file to a book.
 ///
-/// The Worker never sees the EPUB bytes on this path: it verifies the session
+/// The Worker never sees file bytes on this path: it verifies the session
 /// metadata and the object size in Wasabi, records the object, and updates the
 /// book row.
 pub async fn finalize(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -85,7 +85,7 @@ pub async fn finalize(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     };
     if stored != Some(u64::try_from(session.expected_size).unwrap_or(u64::MAX)) {
         return error_response(AppError::Conflict(
-            "uploaded EPUB object size does not match the multipart session".to_string(),
+            "uploaded book file object size does not match the multipart session".to_string(),
         ));
     }
     let created_at = Date::now().as_millis().to_string();
@@ -164,8 +164,8 @@ pub async fn finalize(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
 }
 
 /// Loads a multipart session that has already been completed against Wasabi and
-/// proves it is an EPUB object of the canonical `epubs/<hash>.<extension>` shape,
-/// so the book row can be derived from the session alone.
+/// proves it is a book file object of the canonical `epubs/<hash>.<extension>`
+/// shape, so the book row can be derived from the session alone.
 async fn load_completed_epub_session(
     ctx: &RouteContext<()>,
     session_id: &str,
@@ -194,7 +194,7 @@ async fn load_completed_epub_session(
     }
     if row.get("object_kind").and_then(|value| value.as_str()) != Some(EPUB_OBJECT_KIND) {
         return Err(AppError::Validation(
-            "multipart session is not an EPUB upload".to_string(),
+            "multipart session is not a book file upload".to_string(),
         ));
     }
     let object_key = row

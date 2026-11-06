@@ -2,8 +2,8 @@ const UPLOAD_CHUNK_SIZE = 90 * 1024 * 1024;
 // 音声はこのサイズ以上で presigned multipart (ブラウザ → Wasabi 直送) に倒す。
 // Cloudflare 経由の単発アップロードはプラン上限 (Free/Pro 100MB) に当たるため。
 const PRESIGNED_MULTIPART_MIN_BYTES = 8 * 1024 * 1024;
-// Worker の直アップロード上限。EPUB はこれを超えた場合だけ presigned multipart
-// (汎用セッション) を使い、カバーなどそれ以外は従来どおり直アップロードのみ。
+// Worker 経由を許可する小さい音声・カバーの送信上限。
+// 書籍ファイル (EPUB / ZIP / PDF) はサイズによらず presigned multipart を使う。
 const WORKER_DIRECT_UPLOAD_MAX_BYTES = 95 * 1024 * 1024;
 const MULTIPART_PART_CONCURRENCY = 3;
 
@@ -19,9 +19,24 @@ function createUploadId() {
 async function isWorkerRuntime() {
     if (!workerRuntimePromise) {
         workerRuntimePromise = fetch("/api/health", { cache: "no-store" })
-            .then((response) => response.ok ? response.json() : null)
-            .then((body) => body?.runtime === "cloudflare-worker")
-            .catch(() => false);
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`Upload runtime check failed (HTTP ${response.status})`);
+                }
+                return response.json();
+            })
+            .then((body) => {
+                if (body?.runtime === "cloudflare-worker") return true;
+                // Native の health は runtime を持たないが、正常応答を確認してから使う。
+                if (body?.runtime === undefined && body?.ok === true && typeof body.version === "string") {
+                    return false;
+                }
+                throw new Error("Upload runtime check returned an unrecognized response");
+            })
+            .catch((error) => {
+                workerRuntimePromise = undefined;
+                throw error;
+            });
     }
     return workerRuntimePromise;
 }
@@ -106,21 +121,6 @@ function audioFinalizeUrl(uploadUrl) {
     return uploadTargetAudioFinalizeUrl(uploadUrl);
 }
 
-// クライアントと Worker のデプロイ時期がずれて presigned multipart ルートが
-// 未実装の場合に、その間だけ従来の直アップロードへ戻す。恒久的に落とすと、
-// 一時的な 404 で以降の大容量アップロードが全部 Worker を通ってしまうため、
-// クールダウン付きで扱う。
-const PRESIGNED_MULTIPART_RETRY_AFTER_MS = 30_000;
-let presignedMultipartUnavailableUntil = 0;
-
-function presignedMultipartRouteUnavailable() {
-    return Date.now() < presignedMultipartUnavailableUntil;
-}
-
-function markPresignedMultipartUnavailable() {
-    presignedMultipartUnavailableUntil = Date.now() + PRESIGNED_MULTIPART_RETRY_AFTER_MS;
-}
-
 async function startPresignedMultipartUpload(initUrl, file, uploadKind) {
     const response = await fetch(initUrl, {
         method: "POST",
@@ -134,9 +134,6 @@ async function startPresignedMultipartUpload(initUrl, file, uploadKind) {
             file_name: file.name,
         }),
     });
-    if (response.status === 404) {
-        return { routeUnavailable: true };
-    }
     if (!response.ok) {
         await logUploadFailure(initUrl, file, response.clone());
         return { error: response };
@@ -218,11 +215,10 @@ async function putPresignedPart(sessionUrl, sessionId, partNumber, chunk, file, 
     return { part_number: partNumber, etag };
 }
 
-// 大容量アップロード: init → パートを並列 PUT → complete → finalize。
-// 音声はセッションをトラックへ、EPUB はセッションを書籍へ結び付ける。
+// init → パートを並列 PUT → complete → finalize。
+// 音声はセッションをトラックへ、書籍ファイルはセッションを書籍へ結び付ける。
 // Worker は本文を受け取らず、セッション管理と検証だけを行う。
-// マルチパート経路が未実装の Worker に当たった場合は null を返し、呼び出し側が
-// 従来の直アップロードへ戻せるようにする。
+// この経路が失敗しても Worker 本体へのファイル送信には切り替えない。
 async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
     const sessionUrl = uploadTargetPresignedSessionUrl(uploadUrl);
     // 汎用 EPUB セッションの init は `/api/uploads/multipart/init` にあり、
@@ -230,14 +226,6 @@ async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
     const initUrl = uploadTargetPresignedInitUrl(uploadUrl);
     const finalizeUrl = uploadTargetPresignedFinalizeUrl(uploadUrl);
     const started = await startPresignedMultipartUpload(initUrl, file, uploadKind);
-    if (started.routeUnavailable) {
-        markPresignedMultipartUnavailable();
-        console.warn(
-            "presigned multipart endpoint is unavailable on this Worker; " +
-            "falling back to the Worker direct upload path",
-        );
-        return null;
-    }
     if (started.error) return started.error;
     const upload = { sessionUrl, uploadUrl, sessionId: started.sessionId, failedResponse: null };
     const partSize = started.partSize;
@@ -281,26 +269,18 @@ async function uploadWithPresignedMultipart(uploadUrl, file, uploadKind) {
 // 拡張子判定をファイル基準で行える。省略時は URL から推定する。
 async function uploadFileWithChunks(url, fieldName, file, uploadKind) {
     const kind = uploadKind || (isAudioUploadTarget(url) ? "audio" : "epub");
-    // presigned multipart は音声 (8MiB 以上) と、Worker の直アップロード上限を
-    // 超える EPUB が使う。カバーは常に直アップロードのみ。
-    const presignedEligible = kind === "audio" || uploadTargetIsEpubUpload(url);
+    // 書籍ファイルは拡張子・サイズによらず直送する。音声の対象は 8MiB 以上。
+    // uploadTargetIsEpubUpload は EPUB / ZIP / PDF 共通の書籍ファイル URL を判定する。
     // Worker routes accept a single multipart request up to their direct-upload
     // limit. The native chunk protocol is a different contract and must not be
     // sent to the Worker endpoint as a fake file upload.
     if (await isWorkerRuntime()) {
-        // 音声は 8MiB から、EPUB は直アップロードでは送れないサイズだけ
-        // presigned multipart に切り替える。
-        const requiresPresigned = presignedEligible
-            && (kind === "audio"
-                ? file.size >= PRESIGNED_MULTIPART_MIN_BYTES
-                : file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES);
-        if (requiresPresigned && !presignedMultipartRouteUnavailable()) {
-            // Cloudflare を通さず Wasabi へ直接送る。基底はアップロード先 URL。
-            const response = await uploadWithPresignedMultipart(url, file, kind);
-            if (response) return response;
+        const requiresPresigned = uploadTargetIsEpubUpload(url)
+            || (kind === "audio" && file.size >= PRESIGNED_MULTIPART_MIN_BYTES);
+        if (requiresPresigned) {
+            return uploadWithPresignedMultipart(url, file, kind);
         }
-        // presigned 経路が使えない旧 Worker では、直アップロード上限を超えた
-        // ファイルを送信前に落とす。
+        // 小さい音声・カバーにのみ Worker 本体への送信を許可する。
         if (file.size > WORKER_DIRECT_UPLOAD_MAX_BYTES) {
             const response = directUploadLimitResponse(WORKER_DIRECT_UPLOAD_MAX_BYTES);
             await logUploadFailure(url, file, response.clone());

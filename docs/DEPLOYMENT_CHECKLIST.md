@@ -39,7 +39,7 @@
 - [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
 - [x] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, the stream route redirects to the canonical `audio/<hash>.<ext>` object, a repeated finalize is a conflict, and a completed EPUB session is rejected as the wrong kind (`worker/tests/wasabi_audio_multipart_e2e.mjs`, `WASABI_E2E=1`).
 - [x] Deployed develop Worker to Wasabi completion and multipart E2E pass (run 38038598391, "Test develop Wasabi basic and multipart lifecycle").
-- [x] Client upload URL contract is pinned without a live bucket: `worker/tests/upload_target_unit.mjs` classifies the target (audio vs epub) and derives both child URLs, and `worker/tests/upload_integration_unit.mjs` drives the real `static/js/upload.js` over a mocked fetch to assert the request sequences (audio: `…/audio/multipart` → parts → complete → `…/audio/finalize`, never `…/multipart/finalize`; large EPUB: `/api/uploads/multipart` → parts → complete → `…/books/:id/files/finalize`). Both run in the worker job.
+- [x] Client upload contracts pass without a live bucket: `worker/tests/upload_target_unit.mjs` derives the audio and book-file session/finalize URLs, and `worker/tests/upload_integration_unit.mjs` verifies multipart isolation, refusal to proxy book bytes when init fails, and fail-closed runtime detection with recovery on an explicit retry. Both run in the worker job. `worker/tests/wasabi_multipart_e2e.mjs` also executes the actual browser upload helper against the deployed Worker and Wasabi, checking a small PDF (one final part below 5 MiB) and a 20 MiB ZIP (below the former 95 MiB proxy threshold) for byte equality, MIME preservation, and zero Worker payload bytes.
 - [x] Production deploy smoke check passes: `…/api/cds/:id/tracks/:track_id/audio/multipart` answers with a non-404 status after the Worker deploy.
 - [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
 - [ ] Migration dry-run report contains no missing media or invalid object keys.
@@ -84,19 +84,19 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
 - [ ] Confirm the production custom domain is protected by Cloudflare Access and `workers.dev` is disabled.
 - [ ] Apply the Wasabi bucket CORS rules below before testing browser uploads.
 - [ ] Test one representative book, cover, EPUB, CD, and audio track through the Access-protected domain.
-- [ ] Confirm browser uploads go directly to Wasabi; large objects do not pass through Worker.
-      Audio above `PRESIGNED_MULTIPART_MIN_BYTES` (8 MiB) uses
+- [ ] Confirm browser book-file uploads go directly to Wasabi regardless of size.
+      Audio at or above `PRESIGNED_MULTIPART_MIN_BYTES` (8 MiB) uses
       `POST /api/{cds|books}/:id/tracks/:track_id/audio/multipart` → direct part `PUT`
-      → `complete` → `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`,
-      so the Worker never buffers a full audio object. EPUB above
-      `WORKER_DIRECT_UPLOAD_MAX_BYTES` (95 MiB) uses
-      `POST /api/uploads/multipart/init` with `object_kind: "epub"` → direct part
-      `PUT` → `complete` → `POST /api/books/:id/files/finalize`, so a large EPUB
-      never passes through the Worker either. Cover uploads still use the Worker
-      route because they are capped at 10 MiB.
-- [ ] Verify one EPUB larger than 95 MiB through the Access-protected domain: the
-      browser uploads parts straight to Wasabi, `POST /api/books/:id/files/finalize`
-      returns 200, and `/epubs/<hash>.epub` afterwards serves the object.
+      → `complete` → `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`.
+      All EPUB, ZIP and PDF files use `POST /api/uploads/multipart/init` with
+      `object_kind: "epub"` → direct part `PUT` → `complete` →
+      `POST /api/books/:id/files/finalize`. The `epub` kind and `epubs/` prefix
+      cover all three book formats; the Worker receives only session metadata.
+      Smaller audio and cover uploads still use the Worker route; covers are
+      capped at 10 MiB. A failed direct upload must not fall back to proxying.
+- [ ] Verify an EPUB, a ZIP below 95 MiB, and a PDF below 5 MiB through the
+      Access-protected domain: parts go straight to Wasabi, finalize returns 200,
+      and `/epubs/<hash>.<extension>` serves identical bytes with the correct MIME.
 - [ ] Open one book in the reader through the Access-protected domain and confirm the
       browser console shows no Content-Security-Policy violation. The static `_headers`
       CSP allows `https:` for `connect-src`/`img-src`/`media-src` because `/epubs`,
@@ -108,8 +108,8 @@ unsuffixed `dantalian-audio-jobs` queue, not the production queue.
       `_headers`.
 - [ ] Known limit: cover uploads stay on the Worker direct route (their own cap
       is 10 MiB); any cover file larger than `WORKER_DIRECT_UPLOAD_MAX_BYTES` is
-      rejected before sending. Audio and EPUB no longer have that cap because
-      both have a presigned finalize binding.
+      rejected before sending. All book files and presigned audio avoid that cap
+      because both have a presigned finalize binding.
 - [ ] Monitor structured migration/job events by `job_id`, `object_key`, status, attempt, processor, and error class. Do not log secrets or full signed URLs.
 - [ ] Keep Native available as rollback until post-deployment reconciliation is complete.
 
