@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use worker::{D1Type, Request, Response, Result, RouteContext};
 
 use crate::amazon_api;
-use crate::d1_read;
+use crate::d1_read::{self, D1Prepare};
 use crate::error::{bad_request, error_response, parse_id, parse_json};
 use crate::musicbrainz_api;
 use dantalian::application::error::AppError;
@@ -173,62 +173,9 @@ async fn row(db: &worker::D1Database, id: &D1Type<'_>) -> Result<Option<CdRow>> 
 }
 
 async fn with_children(db: &worker::D1Database, cd: CdRow) -> Result<serde_json::Value> {
-    let id = id_type(cd.id, "cd id").map_err(|error| worker::Error::from(error.to_string()))?;
-    let tracks = db
-        .prepare("SELECT id, book_id, cd_id, disc_number, track_number, title, duration, file_hash, file_name FROM tracks WHERE cd_id = ? ORDER BY disc_number, track_number, id")
-        .bind_refs(&id)
-        .map_err(db_error)?
-        .all()
-        .await
-        .map_err(db_error)?
-        .results::<serde_json::Value>()
-        .map_err(db_error)?;
-    let authors = db
-        .prepare("SELECT a.id, a.ndl_id, a.name, a.transcription, ca.sort_order FROM authors a JOIN cd_authors ca ON ca.author_id = a.id WHERE ca.cd_id = ? ORDER BY ca.sort_order, ca.author_id")
-        .bind_refs(&id)
-        .map_err(db_error)?
-        .all()
-        .await
-        .map_err(db_error)?
-        .results::<serde_json::Value>()
-        .map_err(db_error)?;
-    let tags = db
-        .prepare(
-            "SELECT
-                (SELECT artist FROM track_metadata tm
-                 JOIN tracks t ON t.id = tm.track_id
-                 WHERE t.cd_id = ? AND artist IS NOT NULL AND artist <> ''
-                 ORDER BY t.disc_number, t.track_number LIMIT 1) AS track_artist,
-                (SELECT album_artist FROM track_metadata tm
-                 JOIN tracks t ON t.id = tm.track_id
-                 WHERE t.cd_id = ? AND album_artist IS NOT NULL AND album_artist <> ''
-                 ORDER BY t.disc_number, t.track_number LIMIT 1) AS album_artist",
-        )
-        .bind_refs([&id, &id])
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?
-        .unwrap_or_default();
-    let mut value =
-        serde_json::to_value(cd).map_err(|error| worker::Error::from(error.to_string()))?;
-    if let Some(object) = value.as_object_mut() {
-        object.insert("tracks".into(), serde_json::Value::Array(tracks));
-        object.insert("authors".into(), serde_json::Value::Array(authors));
-        object.insert(
-            "track_artist".into(),
-            tags.get("track_artist")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null),
-        );
-        object.insert(
-            "album_artist".into(),
-            tags.get("album_artist")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null),
-        );
-    }
-    Ok(value)
+    load_full(db, cd.id)
+        .await?
+        .ok_or_else(|| worker::Error::from("CD disappeared while loading its children"))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -266,45 +213,69 @@ struct CdListRow {
 /// statements, which dominates latency when each D1 round trip is ~180ms.
 const LIST_SELECT: &str = "SELECT c.id, c.jan, c.dlsite_id, c.title, c.artist, c.publisher, c.label, c.catalog_number, c.publish_date, c.cover_url, c.description, c.disc_count, c.volume, c.created_at, c.updated_at, c.parent_book_id, c.media_type, c.series_id, c.series_number,
     (SELECT json_group_array(json_object('id', t.id, 'book_id', t.book_id, 'cd_id', t.cd_id, 'disc_number', t.disc_number, 'track_number', t.track_number, 'title', t.title, 'duration', t.duration, 'file_hash', t.file_hash, 'file_name', t.file_name))
-     FROM tracks t WHERE t.cd_id = c.id ORDER BY t.disc_number, t.track_number, t.id LIMIT -1) AS tracks_json,
-    (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ca.sort_order))
-     FROM authors a JOIN cd_authors ca ON ca.author_id = a.id WHERE ca.cd_id = c.id ORDER BY ca.sort_order, ca.author_id LIMIT -1) AS authors_json,
-    (SELECT tm.artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.artist IS NOT NULL AND tm.artist <> '' ORDER BY t.disc_number, t.track_number LIMIT 1) AS track_artist,
-    (SELECT tm.album_artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.album_artist IS NOT NULL AND tm.album_artist <> '' ORDER BY t.disc_number, t.track_number LIMIT 1) AS album_artist
-    FROM cds c ORDER BY c.id DESC";
+     FROM (SELECT * FROM tracks WHERE cd_id = c.id ORDER BY disc_number, track_number, id) t) AS tracks_json,
+    (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', a.sort_order))
+     FROM (SELECT a.id,a.ndl_id,a.name,a.transcription,ca.sort_order FROM authors a JOIN cd_authors ca ON ca.author_id = a.id WHERE ca.cd_id = c.id ORDER BY ca.sort_order, ca.author_id) a) AS authors_json,
+    (SELECT tm.artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.artist IS NOT NULL AND tm.artist <> '' ORDER BY t.disc_number, t.track_number, t.id LIMIT 1) AS track_artist,
+    (SELECT tm.album_artist FROM track_metadata tm JOIN tracks t ON t.id = tm.track_id WHERE t.cd_id = c.id AND tm.album_artist IS NOT NULL AND tm.album_artist <> '' ORDER BY t.disc_number, t.track_number, t.id LIMIT 1) AS album_artist
+    FROM cds c";
+
+fn cd_value(row: CdListRow) -> Result<serde_json::Value> {
+    let tracks: Vec<serde_json::Value> = row
+        .tracks_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_default();
+    let authors: Vec<serde_json::Value> = row
+        .authors_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_default();
+    let mut value =
+        serde_json::to_value(row).map_err(|error| worker::Error::from(error.to_string()))?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("tracks".into(), serde_json::Value::Array(tracks));
+        object.insert("authors".into(), serde_json::Value::Array(authors));
+    }
+    Ok(value)
+}
+
+async fn load_full<D: D1Prepare>(db: &D, id: i64) -> Result<Option<serde_json::Value>> {
+    let id = id_type(id, "cd id").map_err(|error| worker::Error::from(error.to_string()))?;
+    db.prepare(format!("{LIST_SELECT} WHERE c.id = ?"))
+        .bind_refs(&id)
+        .map_err(db_error)?
+        .first::<CdListRow>(None)
+        .await
+        .map_err(db_error)?
+        .map(cd_value)
+        .transpose()
+}
+
+pub async fn get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let id = match parse_id(&ctx, "id") {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let db = ctx.d1("DB")?;
+    let db = d1_read::read_db(&req, &db)?;
+    match load_full(&db, id).await? {
+        Some(value) => Response::from_json(&value),
+        None => error_response(AppError::NotFound),
+    }
+}
 
 pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("DB")?;
     let db = d1_read::read_db(&req, &db)?;
     let rows = db
-        .prepare(LIST_SELECT)
+        .prepare(format!("{LIST_SELECT} ORDER BY c.id DESC"))
         .all()
         .await
         .map_err(db_error)?
         .results::<CdListRow>()
         .map_err(db_error)?;
-    let result = rows
-        .into_iter()
-        .map(|row| {
-            let tracks: Vec<serde_json::Value> = row
-                .tracks_json
-                .as_deref()
-                .and_then(|raw| serde_json::from_str(raw).ok())
-                .unwrap_or_default();
-            let authors: Vec<serde_json::Value> = row
-                .authors_json
-                .as_deref()
-                .and_then(|raw| serde_json::from_str(raw).ok())
-                .unwrap_or_default();
-            let mut value = serde_json::to_value(row)
-                .map_err(|error| worker::Error::from(error.to_string()))?;
-            if let Some(object) = value.as_object_mut() {
-                object.insert("tracks".into(), serde_json::Value::Array(tracks));
-                object.insert("authors".into(), serde_json::Value::Array(authors));
-            }
-            Ok(value)
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let result = rows.into_iter().map(cd_value).collect::<Result<Vec<_>>>()?;
     Response::from_json(&result)
 }
 
@@ -577,10 +548,10 @@ async fn create_body(
             .filter(|name| !name.is_empty())
         {
             let d1 = ctx.d1("DB")?;
-            let existing = super::author_repository::find_author_by_normalized_name(&d1, name)
+            let mut lookup = crate::author_repository::NormalizedAuthorLookup::load(&d1, [name])
                 .await
                 .map_err(db_error)?;
-            let author_id = match existing.map(|author| author.id) {
+            let author_id = match lookup.get(name).map(|author| author.id) {
                 Some(id) => Some(id),
                 None => d1
                     .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
@@ -675,24 +646,32 @@ pub(crate) async fn register_dlsite(
     }
     let mut author_ids = Vec::new();
     if let Some(authors) = body.get("_ndl_authors").and_then(|value| value.as_array()) {
+        let mut lookup = crate::author_repository::NormalizedAuthorLookup::load(
+            &db,
+            authors
+                .iter()
+                .filter_map(|author| author.get("name").and_then(|name| name.as_str())),
+        )
+        .await
+        .map_err(db_error)?;
         for name in authors
             .iter()
             .filter_map(|author| author.get("name").and_then(|name| name.as_str()))
         {
-            let existing = crate::author_repository::find_author_by_normalized_name(&db, name)
-                .await
-                .map_err(db_error)?;
-            let author_id = match existing {
-                Some(author) => author.id,
-                None => db
-                    .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
-                    .bind_refs(&D1Type::Text(name))
-                    .map_err(db_error)?
-                    .first::<serde_json::Value>(None)
-                    .await
-                    .map_err(db_error)?
-                    .and_then(|value| value.get("id").and_then(|value| value.as_i64()))
-                    .ok_or_else(|| worker::Error::from("author insert returned no row"))?,
+            let author_id = match lookup.get(name).map(|author| author.id) {
+                Some(id) => id,
+                None => {
+                    let author = db
+                        .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id, ndl_id, name, transcription")
+                        .bind_refs(&D1Type::Text(name))
+                        .map_err(db_error)?
+                        .first::<dantalian::domain::author::Author>(None)
+                        .await.map_err(db_error)?
+                        .ok_or_else(|| worker::Error::from("author insert returned no row"))?;
+                    let id = author.id;
+                    lookup.remember(author);
+                    id
+                }
             };
             author_ids.push(author_id);
         }
@@ -946,6 +925,13 @@ pub async fn add_authors_from_names(mut req: Request, ctx: RouteContext<()>) -> 
         Ok(value) => value,
         Err(error) => return error_response(error),
     };
+    let db = ctx.d1("DB")?;
+    let mut lookup = crate::author_repository::NormalizedAuthorLookup::load(
+        &db,
+        names.iter().filter_map(|value| value.as_str()),
+    )
+    .await
+    .map_err(db_error)?;
     for value in names {
         let Some(name) = value
             .as_str()
@@ -955,28 +941,24 @@ pub async fn add_authors_from_names(mut req: Request, ctx: RouteContext<()>) -> 
             continue;
         };
         let name_value = D1Type::Text(name);
-        let db = ctx.d1("DB")?;
-        // Byte-exact lookup scatters tag spellings into duplicate rows;
-        // match on the normalized identity like native ensure_authors_for_names.
-        let existing = super::author_repository::find_author_by_normalized_name(&db, name)
-            .await
-            .map_err(db_error)?;
-        let author = match existing.map(|author| author.id) {
-            Some(author) => author,
-            None => db
-                .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id")
-                .bind_refs(&name_value)
-                .map_err(db_error)?
-                .first::<serde_json::Value>(None)
-                .await
-                .map_err(db_error)?
-                .and_then(|value| value.get("id").and_then(|value| value.as_i64()))
-                .unwrap_or_default(),
+        let author = match lookup.get(name).map(|author| author.id) {
+            Some(id) => id,
+            None => {
+                let author = db
+                    .prepare("INSERT INTO authors (name) VALUES (?) RETURNING id, ndl_id, name, transcription")
+                    .bind_refs(&name_value)
+                    .map_err(db_error)?
+                    .first::<dantalian::domain::author::Author>(None)
+                    .await.map_err(db_error)?
+                    .ok_or_else(|| worker::Error::from("author insert returned no row"))?;
+                let id = author.id;
+                lookup.remember(author);
+                id
+            }
         };
         let author =
             id_type(author, "author id").map_err(|error| worker::Error::from(error.to_string()))?;
-        ctx.d1("DB")?
-            .prepare("INSERT OR IGNORE INTO cd_authors (cd_id,author_id) VALUES (?,?)")
+        db.prepare("INSERT OR IGNORE INTO cd_authors (cd_id,author_id) VALUES (?,?)")
             .bind_refs([&cd, &author])
             .map_err(db_error)?
             .run()

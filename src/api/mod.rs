@@ -180,7 +180,10 @@ pub fn routes() -> axum::Router<crate::AppState> {
         )
         .route("/cds", get(cds::list_cds).post(cds::cd_register))
         .route("/track-metadata/search", get(cds::search_track_metadata))
-        .route("/cds/{id}", put(cds::update_cd).delete(cds::delete_cd))
+        .route(
+            "/cds/{id}",
+            get(cds::get_cd).put(cds::update_cd).delete(cds::delete_cd),
+        )
         .route(
             "/cds/{id}/cover",
             post(cds::upload_cd_cover)

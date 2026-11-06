@@ -285,7 +285,7 @@ function renderMusicLoadError(messages) {
             <span class="material-icons" aria-hidden="true">cloud_off</span>
             <p>音楽ライブラリを読み込めませんでした。登録内容は削除されていません。</p>
             <small>${escapeHtml(messages.join(" / "))}</small>
-            <button type="button" class="btn btn-ghost" onclick="initMusicPage()">再読み込み</button>
+            <button type="button" class="btn btn-ghost" onclick="refreshMusicPage()">再読み込み</button>
         </div>`;
 }
 
@@ -303,6 +303,7 @@ function renderMusicLoadError(messages) {
 })();
 
 // 起動
+let musicNavigationInitialized = false;
 async function initMusicPage() {
     // The audio policy, CD list, and playlist list are independent; loading
     // them serially delayed the grid by the sum of their latencies.
@@ -328,12 +329,14 @@ async function initMusicPage() {
         if (!cdsLoaded) messages.push("CD/オーディオブック一覧の取得に失敗");
         if (!playlistsLoaded) messages.push(`プレイリスト: ${playlistLoadError || "取得に失敗"}`);
         renderMusicLoadError(messages);
-        return;
+        return false;
     }
     window.musicAlbums = allAlbums;
     player.setAlbums(playableAlbums());
     renderGrid();
 
+    if (musicNavigationInitialized) return true;
+    musicNavigationInitialized = true;
     // ?play={cdId} があれば自動再生 (CD詳細の「再生」ボタンから遷移)
     const playId = parseInt(new URLSearchParams(location.search).get("play"), 10);
     if (!isNaN(playId) && playableAlbums().some((c) => c.id === playId)) {
@@ -347,4 +350,5 @@ async function initMusicPage() {
     if (!isNaN(editPlaylistId)) openPlaylistEditor(editPlaylistId);
 }
 
-initMusicPage();
+const refreshMusicPage = observeDataChanges(initMusicPage);
+refreshMusicPage();

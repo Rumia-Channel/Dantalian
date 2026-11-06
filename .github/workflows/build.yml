@@ -202,7 +202,7 @@ jobs:
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
           WORKER_API_TOKEN: dantalian-ci-test-token
-        run: node --test tests/reliability_contract.mjs
+        run: node --test tests/reliability_contract.mjs tests/d1_read_contract.mjs
       - name: Test Worker books pagination contract
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
@@ -247,6 +247,9 @@ jobs:
       - name: Test client track editing policy
         working-directory: .
         run: node --test worker/tests/track_duration_unit.mjs worker/tests/track_position_unit.mjs worker/tests/track_upload_unit.mjs
+      - name: Test catalogue freshness and deferred refreshes
+        working-directory: .
+        run: node --test worker/tests/data_freshness_unit.mjs
 
   develop:
     name: Deploy develop

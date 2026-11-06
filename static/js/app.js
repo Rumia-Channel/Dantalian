@@ -14,7 +14,7 @@ function renderHomeLoadError() {
             <span class="material-icons" aria-hidden="true">cloud_off</span>
             <p>一覧データを読み込めませんでした。登録内容は削除されていません。</p>
             <small>${escapeHtml(details)}</small>
-            <button type="button" class="btn btn-ghost" onclick="initializeHome()">再読み込み</button>
+            <button type="button" class="btn btn-ghost" onclick="refreshHome()">再読み込み</button>
         </div>`;
 }
 
@@ -31,6 +31,8 @@ async function initializeHome() {
     ]);
     if (results.every(Boolean)) renderItems();
     else renderHomeLoadError();
+    return results.every(Boolean);
 }
 
-initializeHome();
+const refreshHome = observeDataChanges(initializeHome);
+refreshHome();

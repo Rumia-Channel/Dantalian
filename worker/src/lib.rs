@@ -25,7 +25,6 @@ mod musicbrainz_api;
 mod ndl_coordinator;
 mod object_api;
 mod playlist_api;
-mod read_cache;
 mod reader_navigation_api;
 mod series_api;
 mod series_repository;
@@ -57,18 +56,11 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         auth::authorize(&env, &req)?
     };
     if let Some(mut response) = auth_response {
-        if path == "/api/reader-navigation" {
+        if path.starts_with("/api/") {
             response.headers_mut().set("Cache-Control", "no-store")?;
         }
         return Ok(response);
     }
-    let cache_plan = read_cache::plan(&req).ok().flatten();
-    if let Some(plan) = cache_plan.as_ref() {
-        if let Some(hit) = read_cache::lookup(plan).await {
-            return Ok(hit);
-        }
-    }
-    let method = req.method();
     let mut response = Router::new()
         .get_async("/api/health", |_req, ctx| async move {
             Response::from_json(&serde_json::json!({
@@ -234,6 +226,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .put_async("/api/storage-locations/:id", storage_location_api::update)
         .delete_async("/api/storage-locations/:id", storage_location_api::delete)
         .get_async("/api/cds", cd_api::list)
+        .get_async("/api/cds/:id", cd_api::get)
         .post_async("/api/cds", cd_api::create)
         .put_async("/api/cds/:id", cd_api::update)
         .delete_async("/api/cds/:id", cd_api::delete)
@@ -289,21 +282,8 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         )
         .run(req, env)
         .await?;
-    if let Some(plan) = cache_plan.as_ref() {
-        read_cache::store(plan, &mut response).await;
-    }
-    // After a successful write, prefer the primary database for a short window
-    // so a following GET observes the change even though reads normally use a
-    // D1 read replica (`d1_read::read_db`).
-    if matches!(
-        method,
-        Method::Post | Method::Put | Method::Delete | Method::Patch
-    ) && response.status_code() < 400
-    {
-        let _ = response.headers_mut().append(
-            "set-cookie",
-            "dantalian_d1_primary=1; Path=/; Max-Age=30; HttpOnly; SameSite=Strict",
-        );
+    if path.starts_with("/api/") {
+        response.headers_mut().set("Cache-Control", "no-store")?;
     }
     Ok(response)
 }

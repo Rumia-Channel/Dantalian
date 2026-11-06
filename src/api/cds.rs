@@ -527,6 +527,32 @@ pub async fn list_cds(
     Ok(Json(result))
 }
 
+pub async fn get_cd(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<CdWithTracks>, StatusCode> {
+    let db = state.db.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let Some(cd) = db.find_cd_by_id(id)? else {
+            return Ok::<_, rusqlite::Error>(None);
+        };
+        let tracks = db.list_tracks_for_cd(id)?;
+        let authors = db.get_cd_authors(id)?;
+        let (track_artist, album_artist) = cd_tag_artists_from_metadata(&db, id);
+        Ok(Some(CdWithTracks {
+            cd,
+            track_artist,
+            album_artist,
+            tracks,
+            authors,
+        }))
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    result.map(Json).ok_or(StatusCode::NOT_FOUND)
+}
+
 #[derive(serde::Deserialize)]
 pub struct MetadataSearchQuery {
     pub artist: Option<String>,

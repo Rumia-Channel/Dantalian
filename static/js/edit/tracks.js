@@ -459,8 +459,8 @@ async function runTrackAudioUpload(editType, parentId, trackId, file, operationT
             // 音声タグから反映されたアルバム情報もフォームへ再取得して表示する。
             // トラック一覧だけの再描画では、初期値が空のオーディオブックで
             // 自動反映されていないように見えてしまう。
-            if (editType === "cd" && typeof loadCds === "function" && typeof renderCdEdit === "function") {
-                await loadCds();
+            if (editType === "cd" && typeof loadCd === "function" && typeof renderCdEdit === "function") {
+                await loadCd(parentId);
                 await renderCdEdit(parentId);
             }
         } else {
