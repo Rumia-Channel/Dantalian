@@ -11,20 +11,25 @@ let editCdSeriesSelect = null;
 let editCdAuthorSelect = null;
 
 (async () => {
-    // These loads are independent; a serial chain added six round trips before
-    // the edit form could render.
-    const [, , , , , , aRes, bRes] = await Promise.all([
-        loadBooks(),
-        loadCds(),
+    if (!cdId && !bookId) {
+        renderBookSelect();
+        return;
+    }
+    const loads = [
         loadSeries(),
-        loadGrandSeries(),
-        loadStorageLocations(),
-        loadLabels(),
-        fetch("/api/authors"),
-        fetch("/api/borrowers"),
-    ]);
-    if (aRes.ok) allAuthors = await aRes.json();
-    if (bRes.ok) allBorrowers = await bRes.json();
+        fetch("/api/authors").then(async response => {
+            if (response.ok) allAuthors = await response.json();
+        }),
+    ];
+    if (cdId) {
+        loads.push(loadCd(parseInt(cdId, 10)));
+    } else {
+        loads.push(loadGrandSeries(), loadStorageLocations(), loadLabels(),
+            fetch("/api/borrowers").then(async response => {
+                if (response.ok) allBorrowers = await response.json();
+            }));
+    }
+    await Promise.all(loads);
 
     if (cdId) {
         renderCdEdit(parseInt(cdId, 10));
@@ -43,11 +48,6 @@ function renderBookSelect() {
 }
 
 async function renderBookEdit(id) {
-    const summary = allBooks.find((b) => b.id === id);
-    if (!summary) {
-        editContent.innerHTML = '<p class="empty-state">書籍が見つかりません</p>';
-        return;
-    }
     // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する
     // (アップロード中は進めない。対象が変わればトークンが進む)。
     if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
@@ -58,6 +58,9 @@ async function renderBookEdit(id) {
         const response = await fetch(`/api/books/${id}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         book = await response.json();
+        const summary = allBooks.find(item => item.id === id);
+        if (summary) Object.assign(summary, book);
+        else allBooks.push(book);
     } catch {
         editContent.innerHTML = '<p class="empty-state">書籍詳細の読み込みに失敗しました</p>';
         return;
@@ -452,7 +455,6 @@ async function addAuthorToBook(bookId) {
     try {
         const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "POST" });
         if (res.ok) {
-            await loadBooks();
             const res2 = await fetch("/api/authors");
             if (res2.ok) allAuthors = await res2.json();
             renderBookEdit(bookId);
@@ -467,7 +469,6 @@ async function removeAuthorFromBook(bookId, authorId) {
     try {
         const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "DELETE" });
         if (res.ok) {
-            await loadBooks();
             const res2 = await fetch("/api/authors");
             if (res2.ok) allAuthors = await res2.json();
             renderBookEdit(bookId);
@@ -595,7 +596,7 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 console.error("CD cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));
             }
-            await loadCds();
+            await loadCd(cid);
             renderCdEdit(cid);
         } catch (err) {
             console.error("CD cover upload error:", err);
@@ -609,7 +610,6 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 console.error("Book cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));
             }
-            await loadBooks();
             renderBookEdit(bid);
         } catch (err) {
             console.error("Book cover upload error:", err);
@@ -626,7 +626,6 @@ async function deleteCover(bookId) {
     try {
         const res = await fetch(`/api/books/${bookId}/cover`, { method: "DELETE" });
         if (res.ok) {
-            await loadBooks();
             renderBookEdit(bookId);
         }
     } catch {}
@@ -800,7 +799,7 @@ async function renderCdEdit(cdId) {
         placeholder: "なし",
     });
 
-    loadAndRenderCdTracks(cdId);
+    document.getElementById("edit-tracks-list").innerHTML = renderTracksHtml(cd.tracks || [], "cd", cdId);
     loadAndRenderCdMetadata(cdId);
 
     const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
@@ -885,7 +884,7 @@ async function saveCdMetadata(cdId) {
         });
         if (r.ok) {
             alert("アルバム情報を保存しました");
-            if (typeof loadCds === "function") await loadCds();
+            await loadCd(cdId);
         } else {
             const err = await r.json().catch(() => ({}));
             alert(`保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
@@ -977,7 +976,7 @@ async function addAuthorToCd(cdId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "POST" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}
@@ -1009,7 +1008,7 @@ async function registerCdAlbumArtistFromTag(cdId) {
         if (res.ok) {
             const aRes = await fetch("/api/authors");
             if (aRes.ok) allAuthors = await aRes.json();
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         } else {
             const err = await res.json().catch(() => ({}));
@@ -1027,7 +1026,7 @@ async function removeAuthorFromCd(cdId, authorId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "DELETE" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}
@@ -1051,7 +1050,7 @@ async function deleteCdCover(cdId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/cover`, { method: "DELETE" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}

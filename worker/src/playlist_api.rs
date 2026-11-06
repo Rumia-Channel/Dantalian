@@ -103,7 +103,7 @@ async fn write_error(
     error: worker::Error,
 ) -> Result<Response> {
     if let Some(id) = id {
-        if storage::load(db, id).await?.is_none() {
+        if !storage::exists(db, id).await? {
             return error_response(AppError::NotFound);
         }
     }
@@ -186,7 +186,7 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         }
     }
     let db = ctx.d1("DB")?;
-    if storage::load(&db, id).await?.is_none() {
+    if !storage::exists(&db, id).await? {
         return error_response(AppError::NotFound);
     }
     if let Some(response) =
@@ -234,7 +234,7 @@ pub async fn set_tracks(mut req: Request, ctx: RouteContext<()>) -> Result<Respo
         return Ok(response);
     }
     let db = ctx.d1("DB")?;
-    if storage::load(&db, id).await?.is_none() {
+    if !storage::exists(&db, id).await? {
         return error_response(AppError::NotFound);
     }
     if let Some(response) = validate(&db, None, Some(&body.track_ids)).await? {
@@ -264,7 +264,7 @@ pub async fn add_track(mut req: Request, ctx: RouteContext<()>) -> Result<Respon
         return Ok(response);
     }
     let db = ctx.d1("DB")?;
-    if storage::load(&db, id).await?.is_none() {
+    if !storage::exists(&db, id).await? {
         return error_response(AppError::NotFound);
     }
     if let Some(response) = validate(&db, None, Some(&tracks)).await? {
@@ -289,7 +289,7 @@ pub async fn remove_tracks(mut req: Request, ctx: RouteContext<()>) -> Result<Re
         return Ok(response);
     }
     let db = ctx.d1("DB")?;
-    if storage::load(&db, id).await?.is_none() {
+    if !storage::exists(&db, id).await? {
         return error_response(AppError::NotFound);
     }
     storage::remove(&db, id, &body.track_ids).await?;
@@ -306,7 +306,7 @@ pub async fn remove_track(_req: Request, ctx: RouteContext<()>) -> Result<Respon
         Err(response) => return Ok(response),
     };
     let db = ctx.d1("DB")?;
-    if storage::load(&db, id).await?.is_none() {
+    if !storage::exists(&db, id).await? {
         return error_response(AppError::NotFound);
     }
     if storage::remove(&db, id, &[track]).await? == 0 {

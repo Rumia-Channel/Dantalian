@@ -88,6 +88,7 @@ struct BookSummaryRow {
     media_type: Option<String>,
     copies_count: i64,
     lent_count: i64,
+    #[serde(skip_deserializing)]
     primary_author_name: Option<String>,
     #[serde(default, skip_serializing)]
     authors_json: Option<String>,
@@ -135,11 +136,10 @@ async fn output(db: &ReadDb<'_>, book: BookRow) -> Result<serde_json::Value> {
                 (SELECT json_group_array(json_object(
                             'id', a.id, 'ndl_id', a.ndl_id, 'name', a.name,
                             'transcription', a.transcription,
-                            'sort_order', ba.sort_order))
-                 FROM authors a
-                 JOIN book_authors ba ON ba.author_id = a.id
-                 WHERE ba.book_id = ?1
-                 ORDER BY ba.sort_order, ba.author_id) AS authors_json,
+                            'sort_order', a.sort_order))
+                 FROM (SELECT a.id,a.ndl_id,a.name,a.transcription,ba.sort_order
+                       FROM authors a JOIN book_authors ba ON ba.author_id=a.id
+                       WHERE ba.book_id=?1 ORDER BY ba.sort_order,ba.author_id) a) AS authors_json,
                 (SELECT COUNT(*) FROM copies c WHERE c.book_id = ?1) AS copies_count,
                 (SELECT COUNT(*)
                  FROM copies c
@@ -196,17 +196,10 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     const SUMMARY_SELECT: &str = "SELECT b.id,b.isbn,b.isdn,b.jan,b.dlsite_id,b.title,b.publisher,b.publish_date,b.cover_url,b.description,b.series_id,b.series_number,b.media_type,
         COUNT(DISTINCT c.id) AS copies_count,
         COUNT(DISTINCT CASE WHEN lh.id IS NOT NULL THEN c.id END) AS lent_count,
-        (SELECT a.name FROM authors a
-         JOIN book_authors ba ON ba.author_id = a.id
-         WHERE ba.book_id = b.id
-         ORDER BY ba.sort_order,ba.author_id
-         LIMIT 1) AS primary_author_name,
-        (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ba.sort_order))
-         FROM authors a
-         JOIN book_authors ba ON ba.author_id = a.id
-         WHERE ba.book_id = b.id
-         ORDER BY ba.sort_order,ba.author_id
-         LIMIT -1) AS authors_json
+        (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', a.sort_order))
+         FROM (SELECT a.id,a.ndl_id,a.name,a.transcription,ba.sort_order
+               FROM authors a JOIN book_authors ba ON ba.author_id=a.id
+               WHERE ba.book_id=b.id ORDER BY ba.sort_order,ba.author_id) a) AS authors_json
         FROM books b
         LEFT JOIN copies c ON c.book_id = b.id
         LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL";
@@ -247,7 +240,7 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         .filter(|_| has_more);
     let items = rows
         .into_iter()
-        .map(|row| {
+        .map(|mut row| {
             // The summary row carries linked authors as a JSON array string so
             // the grid can group books by author ID exactly like CDs. A book
             // without links yields an empty array, never null.
@@ -256,6 +249,11 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
                 .as_deref()
                 .and_then(|raw| serde_json::from_str(raw).ok())
                 .unwrap_or_default();
+            row.primary_author_name = authors
+                .first()
+                .and_then(|author| author.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
             let mut value = serde_json::to_value(row)
                 .map_err(|error| worker::Error::from(error.to_string()))?;
             if let Some(object) = value.as_object_mut() {
@@ -779,6 +777,20 @@ async fn insert_ndl_authors(
     let Some(authors) = body.get("_ndl_authors").and_then(|value| value.as_array()) else {
         return Ok(());
     };
+    let mut lookup = crate::author_repository::NormalizedAuthorLookup::load(
+        db,
+        authors
+            .iter()
+            .filter(|author| {
+                author
+                    .get("ndl_id")
+                    .and_then(|value| value.as_str())
+                    .is_none()
+            })
+            .filter_map(|author| author.get("name").and_then(|value| value.as_str())),
+    )
+    .await
+    .map_err(db_error)?;
     for author in authors {
         let Some(name) = author
             .get("name")
@@ -802,18 +814,19 @@ async fn insert_ndl_authors(
             .run()
             .await
             .map_err(db_error)?;
-            db.prepare("SELECT id FROM authors WHERE ndl_id = ?")
+            let author = db
+                .prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE ndl_id = ?")
                 .bind_refs(&D1Type::Text(ndl_id))
                 .map_err(db_error)?
-                .first::<serde_json::Value>(None)
+                .first::<dantalian::domain::author::Author>(None)
                 .await
-                .map_err(db_error)?
-                .and_then(|row| row.get("id").and_then(|value| value.as_i64()))
-        } else if let Some(existing) =
-            super::author_repository::find_author_by_normalized_name(db, name)
-                .await
-                .map_err(db_error)?
-        {
+                .map_err(db_error)?;
+            let id = author.as_ref().map(|author| author.id);
+            if let Some(author) = author {
+                lookup.remember(author);
+            }
+            id
+        } else if let Some(existing) = lookup.get(name) {
             // Same person under another source's spelling: reuse the row and
             // backfill the transcription when the row lacks one.
             if existing.transcription.is_none() && transcription.is_some() {
@@ -826,19 +839,24 @@ async fn insert_ndl_authors(
                     .run()
                     .await
                     .map_err(db_error)?;
+                existing.transcription = transcription.map(str::to_owned);
             }
             Some(existing.id)
         } else {
-            db.prepare("INSERT INTO authors (name, transcription) VALUES (?, ?) RETURNING id")
+            let author = db.prepare("INSERT INTO authors (name, transcription) VALUES (?, ?) RETURNING id, ndl_id, name, transcription")
                 .bind_refs([
                     &D1Type::Text(name),
                     &transcription.map(D1Type::Text).unwrap_or(D1Type::Null),
                 ])
                 .map_err(db_error)?
-                .first::<serde_json::Value>(None)
+                .first::<dantalian::domain::author::Author>(None)
                 .await
-                .map_err(db_error)?
-                .and_then(|row| row.get("id").and_then(|value| value.as_i64()))
+                .map_err(db_error)?;
+            let id = author.as_ref().map(|author| author.id);
+            if let Some(author) = author {
+                lookup.remember(author);
+            }
+            id
         };
         let Some(author_id) = author_id else {
             continue;

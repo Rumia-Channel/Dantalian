@@ -60,6 +60,61 @@ function getDataLoadErrors() {
     return { ...dataLoadErrors };
 }
 
+// Refresh restored catalogues and other tabs only after a successful mutation.
+// No polling or D1 revision table; hidden tabs defer work until they are visible.
+function observeDataChanges(refresh) {
+    const revision = () => {
+        try { return localStorage.getItem("dantalian_data_revision") || ""; }
+        catch { return null; }
+    };
+    let seen = revision();
+    let running = null;
+    let requested = false;
+    let epoch = 0;
+    let loadingEpoch = -1;
+    let loadingRevision;
+    function reload() {
+        requested = true;
+        if (running || document.visibilityState === "hidden") return running;
+        running = (async () => {
+            while (requested && document.visibilityState !== "hidden") {
+                requested = false;
+                const started = revision();
+                loadingEpoch = epoch;
+                loadingRevision = started;
+                if (await refresh() !== false) seen = started;
+                if (revision() !== started) requested = true;
+            }
+        })().catch(error => console.error("Catalogue refresh failed:", error))
+            .finally(() => { running = null; });
+        return running;
+    }
+    const changed = () => {
+        const current = revision();
+        if (running && loadingEpoch === epoch && loadingRevision === current) return running;
+        if (seen !== current || current === null) return reload();
+    };
+    window.addEventListener("storage", event => {
+        if (event.key === "dantalian_data_revision") changed();
+    });
+    window.addEventListener("pagehide", event => {
+        if (event.persisted) {
+            epoch += 1;
+            requested = true;
+        }
+    });
+    window.addEventListener("pageshow", event => {
+        if (event.persisted && (!running || loadingEpoch !== epoch)) reload();
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") {
+            if (requested) reload();
+            else changed();
+        }
+    });
+    return reload;
+}
+
 function escapeHtml(text) {
     if (text == null) return "";
     const div = document.createElement("div");
@@ -274,6 +329,23 @@ async function loadCds() {
     } catch (err) {
         recordDataLoadError("cds", err);
         allCds = [];
+        return false;
+    }
+}
+
+async function loadCd(id) {
+    try {
+        const res = await fetch(`/api/cds/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const cd = await res.json();
+        const index = allCds.findIndex(item => item.id === id);
+        if (index < 0) allCds.push(cd);
+        else allCds[index] = cd;
+        clearDataLoadError("cds");
+        return true;
+    } catch (error) {
+        allCds = allCds.filter(item => item.id !== id);
+        recordDataLoadError("cds", error);
         return false;
     }
 }

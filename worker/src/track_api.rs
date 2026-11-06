@@ -1,3 +1,4 @@
+mod metadata_read;
 mod metadata_update;
 
 use serde::{Deserialize, Serialize};
@@ -377,111 +378,12 @@ fn merge_custom_metadata(value: &mut serde_json::Value) {
     }
 }
 
-async fn get_metadata_for(ctx: &RouteContext<()>, parent_column: &str) -> Result<Response> {
-    let parent_raw = match parse_id(ctx, "id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let track_raw = match parse_id(ctx, "track_id") {
-        Ok(value) => value,
-        Err(response) => return Ok(response),
-    };
-    let parent_id = match id_type(parent_raw, "parent id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let track_id = match id_type(track_raw, "track id") {
-        Ok(value) => value,
-        Err(error) => return error_response(error),
-    };
-    let db = ctx.d1("DB")?;
-    let track = db
-        .prepare(&format!(
-            "SELECT id, cd_id FROM tracks WHERE id = ? AND {parent_column} = ?"
-        ))
-        .bind_refs([&track_id, &parent_id])
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?;
-    let Some(track) = track else {
-        return error_response(AppError::NotFound);
-    };
-    let mut value = db
-        .prepare("SELECT * FROM track_metadata WHERE track_id = ?")
-        .bind_refs(&track_id)
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?
-        .unwrap_or_else(|| serde_json::json!({ "track_id": track_raw }));
-    merge_custom_metadata(&mut value);
-    if let Some(cd_id) = track.get("cd_id").and_then(|value| value.as_i64()) {
-        let cd_id =
-            id_type(cd_id, "cd id").map_err(|error| worker::Error::from(error.to_string()))?;
-        let cd = db
-            .prepare("SELECT title, publisher, label FROM cds WHERE id = ?")
-            .bind_refs(&cd_id)
-            .map_err(db_error)?
-            .first::<serde_json::Value>(None)
-            .await
-            .map_err(db_error)?;
-        let cd_meta = db
-            .prepare("SELECT year, genre, composer, isrc FROM cd_metadata WHERE cd_id = ?")
-            .bind_refs(&cd_id)
-            .map_err(db_error)?
-            .first::<serde_json::Value>(None)
-            .await
-            .map_err(db_error)?;
-        if let Some(object) = value.as_object_mut() {
-            for (target, source) in [
-                ("album", "title"),
-                ("publisher", "publisher"),
-                ("label", "label"),
-            ] {
-                if object.get(target).is_none_or(serde_json::Value::is_null) {
-                    if let Some(source_value) = cd.as_ref().and_then(|row| row.get(source)) {
-                        object.insert(target.to_string(), source_value.clone());
-                    }
-                }
-            }
-            for key in ["year", "genre", "composer", "isrc"] {
-                if object.get(key).is_none_or(serde_json::Value::is_null) {
-                    if let Some(source_value) = cd_meta.as_ref().and_then(|row| row.get(key)) {
-                        object.insert(key.to_string(), source_value.clone());
-                    }
-                }
-            }
-        }
-    }
-    let artists = db
-        .prepare(
-            "SELECT a.id, a.ndl_id, a.name, a.transcription, ta.sort_order
-             FROM authors a JOIN track_authors ta ON ta.author_id = a.id
-             WHERE ta.track_id = ? ORDER BY ta.sort_order, ta.author_id",
-        )
-        .bind_refs(&track_id)
-        .map_err(db_error)?
-        .all()
-        .await
-        .map_err(db_error)?
-        .results::<serde_json::Value>()
-        .map_err(db_error)?;
-    if let Some(object) = value.as_object_mut() {
-        object.insert("artists".into(), serde_json::Value::Array(artists));
-        object
-            .entry("album_artists")
-            .or_insert_with(|| serde_json::json!([]));
-    }
-    Response::from_json(&value)
+pub async fn get_book_metadata(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    metadata_read::get(&req, &ctx, "book_id").await
 }
 
-pub async fn get_book_metadata(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    get_metadata_for(&ctx, "book_id").await
-}
-
-pub async fn get_cd_track_metadata(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    get_metadata_for(&ctx, "cd_id").await
+pub async fn get_cd_track_metadata(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    metadata_read::get(&req, &ctx, "cd_id").await
 }
 
 pub async fn put_book_metadata(req: Request, ctx: RouteContext<()>) -> Result<Response> {

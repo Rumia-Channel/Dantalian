@@ -69,16 +69,11 @@ struct ItemRow {
 pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("DB")?;
     let db = d1_read::read_db(&req, &db)?;
-    let rows = db
-        .prepare("SELECT id, name FROM grand_series ORDER BY name, id")
-        .all()
-        .await
-        .map_err(map_db)?
-        .results::<GrandSeries>()
-        .map_err(map_db)?;
-    // Load every item in one query instead of one query per grand series.
-    let item_rows = db
-        .prepare(
+    // Batch the two flat scans: one round trip, without the additional index
+    // boundary reads incurred by a correlated lookup for every parent.
+    let results = db.batch(vec![
+        db.prepare("SELECT id, name FROM grand_series ORDER BY name, id"),
+        db.prepare(
             "SELECT gsi.grand_series_id, gsi.item_type, gsi.item_id,
                     CASE gsi.item_type
                       WHEN 'series' THEN s.name
@@ -91,13 +86,11 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
              LEFT JOIN cds c ON gsi.item_type = 'cd' AND c.id = gsi.item_id
              WHERE CASE gsi.item_type WHEN 'series' THEN s.id WHEN 'book' THEN b.id WHEN 'cd' THEN c.id END IS NOT NULL
              ORDER BY gsi.grand_series_id, gsi.item_type, gsi.item_id",
-        )
-        .all()
-        .await
-        .map_err(map_db)?
-        .results::<ItemRow>()
-        .map_err(map_db)?;
-    let mut grouped: HashMap<i64, Vec<Item>> = HashMap::new();
+        ),
+    ]).await?;
+    let rows = results[0].results::<GrandSeries>()?;
+    let item_rows = results[1].results::<ItemRow>()?;
+    let mut grouped: HashMap<i64, Vec<Item>> = HashMap::with_capacity(rows.len());
     for row in item_rows {
         grouped.entry(row.grand_series_id).or_default().push(Item {
             item_type: row.item_type,
