@@ -177,16 +177,24 @@ impl Db {
         rows.collect()
     }
 
-    pub fn update_track(
+    /// Applies a partial update to one track.
+    ///
+    /// Every field is optional and `None` keeps the stored value, so a request
+    /// that only moves a track inside its disc keeps the other position and
+    /// every metadata column untouched. The whole update runs as one statement
+    /// so a rejected request never leaves a half written row behind.
+    pub fn update_track_fields(
         &self,
         id: i64,
         title: Option<&str>,
         duration: Option<&str>,
+        disc_number: Option<i64>,
+        track_number: Option<i64>,
     ) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock();
         let affected = conn.execute(
-            "UPDATE tracks SET title = COALESCE(?1, title), duration = COALESCE(?2, duration) WHERE id = ?3",
-            params![title, duration, id],
+            "UPDATE tracks SET title = COALESCE(?1, title), duration = COALESCE(?2, duration), disc_number = COALESCE(?3, disc_number), track_number = COALESCE(?4, track_number) WHERE id = ?5",
+            params![title, duration, disc_number, track_number, id],
         )?;
         Ok(affected > 0)
     }
@@ -208,20 +216,6 @@ impl Db {
     pub fn delete_track(&self, id: i64) -> Result<bool, rusqlite::Error> {
         let conn = self.0.lock();
         let affected = conn.execute("DELETE FROM tracks WHERE id = ?1", params![id])?;
-        Ok(affected > 0)
-    }
-
-    pub fn update_track_position(
-        &self,
-        id: i64,
-        disc_number: i64,
-        track_number: i64,
-    ) -> Result<bool, rusqlite::Error> {
-        let conn = self.0.lock();
-        let affected = conn.execute(
-            "UPDATE tracks SET disc_number = ?1, track_number = ?2 WHERE id = ?3",
-            params![disc_number, track_number, id],
-        )?;
         Ok(affected > 0)
     }
 
