@@ -59,13 +59,19 @@ impl NormalizedAuthorLookup {
             .collect::<HashMap<_, _>>();
         let mut lookup = Self { matches };
         if !lookup.matches.is_empty() {
+            let mut missing = lookup.matches.len();
             for author in db
                 .prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")
                 .all()
                 .await?
                 .results::<Author>()?
             {
-                lookup.remember(author);
+                if lookup.remember(author) {
+                    missing -= 1;
+                    if missing == 0 {
+                        break;
+                    }
+                }
             }
         }
         Ok(lookup)
@@ -77,10 +83,13 @@ impl NormalizedAuthorLookup {
             .and_then(Option::as_mut)
     }
 
-    pub(crate) fn remember(&mut self, author: Author) {
+    pub(crate) fn remember(&mut self, author: Author) -> bool {
         let key = dantalian::domain::author::normalize_author_name(&author.name);
         if let Some(slot @ None) = self.matches.get_mut(&key) {
             *slot = Some(author);
+            true
+        } else {
+            false
         }
     }
 }
