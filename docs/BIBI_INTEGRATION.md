@@ -2,9 +2,9 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.3.0** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.0/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.1** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.1/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
-- **Bibi**: EPUB・PDF の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
+- **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
 - Dantalian 側では固定成果物の検証・取り込み、独自 preset、Native/Worker の静的配信と CI の共通成果物化に加え、**本一覧の本のクリック、または詳細・編集画面の「読む」から Bibi の standalone 専用ページを起動し、既存書籍 API の登録済み EPUB を開く導線を接続済み**。トップページのクリックは従来の詳細表示を維持する。Jo / iframe にリーダーを埋め込まない。進捗・ブラウザ内の再開位置は Bibi 自身が管理する。**サーバーへの位置保存・同期、アカウント別の位置管理は未接続**。Bibi は Dantalian の保存 API を直接呼ばない。
 
@@ -31,6 +31,8 @@ Bibi **2.3.0** のホスト連携機能を使用する。固定した repository
 
 2.3.0 では PDF の取得・ページ描画・テキスト選択・検索が追加された。PDF.js 本体・Worker・フォント・CMap・Wasm と各ライセンスを含む配布物全体を取り込み、ホスト preset で `accept-pdf: yes` を明示する。位置・ホストナビ API の schemaVersion は 1 のまま。
 
+2.3.1 では画像だけの ZIP を書籍として開けるようになった。EPUB 構成・BibiZine・画像ブックの順に判定し、PNG・JPEG・GIF・WebP・AVIF・BMP を固定レイアウトとして自然順（`1`,`2`,`10`）・サブフォルダ対応で描画する。Range 対応配信ではアーカイブを先に一覧して必要ページだけを取得し、非対応サーバーでは全体展開にフォールバックする。画像 ZIP も PDF と同じ左右読みの切替を持つ。位置・ホストナビ API の schemaVersion は 1 のまま。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -38,7 +40,7 @@ Bibi **2.3.0** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.0
+git checkout --detach v2.3.1
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -52,7 +54,7 @@ node scripts/import_bibi.mjs .tmp/bibi-source
 node scripts/import_bibi.mjs --verify
 ```
 
-固定 toolchain は Bun 1.4.2 / Node.js 24.22.1。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
+固定 toolchain は Bun 1.4.2 / Node.js 24.22.2。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
 固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
@@ -62,7 +64,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.3.0` であること。 |
+| `schemaVersion` / `version` | `1` / `2.3.1` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -334,6 +336,16 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 
 - v0.1.23 の CI は `bibi` job の取り込みで `Bibi source lockfile mismatch.` となり、native / worker と各デプロイが実行されなかった。原因は `bibi.lock.json` の lock/license SHA-256 を CRLF checkout のファイルから採っていたこと。
 - Git の正規 LF blob から `lockSha256` と `licenseSha256` を取り直した（license は 2.2.1 と同一）。`core.autocrlf=false` の clean checkout `53d1bdf8610919fec0fc8d13cecfa49c5086cc35` を Node 24.22.0 / Bun 1.4.3、`SOURCE_DATE_EPOCH=1792337145` で frozen install・ビルド・`verify:dist`。manifest の `lockSha256` が `fe26bfb2…` と一致し、取り込み・`--verify`（17 reader assets）・distribution tests 6 件が成功した。
+
+### Dantalian 0.2.2 / Bibi 2.3.1 の検証
+
+- 公開済みの [Bibi v2.3.1](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.1) 配布物 `Bibi-v2.3.1.zip` を取得し、GitHub release の digest `d3c86a2acdf5fdd4dd85868fa2b18d9a4d5177f95c9a7f93e57ffcc9e2524294` と一致することを確認した。ZIP 内の `build-manifest.json` は `commit 618528cf9df2b232ff8c4ef3aaeffa835f3041eb` / `sourceDateEpoch 1793950530` / `lockSha256 5deee354…` / Node 24.22.2 / Bun 1.4.2 を記録し、`bibi.lock.json` は Git の正規 blob から同じ値を取得した。lockfile / license digest は Git blob から取得している。
+- 取り込みは製品 importer の検証を通した（222 reader assets、`--verify` 成功、`scripts/bibi/distribution.test.mjs` 6 件成功）。Windows の inherited ACL が生成済み reader ディレクトリの rename を拒否したため、検証済みの staging を作成し、旧 inventory を照合したうえで内容を差し替え、全 digest を再検証した。検証条件は緩めていない。
+- reader assets は 2.3.0 から 222 ファイルでパスは変わらず、8 ファイル（`index.html`、`and/jo.js`、`resources/scripts/bibi.js`、`resources/styles/bibi.css`、`presets/default.js`、extractor 2 件、`info/README.md`）の digest が変わった。host preset は変更していない。
+- 使い捨て Native DB に実 API で 3 冊（画像 ZIP・EPUB・PDF）を登録し、Firefox で `/reader/?book=<id>` から専用ページを開いた。画像 ZIP は 3 ページ（`1`,`2`,`10` の自然順）を描画し、位置 API は `spine-items` 進捗、左右読みの切替は `page-rtl` へ切り替わり現在ページと表示モードを保持した。EPUB は本文と `spine-text` 進捗、PDF は 1 ページ描画を確認した。位置・ホストナビ API の schemaVersion は 1 のまま。
+- 画像 ZIP の `Range: bytes=-65557` は Native で `206 / bytes 0-2090/2091` を返した。
+- ローカル Worker でも同じ 3 形式を実 upload API から登録し、画像 ZIP・EPUB の描画と位置取得を確認した。Worker の `/epubs/` は Wasabi 相当の署名付き URL へ 302 するため、ローカルの object transport は http であり Worker の CSP（`connect-src 'self' https:`）が遮る。確認中だけ生成済み `worker/public/_headers` に当該 origin を追加し、検証後に canonical な内容へ戻した。本番の署名先 origin は https で許可済み。live Wasabi の資格情報・署名期限は今回の検証対象外である。
+- `worker/tests/reader_navigation_contract.mjs` は Native・Worker とも 2 件成功した。Native の `cargo build --features native --bin dantalian`、Worker の assets 再生成と release Wasm build、Native / Worker 配置先の `import_bibi.mjs --verify` は成功した。追加の DB マイグレーションは不要である。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 

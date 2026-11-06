@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "repository": "https://github.com/Rumia-Channel/bibi.git",
-  "version": "2.3.0",
-  "commit": "5df11697621794e9b49865c1972f89a56a7f5ec6",
-  "lockSha256": "b8323b3ee73a997084617bb4c6f6c8983cec9579975d62cfc1b3c25f3f45ef4a",
+  "version": "2.3.1",
+  "commit": "618528cf9df2b232ff8c4ef3aaeffa835f3041eb",
+  "lockSha256": "5deee35489f18632f77e75f29551d8da89f4d96e32470c6c55fd9ccd6c506f51",
   "licenseSha256": "7932d3471f99ce4214e0fca0147d93f96c60e97b079f0e775a7709f637833ff4",
-  "sourceDateEpoch": 1793861512,
+  "sourceDateEpoch": 1793950530,
   "toolchain": {
-    "node": "24.22.1",
+    "node": "24.22.2",
     "bun": "1.4.2"
   }
 }
