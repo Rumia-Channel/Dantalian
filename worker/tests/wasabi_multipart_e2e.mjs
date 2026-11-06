@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
+
+const require = createRequire(import.meta.url);
+Object.assign(globalThis, require("../../static/js/upload-target.js"));
+const { uploadFileWithChunks } = require("../../static/js/upload.js");
 
 const baseUrl = process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8793";
 const apiToken = process.env.WORKER_API_TOKEN ?? "";
@@ -115,9 +121,8 @@ test("Wasabi EPUB multipart upload completes through direct part URLs", { skip: 
   assert.equal(afterAbort.response.status, 409);
 });
 
-// The browser skips the Worker for large EPUBs: it creates a generic EPUB
-// multipart session, PUTs the parts straight to Wasabi, and the finalize step
-// binds the completed object to the book row.
+// Book files share the generic "epub" session kind, including ZIP and PDF.
+// Parts go straight to Wasabi; finalize binds the completed object to the book.
 test("Wasabi EPUB multipart finalize binds the object to a book", { skip: !enabled }, async () => {
   const parts = [makePart(partSize, 5), makePart(1024 * 1024, 13)];
   const expected = Buffer.concat(parts);
@@ -202,6 +207,71 @@ test("Wasabi EPUB multipart finalize binds the object to a book", { skip: !enabl
   } finally {
     if (bookId !== undefined) {
       await jsonRequest("DELETE", `/api/books/${bookId}`);
+    }
+  }
+});
+
+test("browser book uploads send small PDF and sub-limit ZIP bytes only to Wasabi", { skip: !enabled }, async () => {
+  const originalFetch = globalThis.fetch;
+  const workerOrigin = new URL(baseUrl).origin;
+  const pdf = await readFile(new URL("./fixtures/reader.pdf", import.meta.url));
+  const cases = [
+    { bytes: pdf, name: "Small Book.PDF", reportedType: "", storedType: "application/pdf", extension: "pdf" },
+    { bytes: makePart(20 * 1024 * 1024, 17), name: "Book.zip", reportedType: "application/x-zip-compressed", storedType: "application/zip", extension: "zip" },
+  ];
+  let bookId;
+  let workerBinaryBytes = 0;
+  let objectBinaryBytes = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input, baseUrl);
+    const headers = new Headers(init.headers);
+    const workerRequest = url.origin === workerOrigin;
+    if (workerRequest) {
+      headers.set("authorization", `Bearer ${apiToken}`);
+    }
+    let binaryBytes = init.body instanceof Blob ? init.body.size : 0;
+    if (init.body instanceof FormData) {
+      for (const value of init.body.values()) {
+        if (value instanceof Blob) binaryBytes += value.size;
+      }
+    }
+    if (workerRequest) {
+      workerBinaryBytes += binaryBytes;
+    } else {
+      objectBinaryBytes += binaryBytes;
+      assert.equal(headers.has("authorization"), false, "API credentials must not reach Wasabi");
+    }
+    return originalFetch(url, { ...init, headers });
+  };
+  try {
+    const book = await jsonRequest("POST", "/api/books/manual", {
+      isbn: `wasabi-browser-files-${Date.now()}`,
+      title: "Browser direct book file transport",
+    });
+    assert.equal(book.response.status, 201);
+    bookId = book.body.book.id;
+    for (const item of cases) {
+      const file = new File([item.bytes], item.name, { type: item.reportedType });
+      const response = await uploadFileWithChunks(`/api/books/${bookId}/files`, "file", file, "epub");
+      assert.equal(response.status, 200);
+      const finalized = await response.json();
+      assert.equal(finalized.file_hash.endsWith(`.${item.extension}`), true);
+      assert.equal(finalized.file_name, item.name);
+      const full = await fetch(`${baseUrl}/epubs/${encodeURIComponent(finalized.file_hash)}`);
+      assert.equal(full.status, 200);
+      assert.equal(full.headers.get("content-type"), item.storedType);
+      assert.deepEqual(Buffer.from(await full.arrayBuffer()), item.bytes);
+      const loaded = await jsonRequest("GET", `/api/books/${bookId}`);
+      assert.equal(loaded.response.status, 200);
+      assert.equal(loaded.body.files.some((entry) => entry.file_hash === finalized.file_hash && entry.file_name === item.name), true);
+    }
+    assert.equal(workerBinaryBytes, 0, "book payloads must not traverse Worker");
+    assert.equal(objectBinaryBytes, cases.reduce((sum, item) => sum + item.bytes.length, 0));
+  } finally {
+    try {
+      if (bookId !== undefined) await jsonRequest("DELETE", `/api/books/${bookId}`);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   }
 });

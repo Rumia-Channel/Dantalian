@@ -215,25 +215,6 @@ test("large EPUB uploads parts directly to Wasabi and finalizes on the book", as
   assert.equal(finalizeBody.name, "big-book.epub");
 });
 
-test("an EPUB under the direct limit keeps the single Worker upload", async () => {
-  const calls = recordedFetch([
-    { prefix: "/api/health", body: { runtime: "cloudflare-worker" } },
-    { prefix: "/api/books/7/files", body: { file_hash: "x" } },
-  ]);
-  const response = await uploadFileWithChunks(
-    "/api/books/7/files",
-    "file",
-    fakeFile(20 * 1024 * 1024, "book.epub", "application/epub+zip"),
-    "epub",
-  );
-  assert.equal(response.status, 200);
-  assert.deepEqual(
-    calls.filter((call) => call.method === "POST").map((call) => call.url),
-    ["/api/books/7/files"],
-  );
-  assert.equal(calls.some((call) => call.url.includes("/multipart")), false);
-});
-
 // Two uploads started back to back used to mix up their parts and re-render the
 // track list out of order. Each upload must keep its own session and never post
 // another session's part number.
@@ -304,32 +285,73 @@ test("two concurrent uploads keep their own sessions and parts", async () => {
   );
 });
 
-// 新しいクライアントが presigned ルートを持たない旧 Worker に当たった場合でも、
-// 直アップロード上限を超える EPUB は本文を送らずに 413 で止める。このテストは
-// 30 秒のクールダウンを立てるので、必ず最後に実行する。
-test("an EPUB over the direct limit fails closed when the multipart route is missing", async () => {
-  const calls = [];
-  globalThis.fetch = async (url, init = {}) => {
-    const target = String(url);
-    calls.push({ url: target, method: init.method ?? "GET" });
-    if (target === "/api/health") {
-      return new Response(JSON.stringify({ runtime: "cloudflare-worker" }), { status: 200 });
-    }
-    if (target === "/api/uploads/multipart/init") {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
-  };
-
-  const response = await uploadFileWithChunks(
-    "/api/books/7/files",
-    "file",
-    fakeFile(120 * 1024 * 1024, "big-book.epub", "application/epub+zip"),
-    "epub",
-  );
-  assert.equal(response.status, 413);
+test("a missing multipart route never sends a sub-limit ZIP body through Worker", async () => {
+  const calls = recordedFetch([
+    { prefix: "/api/health", body: { runtime: "cloudflare-worker" } },
+    { prefix: "/api/uploads/multipart/init", status: 404, body: { error: "not found" } },
+  ]);
+  const file = new File([new Uint8Array(20 * 1024 * 1024)], "book.zip", {
+    type: "application/x-zip-compressed",
+  });
+  const response = await uploadFileWithChunks("/api/books/7/files", "file", file, "epub");
+  assert.equal(response.status, 404);
   assert.deepEqual(
     calls.filter((call) => call.method === "POST").map((call) => call.url),
     ["/api/uploads/multipart/init"],
   );
+  assert.equal(calls.some((call) => call.body instanceof FormData || call.body instanceof Blob), false);
+});
+
+test("a failed runtime probe sends no file and an explicit retry probes again", async () => {
+  delete require.cache[require.resolve("../../static/js/upload.js")];
+  const freshUpload = require("../../static/js/upload.js").uploadFileWithChunks;
+  const calls = [];
+  let probes = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? "GET", body: init.body });
+    if (url === "/api/health") {
+      probes += 1;
+      return probes === 1
+        ? new Response("unavailable", { status: 503 })
+        : Response.json({ runtime: "cloudflare-worker" });
+    }
+    return new Response("not found", { status: 404 });
+  };
+  const file = new File([new Uint8Array(1024)], "book.pdf", { type: "application/pdf" });
+  await assert.rejects(freshUpload("/api/books/7/files", "file", file, "epub"), Error);
+  assert.equal(calls.some((call) => call.method === "POST"), false);
+  const response = await freshUpload("/api/books/7/files", "file", file, "epub");
+  assert.equal(response.status, 404);
+  assert.equal(probes, 2);
+  assert.deepEqual(
+    calls.filter((call) => call.method === "POST").map((call) => call.url),
+    ["/api/uploads/multipart/init"],
+  );
+  assert.equal(calls.some((call) => call.body instanceof FormData || call.body instanceof Blob), false);
+});
+
+test("a non-JSON runtime probe never guesses the native file upload protocol", async () => {
+  delete require.cache[require.resolve("../../static/js/upload.js")];
+  const freshUpload = require("../../static/js/upload.js").uploadFileWithChunks;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? "GET" });
+    return new Response("<html>login required</html>");
+  };
+  const file = new File([new Uint8Array(1024)], "book.pdf", { type: "application/pdf" });
+  await assert.rejects(freshUpload("/api/books/7/files", "file", file, "epub"), SyntaxError);
+  assert.equal(calls.some((call) => call.method === "POST"), false);
+});
+
+test("an unsuccessful health document cannot select the native upload protocol", async () => {
+  delete require.cache[require.resolve("../../static/js/upload.js")];
+  const freshUpload = require("../../static/js/upload.js").uploadFileWithChunks;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? "GET" });
+    return Response.json({ ok: false, version: "0.2.0" });
+  };
+  const file = new File([new Uint8Array(1024)], "book.pdf", { type: "application/pdf" });
+  await assert.rejects(freshUpload("/api/books/7/files", "file", file, "epub"), Error);
+  assert.equal(calls.some((call) => call.method === "POST"), false);
 });

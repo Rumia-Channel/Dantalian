@@ -16,7 +16,9 @@ const OWNER_SCOPE: &str = "api-token";
 pub const EPUB_OBJECT_KIND: &str = "epub";
 pub const AUDIO_OBJECT_KIND: &str = "audio";
 
-/// EPUB multipart init keeps the original request shape (content type only).
+/// Multipart init for book files and audio tracks. The request shape keeps the
+/// original EPUB contract (content type only), because book files of every
+/// format share the `epub` object kind.
 #[derive(Debug, Deserialize)]
 pub struct MultipartInitRequest {
     pub expected_size: u64,
@@ -347,7 +349,8 @@ fn validate_init(request: &MultipartInitRequest) -> Result<String, AppError> {
     Ok(content_type)
 }
 
-/// EPUB sessions keep working without `object_kind`, so the default stays epub.
+/// Book file sessions keep working without `object_kind`, so the default stays
+/// the shared `epub` kind.
 fn object_kind_for(request: &MultipartInitRequest) -> Result<ObjectKind, AppError> {
     match request.object_kind.as_deref() {
         None => Ok(ObjectKind::Epub),

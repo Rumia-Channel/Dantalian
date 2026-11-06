@@ -121,8 +121,9 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             "/api/books/:id/files/:file_id",
             object_api::delete_book_epub,
         )
-        // Large EPUBs skip the Worker body limit: the browser uploads parts
-        // straight to Wasabi, then this binds the completed object to the book.
+        // All book files (EPUB, ZIP, PDF) skip the Worker body limit: the browser
+        // uploads parts straight to Wasabi, then this binds the completed object
+        // to the book.
         .post_async("/api/books/:id/files/finalize", book_epub_api::finalize)
         .get_async("/api/audio/stream/:file_hash", object_api::stream)
         .get_async("/api/audio/playability/:file_hash", audio_api::playability)

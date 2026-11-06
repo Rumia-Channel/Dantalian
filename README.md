@@ -16,6 +16,12 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.2.1
+
+- Worker の書籍ファイル（EPUB・ZIP・PDF）は、サイズによらずブラウザから Wasabi へ直接アップロードします。従来は95MiB以下の書籍ファイルを Worker が受け取っていました。
+- 直送経路のエラー時に Worker 本文送信へ切り替える処理を廃止しました。実行環境の確認に失敗した場合も送信を中断し、次の手動操作で再確認します。
+- v0.2.0 からの追加DBマイグレーションはありません。音声の直送条件（8MiB以上）とカバー画像の送信経路は従来どおりです。
+
 ## v0.2.0
 
 - Bibi を 2.3.0 へ更新し、書籍に複数の EPUB・ZIP・PDF を追加・個別削除できるようにしました。書籍カードの ID 表示・コピーにも対応しています。
@@ -115,7 +121,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 編集画面の「ファイルを追加」では複数ファイルを選択できる。追加時に既存ファイルを置き換えず、詳細・編集画面に各ファイルの「読む」「ダウンロード」と、編集画面に個別の削除操作を表示する。本一覧のカードからは最初に登録したファイルを開く。ファイルの追加・削除ではファイル欄だけを更新し、保存前の書籍情報の入力を保持する。
 
-Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker の大容量ファイルは `POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。
+Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker のブラウザ UI は全書籍ファイルを presigned multipart で直送し、`POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。`object_kind: "epub"` と `epubs/` は EPUB・ZIP・PDF 共通の内部区分・保存先であり、EPUB 専用ではない。
 
 ZIP の閲覧には Bibi が認識できる書籍構成が必要（EPUB 構成の ZIP で閲覧を検証）。単に画像を詰めた一般的な ZIP をコミックとして展開する機能は含まない。
 
@@ -207,7 +213,7 @@ DB の `settings` テーブル (管理画面「設定」→「アップロード
 
 上限は 4096MB (4GB) まで。これは**アプリ側**の上限です。前面のリバースプロキシ (nginx: `client_max_body_size` 等) や Cloudflare の上限も、これ以上に引き上げる必要があります (実効上限は両者の小さい方)。
 
-Worker ランタイムでは、音声 (8MiB 以上) と EPUB (95MiB = 99.6MB を超えるもの) は presigned multipart でブラウザから Wasabi へ直接アップロードするため、Cloudflare のリクエストボディ上限 (Free/Pro 100MB) を受けません。小さいファイルとカバー画像は Worker を経由します。
+Worker ランタイムでは、すべての書籍ファイル（EPUB・ZIP・PDF）と8MiB以上の音声を presigned multipart でブラウザから Wasabi へ直接アップロードするため、ファイル本文は Worker を通らず、Cloudflare のリクエストボディ上限（Free/Pro 100MB）を受けません。8MiB未満の音声とカバー画像は Worker を経由します。直送経路が失敗しても Worker 経由には切り替えません。実行環境を確認できない場合も Native と推測せず送信を中断します。
 
 ### 省データ再生
 
