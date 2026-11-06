@@ -811,7 +811,9 @@ pub async fn update_cd_track(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, StatusCode> {
     require_track(&state, TrackParent::Cd(cd_id), track_id).await?;
-    if let Some(swap_track_id) = body.get("swap_track_id").and_then(|v| v.as_i64()) {
+    let swap_track_id = body.get("swap_track_id").and_then(|value| value.as_i64());
+    let patch = super::track_access::parse_track_patch(body)?;
+    if let Some(swap_track_id) = swap_track_id {
         let swapped = tokio::task::spawn_blocking({
             let db = state.db.clone();
             move || db.swap_track_positions(cd_id, track_id, swap_track_id)
@@ -824,39 +826,24 @@ pub async fn update_cd_track(
         }
         return Ok(Json("ok".into()));
     }
-
-    let title = body
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let duration = body
-        .get("duration")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    if title.is_none() && duration.is_none() && body.get("disc_number").is_none() {
+    if patch.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
     let db = state.db.clone();
     let updated = tokio::task::spawn_blocking(move || {
-        db.update_track(track_id, title.as_deref(), duration.as_deref())
+        db.update_track_fields(
+            track_id,
+            patch.title.as_deref(),
+            patch.duration.as_deref(),
+            patch.disc_number,
+            patch.track_number,
+        )
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if !updated {
         return Err(StatusCode::NOT_FOUND);
-    }
-
-    if let Some(disc) = body.get("disc_number").and_then(|v| v.as_i64()) {
-        let tn = body
-            .get("track_number")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(1);
-        let db2 = state.db.clone();
-        tokio::task::spawn_blocking(move || db2.update_track_position(track_id, disc, tn))
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
     Ok(Json("ok".into()))
@@ -1160,13 +1147,22 @@ async fn synchronize_cd_core_metadata(
             cd.series_number,
         )?;
 
-        db.update_track(track_id, non_empty(extracted.title.as_ref()), None)?;
-        if let (Some(disc_number), Some(track_number)) = (
+        // The extracted tag positions only move the track when both numbers are
+        // known; otherwise the stored position is kept.
+        let (disc_number, track_number) = match (
             positive(extracted.disc_number),
             positive(extracted.track_number),
         ) {
-            db.update_track_position(track_id, disc_number, track_number)?;
-        }
+            (Some(disc_number), Some(track_number)) => (Some(disc_number), Some(track_number)),
+            _ => (None, None),
+        };
+        db.update_track_fields(
+            track_id,
+            non_empty(extracted.title.as_ref()),
+            None,
+            disc_number,
+            track_number,
+        )?;
         Ok(())
     })
     .await;

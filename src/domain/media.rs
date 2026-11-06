@@ -99,6 +99,20 @@ pub struct Track {
     pub file_name: Option<String>,
 }
 
+/// Largest disc/track number the API accepts.
+///
+/// The D1 backed Worker stores these columns as integers bound through 32 bit
+/// values, so a larger number could not be read back from every deployment.
+pub const MAX_TRACK_POSITION: i64 = 2_147_483_647;
+
+/// True when `value` is a disc/track number the API can store.
+///
+/// Supplied numbers outside this range are rejected instead of being clamped,
+/// so a rejected request never silently changes the stored position.
+pub fn is_valid_track_position(value: i64) -> bool {
+    (1..=MAX_TRACK_POSITION).contains(&value)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Cd {
     pub id: i64,

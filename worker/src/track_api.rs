@@ -7,6 +7,7 @@ use crate::error::{bad_request, error_response, parse_id, parse_json};
 use crate::multipart_api::AUDIO_OBJECT_KIND;
 use crate::wasabi::{WasabiConfig, WasabiStorage};
 use dantalian::application::error::AppError;
+use dantalian::domain::media::{MAX_TRACK_POSITION, is_valid_track_position};
 use dantalian::ports::object_storage::validate_object_key;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,6 +34,21 @@ struct TrackRequest {
 
 fn db_error(error: worker::Error) -> worker::Error {
     error
+}
+
+// Match the i32 numeric bindings below instead of silently clamping overflow.
+fn track_position(value: Option<i64>, label: &str) -> std::result::Result<Option<i32>, AppError> {
+    match value {
+        None => Ok(None),
+        Some(number) => {
+            if !is_valid_track_position(number) {
+                return Err(AppError::Validation(format!(
+                    "{label} must be an integer between 1 and {MAX_TRACK_POSITION}"
+                )));
+            }
+            Ok(Some(number as i32))
+        }
+    }
 }
 
 fn id_type(id: i64, label: &str) -> std::result::Result<D1Type<'static>, AppError> {
@@ -141,10 +157,11 @@ async fn update_for(
         Err(response) => return Ok(response),
     };
     let db = ctx.d1("DB")?;
+    // The parent column keeps the ownership guard: a track of another book or
+    // CD is reported as missing instead of being updated.
     let current = db
         .prepare(&format!(
-            "SELECT disc_number, track_number, title, duration
-             FROM tracks WHERE id = ? AND {parent_column} = ?"
+            "SELECT track_number FROM tracks WHERE id = ? AND {parent_column} = ?"
         ))
         .bind_refs([&track_id, &parent_id])
         .map_err(db_error)?
@@ -153,6 +170,16 @@ async fn update_for(
         .map_err(db_error)?;
     let Some(current) = current else {
         return error_response(AppError::NotFound);
+    };
+    // The positions are validated before anything is written so an invalid
+    // number can never be clamped into a different position.
+    let disc_number = match track_position(body.disc_number, "disc_number") {
+        Ok(value) => value,
+        Err(error) => return error_response(error),
+    };
+    let track_number = match track_position(body.track_number, "track_number") {
+        Ok(value) => value,
+        Err(error) => return error_response(error),
     };
     if let Some(swap_raw) = body.swap_track_id {
         let swap_id = match id_type(swap_raw, "swap track id") {
@@ -199,42 +226,32 @@ async fn update_for(
             .map_err(db_error)?;
         return Ok(Response::empty()?.with_status(204));
     }
-    let disc_number = body
-        .disc_number
-        .or_else(|| current.get("disc_number").and_then(|value| value.as_i64()))
-        .unwrap_or(1)
-        .max(1);
-    let track_number = body
-        .track_number
-        .or_else(|| current.get("track_number").and_then(|value| value.as_i64()))
-        .unwrap_or(1)
-        .max(1);
-    let title = body
-        .title
-        .or_else(|| {
-            current
-                .get("title")
-                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-        })
-        .unwrap_or_default();
-    let duration = body
-        .duration
-        .or_else(|| {
-            current
-                .get("duration")
-                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-        })
-        .unwrap_or_default();
-    db.prepare(
-        "UPDATE tracks SET disc_number = ?, track_number = ?, title = ?, duration = ? WHERE id = ?",
-    )
-    .bind_refs([
-        &D1Type::Integer(i32::try_from(disc_number).unwrap_or(i32::MAX)),
-        &D1Type::Integer(i32::try_from(track_number).unwrap_or(i32::MAX)),
-        &D1Type::Text(&title),
-        &D1Type::Text(&duration),
-        &track_id,
-    ])
+    if disc_number.is_none()
+        && track_number.is_none()
+        && body.title.is_none()
+        && body.duration.is_none()
+    {
+        return Ok(bad_request("no track fields to update"));
+    }
+    // Only the supplied fields are written. COALESCE keeps the stored value
+    // for everything the request left out, so a number-only update cannot
+    // overwrite a title or duration that changed in the meantime.
+    let values = [
+        disc_number.map_or(D1Type::Null, D1Type::Integer),
+        track_number.map_or(D1Type::Null, D1Type::Integer),
+        body.title.as_deref().map_or(D1Type::Null, D1Type::Text),
+        body.duration.as_deref().map_or(D1Type::Null, D1Type::Text),
+        track_id,
+        parent_id,
+    ];
+    db.prepare(&format!(
+        "UPDATE tracks SET disc_number = COALESCE(?, disc_number),
+                           track_number = COALESCE(?, track_number),
+                           title = COALESCE(?, title),
+                           duration = COALESCE(?, duration)
+         WHERE id = ? AND {parent_column} = ?"
+    ))
+    .bind_refs(values.iter())
     .map_err(db_error)?
     .run()
     .await

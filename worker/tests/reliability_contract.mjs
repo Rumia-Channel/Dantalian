@@ -165,3 +165,39 @@ test("metadata patches preserve supported audio byte counts beyond signed 32 bit
     assert.equal(fetched.body.raw_size_bytes, size);
   } finally { await clean(cleanup); }
 });
+
+test("track positions preserve omitted fields and reject invalid updates atomically", async () => {
+  const cleanup = [];
+  try {
+    const cd = await create("/api/cds", {
+      title: "Track position album",
+      tracks: [{ disc_number: 2, track_number: 4, title: "Keep track title", duration: "01:23" }],
+    }, cleanup);
+    const other = await create("/api/cds", { title: "Other track owner" }, cleanup);
+    const trackId = cd.tracks[0].id;
+    const path = `/api/cds/${cd.id}/tracks/${trackId}`;
+    const stored = async () => (await request("GET", `/api/cds/${cd.id}/tracks`)).body
+      .find((track) => track.id === trackId);
+    let expected = await stored();
+    for (const patch of [
+      { track_number: 7 },
+      { disc_number: 3 },
+      { disc_number: 4, track_number: 9, title: "Updated track", duration: "02:34" },
+    ]) {
+      const response = await request("PUT", path, patch);
+      assert.ok([200, 204].includes(response.status), JSON.stringify(response));
+      expected = { ...expected, ...patch };
+      assert.deepEqual(await stored(), expected);
+    }
+    for (const invalid of [0, 2_147_483_648, 1.5, "2"]) {
+      assert.equal((await request("PUT", path, {
+        disc_number: 6, track_number: invalid, title: "Must not write", duration: "99:59",
+      })).status, 400);
+      assert.deepEqual(await stored(), expected);
+    }
+    assert.equal((await request("PUT", `/api/cds/${other.id}/tracks/${trackId}`, {
+      disc_number: 8, title: "Wrong owner",
+    })).status, 404);
+    assert.deepEqual(await stored(), expected);
+  } finally { await clean(cleanup); }
+});

@@ -51,20 +51,19 @@ pub async fn update_track(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<String>, axum::http::StatusCode> {
     require_track(&state, TrackParent::Book(book_id), track_id).await?;
-    let title = body
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let duration = body
-        .get("duration")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    if title.is_none() && duration.is_none() {
+    let patch = super::track_access::parse_track_patch(body)?;
+    if patch.is_empty() {
         return Err(axum::http::StatusCode::BAD_REQUEST);
     }
     let db = state.db.clone();
     let updated = tokio::task::spawn_blocking(move || {
-        db.update_track(track_id, title.as_deref(), duration.as_deref())
+        db.update_track_fields(
+            track_id,
+            patch.title.as_deref(),
+            patch.duration.as_deref(),
+            patch.disc_number,
+            patch.track_number,
+        )
     })
     .await
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
@@ -257,3 +256,6 @@ pub async fn delete_track_audio(
 
     Ok(Json("ok".into()))
 }
+
+#[cfg(test)]
+mod tests;
