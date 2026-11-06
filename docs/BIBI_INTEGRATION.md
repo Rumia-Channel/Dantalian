@@ -337,14 +337,14 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - v0.1.23 の CI は `bibi` job の取り込みで `Bibi source lockfile mismatch.` となり、native / worker と各デプロイが実行されなかった。原因は `bibi.lock.json` の lock/license SHA-256 を CRLF checkout のファイルから採っていたこと。
 - Git の正規 LF blob から `lockSha256` と `licenseSha256` を取り直した（license は 2.2.1 と同一）。`core.autocrlf=false` の clean checkout `53d1bdf8610919fec0fc8d13cecfa49c5086cc35` を Node 24.22.0 / Bun 1.4.3、`SOURCE_DATE_EPOCH=1792337145` で frozen install・ビルド・`verify:dist`。manifest の `lockSha256` が `fe26bfb2…` と一致し、取り込み・`--verify`（17 reader assets）・distribution tests 6 件が成功した。
 
-### Dantalian 0.2.2 / Bibi 2.3.1 の検証
+### 未リリース / Bibi 2.3.1 の検証
 
-- 公開済みの [Bibi v2.3.1](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.1) 配布物 `Bibi-v2.3.1.zip` を取得し、GitHub release の digest `d3c86a2acdf5fdd4dd85868fa2b18d9a4d5177f95c9a7f93e57ffcc9e2524294` と一致することを確認した。ZIP 内の `build-manifest.json` は `commit 618528cf9df2b232ff8c4ef3aaeffa835f3041eb` / `sourceDateEpoch 1793950530` / `lockSha256 5deee354…` / Node 24.22.2 / Bun 1.4.2 を記録し、`bibi.lock.json` は Git の正規 blob から同じ値を取得した。lockfile / license digest は Git blob から取得している。
-- 取り込みは製品 importer の検証を通した（222 reader assets、`--verify` 成功、`scripts/bibi/distribution.test.mjs` 6 件成功）。Windows の inherited ACL が生成済み reader ディレクトリの rename を拒否したため、検証済みの staging を作成し、旧 inventory を照合したうえで内容を差し替え、全 digest を再検証した。検証条件は緩めていない。
+- 公開済みの [Bibi v2.3.1](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.1) 配布物 `Bibi-v2.3.1.zip` を取得し、GitHub release の digest `d3c86a2acdf5fdd4dd85868fa2b18d9a4d5177f95c9a7f93e57ffcc9e2524294` と一致することを確認した。ZIP 内の `build-manifest.json` は `commit 618528cf9df2b232ff8c4ef3aaeffa835f3041eb` / `sourceDateEpoch 1793950530` / `lockSha256 5deee354…` / Node 24.22.2 / Bun 1.4.2 を記録している。Git の commit・時刻・正規 blob と公開 manifest を照合して `bibi.lock.json` を更新した。lockfile / license digest は Git blob、Node/Bun は公開 manifest を正とした。
+- 取り込みは製品 importer の検証を通した（222 reader assets、`--verify` 成功、`scripts/bibi/distribution.test.mjs` 6 件成功）。Windows で生成済み reader ディレクトリの rename が拒否されたため、検証済みの staging を作成し、旧 inventory を照合したうえで内容を差し替え、全 digest を再検証した。検証条件は緩めていない。
 - reader assets は 2.3.0 から 222 ファイルでパスは変わらず、8 ファイル（`index.html`、`and/jo.js`、`resources/scripts/bibi.js`、`resources/styles/bibi.css`、`presets/default.js`、extractor 2 件、`info/README.md`）の digest が変わった。host preset は変更していない。
-- 使い捨て Native DB に実 API で 3 冊（画像 ZIP・EPUB・PDF）を登録し、Firefox で `/reader/?book=<id>` から専用ページを開いた。画像 ZIP は 3 ページ（`1`,`2`,`10` の自然順）を描画し、位置 API は `spine-items` 進捗、左右読みの切替は `page-rtl` へ切り替わり現在ページと表示モードを保持した。EPUB は本文と `spine-text` 進捗、PDF は 1 ページ描画を確認した。位置・ホストナビ API の schemaVersion は 1 のまま。
+- 使い捨て Native DB に実 API で 3 冊（画像 ZIP・EPUB・PDF）を登録し、Firefox で `/reader/?book=<id>` から専用ページを開いた。画像 ZIP は 3 ページ（`1`,`2`,`10` の自然順）を描画し、位置 API は `spine-items` 進捗、左右読みの切替は `page-rtl` へ切り替わり現在ページと表示モードを保持した。EPUB は本文と `spine-text` 進捗、PDF は 1 ページの ready/operable と位置取得を確認した。位置・ホストナビ API の schemaVersion は 1 のまま。
 - 画像 ZIP の `Range: bytes=-65557` は Native で `206 / bytes 0-2090/2091` を返した。
-- ローカル Worker でも同じ 3 形式を実 upload API から登録し、画像 ZIP・EPUB の描画と位置取得を確認した。Worker の `/epubs/` は Wasabi 相当の署名付き URL へ 302 するため、ローカルの object transport は http であり Worker の CSP（`connect-src 'self' https:`）が遮る。確認中だけ生成済み `worker/public/_headers` に当該 origin を追加し、検証後に canonical な内容へ戻した。本番の署名先 origin は https で許可済み。live Wasabi の資格情報・署名期限は今回の検証対象外である。
+- ローカル Worker にも画像 ZIP・EPUB を実 upload API から登録し、描画と位置取得を確認した。Worker の `/epubs/` は Wasabi 相当の署名付き URL へ 302 するため、ローカルの object transport は http であり Worker の CSP（`connect-src 'self' https:`）が遮る。確認中だけ生成済み `worker/public/_headers` に当該 origin を追加し、検証後に canonical な内容へ戻した。本番の署名先 origin は https で許可済み。live Wasabi の資格情報・署名期限は今回の検証対象外である。
 - `worker/tests/reader_navigation_contract.mjs` は Native・Worker とも 2 件成功した。Native の `cargo build --features native --bin dantalian`、Worker の assets 再生成と release Wasm build、Native / Worker 配置先の `import_bibi.mjs --verify` は成功した。追加の DB マイグレーションは不要である。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
