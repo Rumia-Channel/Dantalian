@@ -1,5 +1,6 @@
 pub mod amazon;
 pub mod dlsite;
+pub mod narou;
 pub mod ndl_authority;
 pub mod ndl_search;
 pub mod open_library;

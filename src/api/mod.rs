@@ -9,6 +9,7 @@ pub(crate) mod error;
 pub(crate) mod grand_series;
 pub(crate) mod labels;
 pub(crate) mod media_sync;
+pub(crate) mod narou;
 pub(crate) mod playlists;
 pub(crate) mod reader_navigation;
 pub(crate) mod series;
@@ -67,6 +68,7 @@ pub fn routes() -> axum::Router<crate::AppState> {
     axum::Router::new()
         .route("/health", get(health))
         .route("/reader-navigation", get(reader_navigation::get))
+        .route("/narou/sync", post(narou::sync))
         .route("/audio/stream/{file_hash}", get(audio::stream))
         .route("/audio/playability/{file_hash}", get(audio::playability))
         .route("/books", post(books::register))

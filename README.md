@@ -314,7 +314,7 @@ Native / Worker ともに取得・更新レスポンスの `tracks` は `{ posit
 
 ## DB スキーマの整合性
 
-Native の現行スキーマは `13` です。対応版より新しい DB を開いた場合、テーブルを削除せず起動を拒否します。新しいバージョンで更新した DB を古い実行ファイルで開かないでください。
+Native の現行スキーマは `18` です。対応版より新しい DB を開いた場合、テーブルを削除せず起動を拒否します。新しいバージョンで更新した DB を古い実行ファイルで開かないでください。
 
 Worker の更新時は `worker/migrations/0016_grand_series_integrity.sql` を D1 に適用してください。この移行は存在しない書籍・CD・シリーズへの大シリーズ所属を除去し、以後の不正な所属を拒否します。対象の削除時には所属も自動的に除去します。Native にも同じ整合性制約を適用します。
 
@@ -347,9 +347,33 @@ node --test worker/tests/reliability_contract.mjs
 
 静的アセットを追加した場合は `build.rs` の `html_files` / `js_files` にも登録してください。登録漏れがあるとキャッシュバスタ用ハッシュが更新されません。Worker は `build_assets.mjs` が `static/` をそのまま複製するため、追加作業はありません。
 
+### narou.rs の Web 小説を同期表示
+
+管理 → **Web 小説**で narou.rs の接続先と対象タグを保存します。手動の一度きりの取り込みではなく、narou.rs を正として **`/books/` を開く時・表示中の5分ごと・タブに戻った時**に API と同期します。トップの「一覧」には、シリーズ・大シリーズ内も含めて表示しません。
+
+| 設定キー | 内容 |
+|---|---|
+| `narou.url` | narou.rs の HTTP(S) ベース URL。パス接頭辞も利用可能。Dantalian サーバーから到達できる URL を指定 |
+| `narou.token` | Worker 版の Bearer token、または Native 版の `.narou/ui_token` |
+| `narou.cf_access_client_id` | Cloudflare Access Service Token の Client ID |
+| `narou.cf_access_client_secret` | Cloudflare Access Service Token の Client Secret |
+| `narou.use_favorites` | narou.rs のお気に入りタグを対象にするか（既定 `true`） |
+| `narou.tags` | Dantalian 側で追加指定するタグ名の JSON 配列。画面では1行1タグで指定 |
+
+- 対象は **お気に入りタグと指定タグの和集合に完全一致**する小説です。タグが空なら全件取得せず、Web 小説を非表示にします。
+- `GET /api/favorite_tags`・`GET /api/list?all=true` で最新状態を確認し、更新日時・書誌情報が変わった作品だけ `GET /novels/{id}/download` から EPUB を取得します。元の小説サイトを Dantalian がスクレイピングすることはありません。
+- EPUB は既存のファイル保存先（Native: `epubs/`、Worker: Wasabi）へキャッシュし、本棚の本から既存の Bibi で読みます。narou.rs 側で EPUB の生成が可能な設定が必要です。Worker が中継する EPUB の上限は95 MiBです。
+- 同じ作品の更新では書籍 ID・読書状態・手動追加ファイルを維持し、同期した EPUB だけを差し替えます。対象タグから外れた作品、削除済みの作品、以前の接続先の作品は非表示にし、DB の読書状態は保持します。同期失敗時は前回の内容とエラーを表示します。
+- Bearer のみ、[Cloudflare Access Service Token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/) のみ、両方の併用に対応します。Access 側は **Service Auth** ポリシーを使用してください。Client ID / Secret は両方必要です。秘密値は設定取得 API に返さず、未入力なら維持、削除チェックで解除します。
+- 認証情報の送信には HTTPS が必要です（ループバック接続のみ HTTP 可）。URL 内の認証情報・クエリ・フラグメントと、リダイレクトは拒否します。
+- `POST /api/narou/sync` で即時同期も可能です。結果は `matched` / `imported` / `updated` / `unchanged` / `tags` / `book_ids` / `failed`。`GET /api/books?exclude_narou=true` は同期小説を除外し、通常のページングを維持します。
+
+Worker の更新時は `worker/migrations/0022_narou_imports.sql` まで D1 に適用してください。Native は起動時に移行します。
+
+
 ### 読書リーダー (Bibi)
 
-EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) **2.2.2** を使用します。[`bibi.lock.json`](bibi.lock.json) に SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
+EPUB リーダーには [Bibi](https://github.com/Rumia-Channel/bibi) を使用します。[`bibi.lock.json`](bibi.lock.json) にバージョン・SHA・lock/license の digest・Node/Bun を固定し、`scripts/import_bibi.mjs` で検証済み成果物を `static/vendor/bibi/` に取り込みます。CI は Bibi を一度ビルドし、同じ artifact を Native/Worker と各デプロイに渡します。
 
 - トップページ (`/`) の本カードとシリーズ・大シリーズ内の本は、クリックしても読書ページへ遷移せず、従来の詳細画面を開きます。読書は詳細・編集画面の「読む」から開始します。CD・オーディオブックのクリック動作は変更していません。
 - 本専用一覧 (`/books/`) の本カードとシリーズ・大シリーズ内の本は、同じタブの `/reader/?book=<id>` で書籍情報を確認し、document-pinned preset を持つ `/vendor/bibi/dantalian.html` の **Bibi 専用ページ**を開きます。Jo / iframe にリーダーを埋め込まず、一覧ナビや外側のツールバーも表示しません。カードの「詳細」は従来の詳細画面を開き、詳細・編集画面の「読む」も同じ起動経路を使用します。

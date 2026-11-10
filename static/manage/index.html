@@ -29,6 +29,7 @@
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-labels" onclick="switchSeriesTab('labels')" id="tab-labels"><span class="material-icons" aria-hidden="true">label</span>レーベル</button>
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-borrowers" onclick="switchSeriesTab('borrowers')" id="tab-borrowers"><span class="material-icons" aria-hidden="true">person</span>借り手</button>
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-settings" onclick="switchSeriesTab('settings')" id="tab-settings"><span class="material-icons" aria-hidden="true">settings</span>設定</button>
+                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-narou" onclick="switchSeriesTab('narou')" id="tab-narou"><span class="material-icons" aria-hidden="true">auto_stories</span>Web 小説</button>
             </div>
             <div id="panel-series" class="series-tab-panel" role="tabpanel" aria-labelledby="tab-series" aria-hidden="false">
                 <h3 class="manage-panel-title">シリーズ</h3>
@@ -77,6 +78,11 @@
                 <h3 class="manage-panel-title">設定</h3>
                 <div id="settings-form"></div>
             </div>
+            <div id="panel-narou" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-narou" aria-hidden="true">
+                <h3 class="manage-panel-title">narou.rs と同期する</h3>
+                <p>お気に入りタグと指定タグのいずれかに完全一致する小説を、本棚専用で同期表示します。</p>
+                <div id="narou-settings"></div>
+            </div>
         </section>
     </div>
     <script src="/js/header.js?v=ASSET_VERSION"></script>
@@ -90,6 +96,7 @@
     <script src="/js/labels.js?v=ASSET_VERSION"></script>
     <script src="/js/borrowers.js?v=ASSET_VERSION"></script>
     <script src="/js/settings-manage.js?v=ASSET_VERSION"></script>
+    <script src="/js/narou-manage.js?v=ASSET_VERSION"></script>
     <script>
         (async () => {
             // The managers are independent: load their data concurrently instead

@@ -27,6 +27,7 @@ const TABLES: &[&str] = &[
     "labels",
     "books",
     "book_files",
+    "narou_imports",
     "book_authors",
     "copies",
     "borrowers",
@@ -294,6 +295,14 @@ where
 }
 
 fn read_table(connection: &Connection, table: &str) -> Result<Vec<SqlRow>, String> {
+    if table == "narou_imports"
+        && !connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='narou_imports')",
+            [], |row| row.get::<_, bool>(0),
+        ).map_err(|_| "could not inspect narou sync schema".to_string())?
+    {
+        return Ok(Vec::new());
+    }
     let sql = if table == "book_files" && !has_book_files(connection)? {
         "SELECT id, id AS book_id, epub_file_hash AS file_hash,
          COALESCE(epub_file_name, epub_file_hash) AS file_name, updated_at AS created_at
