@@ -165,3 +165,132 @@ test("metadata patches preserve supported audio byte counts beyond signed 32 bit
     assert.equal(fetched.body.raw_size_bytes, size);
   } finally { await clean(cleanup); }
 });
+
+test("track positions preserve omitted fields and reject invalid updates atomically", async () => {
+  const cleanup = [];
+  try {
+    const cd = await create("/api/cds", {
+      title: "Track position album",
+      tracks: [{ disc_number: 2, track_number: 4, title: "Keep track title", duration: "01:23" }],
+    }, cleanup);
+    const other = await create("/api/cds", { title: "Other track owner" }, cleanup);
+    const trackId = cd.tracks[0].id;
+    const path = `/api/cds/${cd.id}/tracks/${trackId}`;
+    const stored = async () => (await request("GET", `/api/cds/${cd.id}/tracks`)).body
+      .find((track) => track.id === trackId);
+    let expected = await stored();
+    for (const patch of [
+      { track_number: 7 },
+      { disc_number: 3 },
+      { disc_number: 4, track_number: 9, title: "Updated track", duration: "02:34" },
+    ]) {
+      const response = await request("PUT", path, patch);
+      assert.ok([200, 204].includes(response.status), JSON.stringify(response));
+      expected = { ...expected, ...patch };
+      assert.deepEqual(await stored(), expected);
+    }
+    for (const invalid of [0, 2_147_483_648, 1.5, "2"]) {
+      assert.equal((await request("PUT", path, {
+        disc_number: 6, track_number: invalid, title: "Must not write", duration: "99:59",
+      })).status, 400);
+      assert.deepEqual(await stored(), expected);
+    }
+    assert.equal((await request("PUT", `/api/cds/${other.id}/tracks/${trackId}`, {
+      disc_number: 8, title: "Wrong owner",
+    })).status, 404);
+    assert.deepEqual(await stored(), expected);
+  } finally { await clean(cleanup); }
+});
+
+test("CD detail keeps disc/track and artist order and rejects missing owners", async () => {
+  const cleanup = [];
+  try {
+    const first = await create("/api/authors", { name: "Second display artist" }, cleanup);
+    const second = await create("/api/authors", { name: "First display artist" }, cleanup);
+    const cd = await create("/api/cds", {
+      title: "Ordered album", author_ids: [first.id, second.id],
+      tracks: [
+        { disc_number: 2, track_number: 1, title: "Disc two" },
+        { disc_number: 1, track_number: 2, title: "Disc one second" },
+        { disc_number: 1, track_number: 1, title: "Disc one first" },
+      ],
+    }, cleanup);
+    assert.equal((await request("PUT", `/api/cds/${cd.id}/authors/${first.id}`, { sort_order: 5 })).status, 204);
+    const detail = await request("GET", `/api/cds/${cd.id}`);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.title, "Ordered album");
+    assert.deepEqual(detail.body.tracks.map(track => track.title), ["Disc one first", "Disc one second", "Disc two"]);
+    assert.deepEqual(detail.body.authors.map(author => author.id), [second.id, first.id]);
+    assert.equal((await request("GET", "/api/cds/2000000000")).status, 404);
+    assert.equal((await request("DELETE", `/api/cds/${cd.id}`)).status, 204);
+    assert.equal((await request("GET", `/api/cds/${cd.id}`)).status, 404);
+  } finally { await clean(cleanup); }
+});
+
+test("normalized artist batches reuse existing and just-inserted identities", async () => {
+  const cleanup = [];
+  try {
+    const suffix = String(randomInt(1_000_000_000));
+    const canonical = await create("/api/authors", { name: `Ab C ${suffix}` }, cleanup);
+    await create("/api/authors", { name: `ＡＢＣ${suffix}` }, cleanup);
+    const cd = await create("/api/cds", { title: "Normalized batch" }, cleanup);
+    assert.equal((await request("POST", `/api/cds/${cd.id}/authors/from-names`, {
+      names: [`ａ ｂｃ${suffix}`, `ABC ${suffix}`, `New Name ${suffix}`, `newname${suffix}`],
+    })).status, 204);
+    const detail = await request("GET", `/api/cds/${cd.id}`);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.authors.length, 2);
+    assert.ok(detail.body.authors.some(author => author.id === canonical.id));
+    const added = detail.body.authors.find(author => author.id !== canonical.id);
+    assert.equal(added.name, `New Name ${suffix}`);
+    cleanup.push(() => request("DELETE", `/api/authors/${added.id}`));
+  } finally { await clean(cleanup); }
+});
+
+test("track metadata preserves track fields, CD fallback and ordered artists", async () => {
+  const cleanup = [];
+  try {
+    const first = await create("/api/authors", { name: "Metadata first" }, cleanup);
+    const second = await create("/api/authors", { name: "Metadata second" }, cleanup);
+    const cd = await create("/api/cds", {
+      title: "Inherited album", publisher: "Inherited publisher", label: "Inherited label",
+      tracks: [{ track_number: 1, title: "Metadata precedence" }],
+    }, cleanup);
+    const albumSaved = await request("PUT", `/api/cds/${cd.id}/metadata`, { year: 2025, genre: "Inherited genre" });
+    assert.ok([200, 204].includes(albumSaved.status), JSON.stringify(albumSaved));
+    const path = `/api/cds/${cd.id}/tracks/${cd.tracks[0].id}/metadata`;
+    let fetched = await request("GET", path);
+    assert.equal(fetched.body.album, "Inherited album");
+    assert.equal(fetched.body.publisher, "Inherited publisher");
+    assert.equal(fetched.body.year, 2025);
+    const saved = await request("PUT", path, {
+      title: "Per-track title", album: null, year: null, label: null,
+      artists: [second.id, first.id],
+    });
+    assert.ok([200, 204].includes(saved.status), JSON.stringify(saved));
+    fetched = await request("GET", path);
+    assert.equal(fetched.body.title, "Per-track title");
+    assert.equal(fetched.body.album, "Inherited album");
+    assert.equal(fetched.body.year, 2025);
+    assert.equal(fetched.body.label, "Inherited label");
+    assert.equal(fetched.body.genre, "Inherited genre");
+    assert.deepEqual(fetched.body.artists.map(author => author.id), [second.id, first.id]);
+  } finally { await clean(cleanup); }
+});
+
+test("cookie-authenticated catalogues expose a new work immediately, without a cache-busting URL", async () => {
+  const cleanup = [];
+  const catalogue = async () => {
+    const response = await fetch(baseUrl + "/api/books?limit=100", {
+      headers: { cookie: `dantalian_api_token=${encodeURIComponent(token)}` },
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  try {
+    await catalogue();
+    const book = await create("/api/books/manual", { title: "Immediately visible", isbn: isbn() }, cleanup);
+    const page = await catalogue();
+    assert.ok(page.items.some(item => item.id === book.id && item.title === "Immediately visible"));
+  } finally { await clean(cleanup); }
+});

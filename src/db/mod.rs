@@ -1,4 +1,5 @@
 pub mod authors;
+mod book_files;
 pub mod books;
 pub mod borrowers;
 pub mod cd_metadata;

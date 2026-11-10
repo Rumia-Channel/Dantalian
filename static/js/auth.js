@@ -193,6 +193,25 @@
         return authPromise;
     }
 
+    async function sendApiRequest(input, init) {
+        var url = new URL(typeof input === "string" ? input : input.url || input.href, location.href);
+        var method = String((init && init.method) || (input instanceof Request ? input.method : "GET")).toUpperCase();
+        var options = Object.assign({}, init || {});
+        if (method === "GET" && url.pathname.startsWith("/api/")) options.cache = "no-store";
+        var response = await originalFetch(input, options);
+        var changesData = ["books", "cds", "authors", "series", "grand-series", "labels",
+            "storage-locations", "borrowers", "copies", "playlists", "dlsite", "settings"].some(function (name) {
+                return url.pathname === "/api/" + name || url.pathname.startsWith("/api/" + name + "/");
+            }) || url.pathname === "/api/uploads/covers/complete";
+        if (response.ok && ["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
+            changesData && !url.pathname.includes("/audio/multipart")) {
+            try {
+                localStorage.setItem("dantalian_data_revision", Date.now() + "-" + Math.random().toString(36).slice(2));
+            } catch {}
+        }
+        return response;
+    }
+
     function protectedApiRequest(input) {
         var rawUrl = typeof input === "string"
             ? input
@@ -219,7 +238,7 @@
         }
 
         if (!await readAuthRequirement()) {
-            return originalFetch(input, init);
+            return sendApiRequest(input, init);
         }
 
         var token = await waitForToken();
@@ -234,7 +253,7 @@
         }
 
         var requestInit = Object.assign({}, init || {}, { headers: headers });
-        var response = await originalFetch(input, requestInit);
+        var response = await sendApiRequest(input, requestInit);
         if (response.status === 401 && token === getAuthToken()) {
             clearAuthToken();
             clearCachedAuthRequirement();

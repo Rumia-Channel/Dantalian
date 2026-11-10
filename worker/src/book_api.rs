@@ -12,13 +12,14 @@ use crate::{
 };
 use dantalian::application::error::AppError;
 
-const BOOK_COLUMNS: &str = "id,isbn,isdn,jan,title,publisher,publish_date,cover_url,description,series_id,series_number,media_type,title_transcription,series_title,series_title_transcription,alternative,alternative_transcription,volume,volume_transcription,price,extent,jpno,ndl_url,isdn_region,isdn_class,isdn_type,isdn_rating_gender,isdn_rating_age,isdn_genre_code,isdn_genre_name,isdn_genre_user,isdn_c_code,isdn_author,isdn_shape,isdn_contents,isdn_barcode2,isdn_sample_image_url,isdn_useroption,isdn_external_links,catalog_number,artist,label,disc_count,epub_file_hash,epub_file_name,reading_status,storage_location_id,label_id,created_at,updated_at";
+const BOOK_COLUMNS: &str = "id,isbn,isdn,jan,dlsite_id,title,publisher,publish_date,cover_url,description,series_id,series_number,media_type,title_transcription,series_title,series_title_transcription,alternative,alternative_transcription,volume,volume_transcription,price,extent,jpno,ndl_url,isdn_region,isdn_class,isdn_type,isdn_rating_gender,isdn_rating_age,isdn_genre_code,isdn_genre_name,isdn_genre_user,isdn_c_code,isdn_author,isdn_shape,isdn_contents,isdn_barcode2,isdn_sample_image_url,isdn_useroption,isdn_external_links,catalog_number,artist,label,disc_count,reading_status,storage_location_id,label_id,created_at,updated_at";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BookRow {
     id: i64,
     isbn: Option<String>,
     isdn: Option<String>,
+    dlsite_id: Option<String>,
     jan: Option<String>,
     title: String,
     publisher: Option<String>,
@@ -59,8 +60,6 @@ struct BookRow {
     artist: Option<String>,
     label: Option<String>,
     disc_count: Option<i64>,
-    epub_file_hash: Option<String>,
-    epub_file_name: Option<String>,
     reading_status: Option<String>,
     storage_location_id: Option<i64>,
     label_id: Option<i64>,
@@ -77,6 +76,7 @@ struct BookSummaryRow {
     id: i64,
     isbn: Option<String>,
     isdn: Option<String>,
+    dlsite_id: Option<String>,
     jan: Option<String>,
     title: String,
     publisher: Option<String>,
@@ -88,6 +88,7 @@ struct BookSummaryRow {
     media_type: Option<String>,
     copies_count: i64,
     lent_count: i64,
+    #[serde(skip_deserializing)]
     primary_author_name: Option<String>,
     #[serde(default, skip_serializing)]
     authors_json: Option<String>,
@@ -129,13 +130,16 @@ async fn output(db: &ReadDb<'_>, book: BookRow) -> Result<serde_json::Value> {
         .prepare(
             "SELECT
                 (SELECT json_group_array(json_object(
+                            'id', id, 'book_id', book_id, 'file_hash', file_hash,
+                            'file_name', file_name, 'created_at', created_at))
+                 FROM (SELECT * FROM book_files WHERE book_id = ?1 ORDER BY id)) AS files_json,
+                (SELECT json_group_array(json_object(
                             'id', a.id, 'ndl_id', a.ndl_id, 'name', a.name,
                             'transcription', a.transcription,
-                            'sort_order', ba.sort_order))
-                 FROM authors a
-                 JOIN book_authors ba ON ba.author_id = a.id
-                 WHERE ba.book_id = ?1
-                 ORDER BY ba.sort_order, ba.author_id) AS authors_json,
+                            'sort_order', a.sort_order))
+                 FROM (SELECT a.id,a.ndl_id,a.name,a.transcription,ba.sort_order
+                       FROM authors a JOIN book_authors ba ON ba.author_id=a.id
+                       WHERE ba.book_id=?1 ORDER BY ba.sort_order,ba.author_id) a) AS authors_json,
                 (SELECT COUNT(*) FROM copies c WHERE c.book_id = ?1) AS copies_count,
                 (SELECT COUNT(*)
                  FROM copies c
@@ -154,9 +158,17 @@ async fn output(db: &ReadDb<'_>, book: BookRow) -> Result<serde_json::Value> {
         .and_then(|value| value.as_str())
         .and_then(|raw| serde_json::from_str(raw).ok())
         .unwrap_or_default();
+    let files: Vec<serde_json::Value> = row
+        .get("files_json")
+        .and_then(|value| value.as_str())
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|error| worker::Error::from(error.to_string()))?
+        .unwrap_or_default();
     let mut value =
         serde_json::to_value(book).map_err(|error| worker::Error::from(error.to_string()))?;
     if let Some(object) = value.as_object_mut() {
+        object.insert("files".into(), serde_json::Value::Array(files));
         object.insert("authors".into(), serde_json::Value::Array(authors));
         object.insert(
             "copies_count".into(),
@@ -181,20 +193,13 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     };
     let db = ctx.d1("DB")?;
     let db = d1_read::read_db(&req, &db)?;
-    const SUMMARY_SELECT: &str = "SELECT b.id,b.isbn,b.isdn,b.jan,b.title,b.publisher,b.publish_date,b.cover_url,b.description,b.series_id,b.series_number,b.media_type,
+    const SUMMARY_SELECT: &str = "SELECT b.id,b.isbn,b.isdn,b.jan,b.dlsite_id,b.title,b.publisher,b.publish_date,b.cover_url,b.description,b.series_id,b.series_number,b.media_type,
         COUNT(DISTINCT c.id) AS copies_count,
         COUNT(DISTINCT CASE WHEN lh.id IS NOT NULL THEN c.id END) AS lent_count,
-        (SELECT a.name FROM authors a
-         JOIN book_authors ba ON ba.author_id = a.id
-         WHERE ba.book_id = b.id
-         ORDER BY ba.sort_order,ba.author_id
-         LIMIT 1) AS primary_author_name,
-        (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', ba.sort_order))
-         FROM authors a
-         JOIN book_authors ba ON ba.author_id = a.id
-         WHERE ba.book_id = b.id
-         ORDER BY ba.sort_order,ba.author_id
-         LIMIT -1) AS authors_json
+        (SELECT json_group_array(json_object('id', a.id, 'ndl_id', a.ndl_id, 'name', a.name, 'transcription', a.transcription, 'sort_order', a.sort_order))
+         FROM (SELECT a.id,a.ndl_id,a.name,a.transcription,ba.sort_order
+               FROM authors a JOIN book_authors ba ON ba.author_id=a.id
+               WHERE ba.book_id=b.id ORDER BY ba.sort_order,ba.author_id) a) AS authors_json
         FROM books b
         LEFT JOIN copies c ON c.book_id = b.id
         LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL";
@@ -235,7 +240,7 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         .filter(|_| has_more);
     let items = rows
         .into_iter()
-        .map(|row| {
+        .map(|mut row| {
             // The summary row carries linked authors as a JSON array string so
             // the grid can group books by author ID exactly like CDs. A book
             // without links yields an empty array, never null.
@@ -244,6 +249,11 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
                 .as_deref()
                 .and_then(|raw| serde_json::from_str(raw).ok())
                 .unwrap_or_default();
+            row.primary_author_name = authors
+                .first()
+                .and_then(|author| author.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
             let mut value = serde_json::to_value(row)
                 .map_err(|error| worker::Error::from(error.to_string()))?;
             if let Some(object) = value.as_object_mut() {
@@ -371,6 +381,16 @@ async fn register(
         Ok(value) => value,
         Err(error) => return Ok(bad_request(format!("invalid JSON: {error}"))),
     };
+    register_body(body, ctx, isdn, manual, false).await
+}
+
+async fn register_body(
+    body: serde_json::Value,
+    ctx: RouteContext<()>,
+    isdn: bool,
+    manual: bool,
+    dlsite: bool,
+) -> Result<Response> {
     let manual = manual
         || body
             .get("title")
@@ -380,26 +400,44 @@ async fn register(
         .get("isbn")
         .and_then(|value| value.as_str())
         .is_some_and(|value| !value.trim().is_empty());
-    let identifier_key = if isdn || (!has_isbn && body.get("isdn").is_some()) {
+    let dlsite_id = match dantalian::dlsite::normalize_product_id(
+        body.get("dlsite_id").and_then(|value| value.as_str()),
+    ) {
+        Ok(id) => id,
+        Err(message) => return Ok(bad_request(message)),
+    };
+    if !manual && dlsite_id.is_some() && !dlsite {
+        return Ok(bad_request("Use /api/dlsite with media_type and dlsite_id"));
+    }
+    let has_isdn = body
+        .get("isdn")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty());
+    let identifier_key = if isdn || (!has_isbn && has_isdn) {
         "isdn"
+    } else if !has_isbn && dlsite_id.is_some() {
+        "dlsite_id"
     } else {
         "isbn"
     };
-    let identifier = body
-        .get(identifier_key)
-        .and_then(|value| value.as_str())
-        .map(normalize_identifier)
-        .map(|value| {
-            if isdn {
-                value.chars().filter(char::is_ascii_digit).collect()
-            } else {
-                value
-            }
-        })
-        .filter(|value| !value.is_empty());
+    let identifier = if identifier_key == "dlsite_id" {
+        dlsite_id.clone()
+    } else {
+        body.get(identifier_key)
+            .and_then(|value| value.as_str())
+            .map(normalize_identifier)
+            .map(|value| {
+                if isdn {
+                    value.chars().filter(char::is_ascii_digit).collect()
+                } else {
+                    value
+                }
+            })
+            .filter(|value| !value.is_empty())
+    };
     if identifier.is_none() {
         return Ok(bad_request(if manual {
-            "ISBN or ISDN is required"
+            "ISBN, ISDN or DLsite ID is required"
         } else if isdn {
             "ISDN is required"
         } else {
@@ -411,6 +449,7 @@ async fn register(
     }
     if !isdn
         && !manual
+        && identifier_key != "dlsite_id"
         && identifier
             .as_ref()
             .is_some_and(|value| value.len() != 10 && value.len() != 13)
@@ -451,7 +490,19 @@ async fn register(
     } else {
         "ndl"
     };
-    if !manual {
+    if !manual && identifier_key == "dlsite_id" {
+        match crate::dlsite_api::lookup(&ctx, identifier.as_deref().unwrap_or_default()).await {
+            Ok(Some(metadata)) => {
+                body = metadata;
+                source = "dlsite";
+            }
+            Ok(None) => return error_response(AppError::NotFound),
+            Err(error) => {
+                return Response::from_json(&serde_json::json!({"error": error.to_string()}))
+                    .map(|response| response.with_status(502));
+            }
+        }
+    } else if !manual {
         let lookup = if isdn {
             external_api::lookup_isdn(identifier.as_deref().unwrap_or_default())
                 .await
@@ -533,8 +584,8 @@ async fn register(
         });
     let row = db
         .prepare(
-            "INSERT INTO books (isbn,isdn,title,media_type,created_at,updated_at)
-             VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id",
+            "INSERT INTO books (isbn,isdn,title,media_type,dlsite_id,created_at,updated_at)
+             VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id",
         )
         .bind_refs([
             &isbn.as_deref().map(D1Type::Text).unwrap_or(D1Type::Null),
@@ -548,6 +599,10 @@ async fn register(
                     .and_then(|value| value.as_str())
                     .unwrap_or("book"),
             ),
+            &dlsite_id
+                .as_deref()
+                .map(D1Type::Text)
+                .unwrap_or(D1Type::Null),
         ])
         .map_err(db_error)?
         .first::<serde_json::Value>(None)
@@ -570,6 +625,11 @@ async fn register(
         .run()
         .await
         .map_err(db_error)?;
+    if body.get("dlsite_id").is_some() {
+        body["dlsite_id"] = dlsite_id
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null);
+    }
     if let Some(statement) = update::fields_statement(&db, &book_id, &body)? {
         statement.run().await.map_err(db_error)?;
     }
@@ -621,6 +681,17 @@ pub async fn register_isdn(req: Request, ctx: RouteContext<()>) -> Result<Respon
 }
 pub async fn register_manual(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     register(req, ctx, false, true).await
+}
+
+pub(crate) async fn register_dlsite(id: String, ctx: RouteContext<()>) -> Result<Response> {
+    register_body(
+        serde_json::json!({"dlsite_id": id}),
+        ctx,
+        false,
+        false,
+        true,
+    )
+    .await
 }
 
 fn merge_ndl_book(body: &mut serde_json::Value, book: &external_api::NdlBook) {
@@ -706,6 +777,20 @@ async fn insert_ndl_authors(
     let Some(authors) = body.get("_ndl_authors").and_then(|value| value.as_array()) else {
         return Ok(());
     };
+    let mut lookup = crate::author_repository::NormalizedAuthorLookup::load(
+        db,
+        authors
+            .iter()
+            .filter(|author| {
+                author
+                    .get("ndl_id")
+                    .and_then(|value| value.as_str())
+                    .is_none()
+            })
+            .filter_map(|author| author.get("name").and_then(|value| value.as_str())),
+    )
+    .await
+    .map_err(db_error)?;
     for author in authors {
         let Some(name) = author
             .get("name")
@@ -729,18 +814,19 @@ async fn insert_ndl_authors(
             .run()
             .await
             .map_err(db_error)?;
-            db.prepare("SELECT id FROM authors WHERE ndl_id = ?")
+            let author = db
+                .prepare("SELECT id, ndl_id, name, transcription FROM authors WHERE ndl_id = ?")
                 .bind_refs(&D1Type::Text(ndl_id))
                 .map_err(db_error)?
-                .first::<serde_json::Value>(None)
+                .first::<dantalian::domain::author::Author>(None)
                 .await
-                .map_err(db_error)?
-                .and_then(|row| row.get("id").and_then(|value| value.as_i64()))
-        } else if let Some(existing) =
-            super::author_repository::find_author_by_normalized_name(db, name)
-                .await
-                .map_err(db_error)?
-        {
+                .map_err(db_error)?;
+            let id = author.as_ref().map(|author| author.id);
+            if let Some(author) = author {
+                lookup.remember(author);
+            }
+            id
+        } else if let Some(existing) = lookup.get(name) {
             // Same person under another source's spelling: reuse the row and
             // backfill the transcription when the row lacks one.
             if existing.transcription.is_none() && transcription.is_some() {
@@ -753,19 +839,24 @@ async fn insert_ndl_authors(
                     .run()
                     .await
                     .map_err(db_error)?;
+                existing.transcription = transcription.map(str::to_owned);
             }
             Some(existing.id)
         } else {
-            db.prepare("INSERT INTO authors (name, transcription) VALUES (?, ?) RETURNING id")
+            let author = db.prepare("INSERT INTO authors (name, transcription) VALUES (?, ?) RETURNING id, ndl_id, name, transcription")
                 .bind_refs([
                     &D1Type::Text(name),
                     &transcription.map(D1Type::Text).unwrap_or(D1Type::Null),
                 ])
                 .map_err(db_error)?
-                .first::<serde_json::Value>(None)
+                .first::<dantalian::domain::author::Author>(None)
                 .await
-                .map_err(db_error)?
-                .and_then(|row| row.get("id").and_then(|value| value.as_i64()))
+                .map_err(db_error)?;
+            let id = author.as_ref().map(|author| author.id);
+            if let Some(author) = author {
+                lookup.remember(author);
+            }
+            id
         };
         let Some(author_id) = author_id else {
             continue;
@@ -820,18 +911,12 @@ pub async fn delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Err(error) => return error_response(error),
     };
     let db = ctx.d1("DB")?;
-    let old_hash = db
-        .prepare("SELECT epub_file_hash FROM books WHERE id = ?")
-        .bind_refs(&id)
-        .map_err(db_error)?
-        .first::<serde_json::Value>(None)
-        .await
-        .map_err(db_error)?
-        .and_then(|row| {
-            row.get("epub_file_hash")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned)
-        });
+    let files = db
+        .prepare("SELECT file_hash FROM book_files WHERE book_id = ?")
+        .bind_refs(&id)?
+        .all()
+        .await?
+        .results::<serde_json::Value>()?;
     let result = db
         .prepare("DELETE FROM books WHERE id = ?")
         .bind_refs(&id)
@@ -848,22 +933,9 @@ pub async fn delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     {
         return error_response(AppError::NotFound);
     }
-    if let Some(hash) = old_hash {
-        let still_referenced = db
-            .prepare("SELECT 1 FROM books WHERE epub_file_hash = ? LIMIT 1")
-            .bind_refs(&D1Type::Text(&hash))
-            .map_err(db_error)?
-            .first::<serde_json::Value>(None)
-            .await
-            .map_err(db_error)?
-            .is_some();
-        if !still_referenced {
-            db.prepare("DELETE FROM object_uploads WHERE object_kind = 'epub' AND object_key = ?")
-                .bind_refs(&D1Type::Text(&hash))
-                .map_err(db_error)?
-                .run()
-                .await
-                .map_err(db_error)?;
+    for file in files {
+        if let Some(hash) = file.get("file_hash").and_then(serde_json::Value::as_str) {
+            crate::object_api::cleanup_book_file(&ctx, hash).await?;
         }
     }
     Ok(Response::empty()?.with_status(204))

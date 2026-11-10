@@ -75,6 +75,10 @@ async function renderManualForm() {
                 <input type="text" name="title" required>
             </div>
             <div class="edit-field">
+                <label>DLsite ID（ISBN / ISDN の代わりにも使用可）</label>
+                <input type="text" name="dlsite_id" placeholder="RJ01676238 またはDLsite作品URL">
+            </div>
+            <div class="edit-field">
                 <label>タイトル(よみ)</label>
                 <input type="text" name="title_transcription">
             </div>

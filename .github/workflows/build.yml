@@ -202,7 +202,7 @@ jobs:
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
           WORKER_API_TOKEN: dantalian-ci-test-token
-        run: node --test tests/reliability_contract.mjs
+        run: node --test tests/reliability_contract.mjs tests/d1_read_contract.mjs
       - name: Test Worker books pagination contract
         env:
           WORKER_BASE_URL: http://127.0.0.1:8793
@@ -244,6 +244,12 @@ jobs:
       - name: Test client upload target classification
         working-directory: .
         run: node --test worker/tests/upload_target_unit.mjs worker/tests/upload_integration_unit.mjs
+      - name: Test client track editing policy
+        working-directory: .
+        run: node --test worker/tests/track_duration_unit.mjs worker/tests/track_position_unit.mjs worker/tests/track_upload_unit.mjs
+      - name: Test catalogue freshness and deferred refreshes
+        working-directory: .
+        run: node --test worker/tests/data_freshness_unit.mjs
 
   develop:
     name: Deploy develop
@@ -782,6 +788,16 @@ jobs:
           DANTALIAN_D1_DATABASE_ID: ${{ steps.resources.outputs.database_id }}
           DANTALIAN_AUDIO_JOB_QUEUE: ${{ steps.resources.outputs.queue_name }}
         run: python ci/render_config.py
+      - name: Record production D1 recovery point before migrations
+        working-directory: worker
+        run: |
+          npx wrangler d1 time-travel info "${{ steps.resources.outputs.database_name }}" --json --config wrangler.ci.toml > d1-recovery-point.json
+          {
+            echo '## Production D1 recovery point before migrations'
+            echo '```json'
+            cat d1-recovery-point.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Apply production D1 migrations
         working-directory: worker
         run: npx wrangler d1 migrations apply "${{ steps.resources.outputs.database_name }}" --remote --config wrangler.ci.toml
@@ -922,7 +938,19 @@ jobs:
           done
           test "$status" = 200
           test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 401
-          test "$(curl --silent --show-error --write-out '%{http_code}' --output /dev/null -H "Authorization: Bearer $DANTALIAN_PROCESSOR_TOKEN" "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")" = 200
+          status="$(curl --silent --show-error --write-out '%{http_code}' --output /tmp/dantalian-production-health.json -H "Authorization: Bearer $DANTALIAN_PROCESSOR_TOKEN" "$AUDIO_CONTROLLER_BASE_URL/internal-api/api/health")"
+          test "$status" = 200
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          actual = json.loads(Path("/tmp/dantalian-production-health.json").read_text())["version"]
+          if actual != expected:
+              raise SystemExit(f"Production version mismatch: expected {expected}, got {actual}")
+          print(f"Production Worker version: {actual}")
+          PY
       - name: Clean production deployment files
         if: always()
-        run: rm -f wrangler.audio.ci.toml audio-controller-secrets.json audio-deploy.log worker/wrangler.ci.toml worker/production-secrets.json
+        run: rm -f wrangler.audio.ci.toml audio-controller-secrets.json audio-deploy.log worker/wrangler.ci.toml worker/production-secrets.json worker/d1-recovery-point.json

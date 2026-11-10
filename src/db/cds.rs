@@ -49,6 +49,7 @@ impl Db {
             media_type: row.get(15)?,
             series_id: row.get(16)?,
             series_number: row.get(17)?,
+            dlsite_id: row.get(18)?,
         })
     }
 
@@ -57,14 +58,14 @@ impl Db {
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let media_type = cd.media_type.clone().unwrap_or_else(|| "cd".to_string());
         let changes = conn.execute(
-            "INSERT OR IGNORE INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, parent_book_id, media_type, series_id, series_number, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.volume, cd.parent_book_id, media_type, cd.series_id, cd.series_number, now],
+            "INSERT OR IGNORE INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, parent_book_id, media_type, series_id, series_number, created_at, dlsite_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.volume, cd.parent_book_id, media_type, cd.series_id, cd.series_number, now, cd.dlsite_id],
         )?;
         if changes == 0 {
             if let Some(jan) = &cd.jan {
                 let mut stmt = conn.prepare(
-                    "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds WHERE jan = ?1",
+                    "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE jan = ?1",
                 )?;
                 if let Some(row) = stmt.query_map(params![jan], Self::row_to_cd)?.next() {
                     return row;
@@ -81,6 +82,7 @@ impl Db {
         Ok(Cd {
             id,
             jan: cd.jan.clone(),
+            dlsite_id: cd.dlsite_id.clone(),
             title: cd.title.clone(),
             artist: cd.artist.clone(),
             publisher: cd.publisher.clone(),
@@ -115,9 +117,9 @@ impl Db {
         let media_type = cd.media_type.clone().unwrap_or_else(|| "cd".to_string());
 
         tx.execute(
-            "INSERT INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, parent_book_id, media_type, series_id, series_number, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.volume, cd.parent_book_id, media_type, cd.series_id, cd.series_number, now],
+            "INSERT INTO cds (jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, parent_book_id, media_type, series_id, series_number, created_at, dlsite_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![cd.jan, cd.title, cd.artist, cd.publisher, cd.label, cd.catalog_number, cd.publish_date, cd.cover_url, cd.description, cd.disc_count, cd.volume, cd.parent_book_id, media_type, cd.series_id, cd.series_number, now, cd.dlsite_id],
         )?;
         let cd_id = tx.last_insert_rowid();
 
@@ -164,6 +166,7 @@ impl Db {
         Ok(Cd {
             id: cd_id,
             jan: cd.jan.clone(),
+            dlsite_id: cd.dlsite_id.clone(),
             title: cd.title.clone(),
             artist: cd.artist.clone(),
             publisher: cd.publisher.clone(),
@@ -186,7 +189,7 @@ impl Db {
     pub fn find_by_cd_jan(&self, jan: &str) -> Result<Option<Cd>, rusqlite::Error> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds WHERE jan = ?1",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE jan = ?1",
         )?;
         let mut rows = stmt.query_map(params![jan], Self::row_to_cd)?;
         match rows.next() {
@@ -195,10 +198,19 @@ impl Db {
         }
     }
 
+    pub fn find_cd_by_dlsite_id(&self, dlsite_id: &str) -> rusqlite::Result<Option<Cd>> {
+        let conn = self.0.lock();
+        conn.query_row(
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE dlsite_id = ?1",
+            params![dlsite_id],
+            Self::row_to_cd,
+        ).optional()
+    }
+
     pub fn list_cds(&self) -> Result<Vec<Cd>, rusqlite::Error> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds ORDER BY id DESC",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds ORDER BY id DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_cd)?;
         rows.collect()
@@ -207,7 +219,7 @@ impl Db {
     pub fn find_cd_by_id(&self, id: i64) -> Result<Option<Cd>, rusqlite::Error> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds WHERE id = ?1",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::row_to_cd)?;
         match rows.next() {
@@ -323,7 +335,7 @@ impl Db {
     pub fn find_cds_by_parent_book(&self, book_id: i64) -> Result<Vec<Cd>, rusqlite::Error> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number FROM cds WHERE parent_book_id = ?1",
+            "SELECT id, jan, title, artist, publisher, label, catalog_number, publish_date, cover_url, description, disc_count, volume, created_at, updated_at, parent_book_id, media_type, series_id, series_number, dlsite_id FROM cds WHERE parent_book_id = ?1",
         )?;
         let rows = stmt.query_map(params![book_id], Self::row_to_cd)?;
         rows.collect()
@@ -435,6 +447,7 @@ mod tests {
 
     fn new_cd() -> NewCd {
         NewCd {
+            dlsite_id: None,
             jan: None,
             title: "manual CD".to_string(),
             artist: Some("artist".to_string()),
@@ -460,6 +473,7 @@ mod tests {
         let series = db.create_series("Series").expect("series");
         let cd = db
             .insert_cd(&NewCd {
+                dlsite_id: None,
                 series_id: Some(series.id),
                 series_number: Some(3),
                 ..new_cd()

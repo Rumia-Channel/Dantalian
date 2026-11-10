@@ -53,6 +53,7 @@ fn row_to_playlist_track(row: &Row<'_>) -> rusqlite::Result<PlaylistTrackEntry> 
             media_type: row.get(25)?,
             series_id: row.get(26)?,
             series_number: row.get(27)?,
+            dlsite_id: row.get(28)?,
         },
     })
 }
@@ -68,7 +69,7 @@ fn list_playlist_tracks_with_conn(
                 c.id, c.jan, c.title, c.artist, c.publisher, c.label,
                 c.catalog_number, c.publish_date, c.cover_url, c.description,
                 c.disc_count, c.volume, c.created_at, c.updated_at,
-                c.parent_book_id, c.media_type, c.series_id, c.series_number
+                c.parent_book_id, c.media_type, c.series_id, c.series_number, c.dlsite_id
          FROM playlist_tracks pt
          JOIN tracks t ON t.id = pt.track_id
          JOIN cds c ON c.id = t.cd_id
@@ -336,6 +337,7 @@ mod tests {
         let db = Db::new(":memory:").expect("database");
         let cd = db
             .insert_cd(&NewCd {
+                dlsite_id: None,
                 jan: None,
                 title: "Test album".to_string(),
                 artist: Some("Test artist".to_string()),

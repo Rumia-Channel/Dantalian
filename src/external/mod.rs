@@ -2,6 +2,7 @@ mod amazon;
 pub mod audio_meta;
 mod book_metadata;
 mod discogs;
+pub(crate) mod dlsite;
 mod isbn;
 mod isdn;
 mod musicbrainz;

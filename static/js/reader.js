@@ -27,18 +27,23 @@
         }
         const book = await response.json();
         document.getElementById("reader-title").textContent = book.title;
-        if (!book.epub_file_hash) throw new Error("この本には EPUB ファイルが登録されていません。「書籍情報」からファイルを登録してください。");
-        const bookUrl = `/epubs/${encodeURIComponent(book.epub_file_hash)}`;
+        const fileId = parameters.get("file");
+        if (fileId != null && !/^[1-9]\d*$/.test(fileId)) throw new Error("ファイル指定が正しくありません。");
+        const files = book.files || [];
+        if (!files.length) throw new Error("この本にはファイルが登録されていません。「書籍情報」からファイルを登録してください。");
+        // A catalogue click opens the oldest attachment; explicit links select one.
+        const file = fileId == null ? files[0] : files.find((file) => String(file.id) === fileId);
+        if (!file) throw new Error("指定されたファイルが見つかりません。");
+        const bookUrl = `/epubs/${encodeURIComponent(file.file_hash)}`;
         download.href = bookUrl;
-        download.download = book.epub_file_name || book.epub_file_hash;
+        download.download = file.file_name;
         download.classList.remove("hidden");
-        if (/\.pdf$/i.test(book.epub_file_name || "")) throw new Error("Bibi は PDF に対応していません。ファイルをダウンロードして閲覧してください。");
 
         const readerUrl = new URL("/vendor/bibi/dantalian.html", location.origin);
         const readerParameters = new URLSearchParams({
             book: bookUrl,
             "book-key": `book:${book.id}`,
-            "content-hash": book.epub_file_hash,
+            "content-hash": file.file_hash,
             "storage-namespace": "dantalian",
             "storage-user": "local",
             "host-return-to": returnPath,

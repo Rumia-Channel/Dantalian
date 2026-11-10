@@ -818,10 +818,25 @@
 }
 
 .edit-track-head {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 5rem 5rem minmax(0, 1fr) 6rem;
+    align-items: end;
     gap: 0.5rem;
-    flex-wrap: wrap;
+}
+
+.edit-track-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    color: var(--color-text-dim);
+    font-size: 0.75rem;
+}
+
+@media (max-width: 640px) {
+    .edit-track-head {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 .edit-track-sub {
@@ -829,8 +844,6 @@
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
-    /* 1行目の番号バッジ + gap の分だけ右に寄せ、タイトルと左端を揃える */
-    padding-left: 3rem;
 }
 
 /* サブ行の操作ボタンはタップしやすく最低高を確保 */
@@ -838,12 +851,6 @@
     min-height: 1.9rem;
 }
 
-.edit-track-num {
-    color: var(--color-text-dim);
-    font-variant-numeric: tabular-nums;
-    min-width: 2.5rem;
-    text-align: right;
-}
 
 .edit-disc-count {
     color: var(--color-text-dim);
@@ -904,8 +911,8 @@
 }
 
 .edit-track-title-input {
-    flex: 1 1 10rem;
-    min-width: 8rem;
+    width: 100%;
+    min-width: 0;
     padding: 0.5rem 0.65rem;
     font-size: 0.95rem;
     border: 0.0625rem solid var(--color-border);
@@ -922,8 +929,10 @@
     box-shadow: 0 0 0 0.1875rem var(--color-primary-alpha);
 }
 
+.edit-track-number-input,
 .edit-track-dur-input {
-    width: 5.5rem;
+    width: 100%;
+    min-width: 0;
     padding: 0.5rem 0.5rem;
     font-size: 0.9rem;
     border: 0.0625rem solid var(--color-border);
@@ -936,6 +945,7 @@
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.edit-track-number-input:focus,
 .edit-track-dur-input:focus {
     border-color: var(--color-primary);
     outline: none;

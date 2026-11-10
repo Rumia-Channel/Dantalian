@@ -219,6 +219,7 @@ pub async fn lookup_isdn(client: &Client, isdn: &str) -> Result<Option<NewBook>,
     }
 
     Ok(Some(NewBook {
+        dlsite_id: None,
         isbn: None,
         isdn: Some(clean),
         jan: None,

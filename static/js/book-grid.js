@@ -45,6 +45,7 @@ function normalizeCd(cd) {
         lent_count: cd.lent_count || 0,
         media_type: cd.media_type || "cd",
         jan_code: cd.jan,
+        dlsite_id: cd.dlsite_id,
         disc_count: cd.disc_count,
         parent_book_id: cd.parent_book_id,
         label: cd.label,
@@ -191,6 +192,8 @@ function getItemSearchText(item) {
     return [
         item.title,
         item.isbn,
+        item.isdn,
+        item.dlsite_id,
         item.jan_code,
         item.publisher,
         item.artist,
@@ -338,7 +341,7 @@ function renderBookCard(item) {
     const clickHandler = catalogueItemClickHandler(item);
     const cardOpening = readsBook
         ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(bookReaderUrl(item.id))}" aria-label="${escapeAttr(item.title)}を読む">`
-        : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">`;
+        : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();this.click();}">`;
     const authorLabel = item.sourceType === "book"
         ? getBookAuthorLabel(item)
         : (item.authors || []).map((author) => author.name).join(", ");
@@ -355,8 +358,21 @@ function renderBookCard(item) {
             ${authorLabel ? `<div class="book-author">${escapeHtml(authorLabel)}</div>` : ""}
             ${item.publisher ? `<div class="book-meta">${escapeHtml(item.publisher)}</div>` : ""}
         </div>
-    ${readsBook ? `</a><button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
+    ${readsBook ? "</a>" : ""}
+    ${item.sourceType === "book" ? `<div class="book-id" onclick="event.stopPropagation()">書籍ID: <code>${item.id}</code> <button type="button" class="btn btn-xs btn-ghost" aria-label="書籍ID ${item.id} をコピー" onclick="copyBookId(event, ${item.id}, this)">コピー</button><span class="book-id-status" role="status"></span></div>` : ""}
+    ${readsBook ? `<button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
     </div>`;
+}
+
+async function copyBookId(event, bookId, button) {
+    event.stopPropagation();
+    const status = button.parentElement.querySelector(".book-id-status");
+    try {
+        await navigator.clipboard.writeText(String(bookId));
+        status.textContent = "コピーしました";
+    } catch {
+        status.textContent = "コピーできません。IDを選択してコピーしてください";
+    }
 }
 
 function downloadCdOriginals(cdId) {
@@ -440,6 +456,9 @@ function renderCdCard(item) {
     }
     if (item.label || item.catalog_number) {
         subParts.push(escapeHtml([item.label, item.catalog_number].filter(Boolean).join(" · ")));
+    }
+    if (item.dlsite_id) {
+        subParts.push(escapeHtml(item.dlsite_id));
     }
 
     const hasAudio = tracks.some((track) => track.file_hash);

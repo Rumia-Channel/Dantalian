@@ -2,15 +2,18 @@ use serde::{Deserialize, Serialize};
 
 /// One SQLite/D1 snapshot: only the current identity and immediate neighbors are read.
 pub const NAVIGATION_QUERY: &str = r#"
-SELECT b.id, b.media_type, b.epub_file_hash, b.epub_file_name,
+SELECT b.id, b.media_type, f.file_hash AS epub_file_hash, f.file_name AS epub_file_name,
        s.id AS series_id, s.name AS series_name,
        p.id AS previous_id, p.title AS previous_title,
-       p.epub_file_hash AS previous_hash, p.epub_file_name AS previous_file_name,
+       pf.file_hash AS previous_hash, pf.file_name AS previous_file_name,
        n.id AS next_id, n.title AS next_title,
-       n.epub_file_hash AS next_hash, n.epub_file_name AS next_file_name
+       nf.file_hash AS next_hash, nf.file_name AS next_file_name
 FROM books b
+LEFT JOIN book_files f ON f.id = COALESCE(
+    (SELECT id FROM book_files WHERE book_id = b.id AND file_hash = ?2),
+    (SELECT id FROM book_files WHERE book_id = b.id ORDER BY id LIMIT 1))
 LEFT JOIN series s ON s.id = b.series_id
-LEFT JOIN books p ON s.id IS NOT NULL AND b.epub_file_hash = ?2
+LEFT JOIN books p ON s.id IS NOT NULL AND f.file_hash = ?2
     AND COALESCE(b.media_type, 'book') = 'book' AND p.id = (
     SELECT candidate.id FROM books candidate
     WHERE candidate.series_id = b.series_id
@@ -20,7 +23,7 @@ LEFT JOIN books p ON s.id IS NOT NULL AND b.epub_file_hash = ?2
     ORDER BY candidate.series_number IS NULL DESC, candidate.series_number DESC, candidate.id DESC
     LIMIT 1
 )
-LEFT JOIN books n ON s.id IS NOT NULL AND b.epub_file_hash = ?2
+LEFT JOIN books n ON s.id IS NOT NULL AND f.file_hash = ?2
     AND COALESCE(b.media_type, 'book') = 'book' AND n.id = (
     SELECT candidate.id FROM books candidate
     WHERE candidate.series_id = b.series_id
@@ -30,6 +33,8 @@ LEFT JOIN books n ON s.id IS NOT NULL AND b.epub_file_hash = ?2
     ORDER BY candidate.series_number IS NULL, candidate.series_number, candidate.id
     LIMIT 1
 )
+LEFT JOIN book_files pf ON pf.id = (SELECT id FROM book_files WHERE book_id = p.id ORDER BY id LIMIT 1)
+LEFT JOIN book_files nf ON nf.id = (SELECT id FROM book_files WHERE book_id = n.id ORDER BY id LIMIT 1)
 WHERE b.id = ?1
 "#;
 
@@ -212,7 +217,10 @@ fn file_status(hash: Option<&str>, name: Option<&str>) -> &'static str {
         return "missing-file";
     }
     if let Some((_, extension)) = name.and_then(|value| value.rsplit_once('.')) {
-        if !extension.eq_ignore_ascii_case("epub") && !extension.eq_ignore_ascii_case("zip") {
+        if !["epub", "zip", "pdf"]
+            .iter()
+            .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+        {
             return "unsupported-format";
         }
     }

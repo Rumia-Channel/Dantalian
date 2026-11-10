@@ -53,9 +53,20 @@ mod tests {
                 (5, Some(2), "audiobook", Some("h5"), Some("five.epub")),
                 (6, Some(4), "cd", Some("h6"), Some("six.epub")),
             ] {
-                connection.execute("INSERT INTO books (id,title,series_id,series_number,media_type,epub_file_hash,epub_file_name) VALUES (?1,'Book',1,?2,?3,?4,?5)", params![id, number, media, hash, name]).unwrap();
+                connection.execute("INSERT INTO books (id,title,series_id,series_number,media_type) VALUES (?1,'Book',1,?2,?3)", params![id, number, media]).unwrap();
+                if let Some(hash) = hash {
+                    connection
+                        .execute(
+                            "INSERT INTO book_files(book_id,file_hash,file_name) VALUES (?1,?2,?3)",
+                            params![id, hash, name],
+                        )
+                        .unwrap();
+                }
             }
-            connection.execute("INSERT INTO books (id,title,epub_file_hash,epub_file_name) VALUES (7,'Standalone','h7','seven.epub')", []).unwrap();
+            connection
+                .execute("INSERT INTO books (id,title) VALUES (7,'Standalone')", [])
+                .unwrap();
+            connection.execute("INSERT INTO book_files(book_id,file_hash,file_name) VALUES (7,'h7','seven.epub')", []).unwrap();
         }
         let first = db.reader_navigation(1, "h1").unwrap().unwrap();
         assert_eq!((first.previous_id, first.next_id), (None, Some(2)));

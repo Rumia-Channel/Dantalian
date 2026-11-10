@@ -20,6 +20,7 @@ pub struct Book {
     pub id: i64,
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
@@ -60,8 +61,8 @@ pub struct Book {
     pub artist: Option<String>,
     pub label: Option<String>,
     pub disc_count: Option<i64>,
-    pub epub_file_hash: Option<String>,
-    pub epub_file_name: Option<String>,
+    #[serde(default)]
+    pub files: Vec<crate::domain::media::BookFile>,
     pub reading_status: Option<String>,
     pub storage_location_id: Option<i64>,
     pub label_id: Option<i64>,
@@ -89,10 +90,11 @@ pub struct BookWithAuthors {
     pub lent_count: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct NewBook {
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
@@ -256,6 +258,7 @@ pub struct CdInfo {
 pub struct Cd {
     pub id: i64,
     pub jan: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub publisher: Option<String>,
@@ -274,9 +277,10 @@ pub struct Cd {
     pub series_number: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct NewCd {
     pub jan: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub publisher: Option<String>,

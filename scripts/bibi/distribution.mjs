@@ -11,6 +11,7 @@ export const requiredAssets = [
     'extensions/extractor/at-once.js', 'extensions/extractor/on-the-fly.js',
     'extensions/extractor/on-the-fly.worker.js',
     'extensions/extractor/on-the-fly.bibi-zip-loader.worker.js',
+    'resources/pdf/pdf.mjs', 'resources/pdf/pdf.worker.mjs', 'resources/pdf/LICENSE',
 ];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 

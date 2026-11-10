@@ -7,6 +7,7 @@ use worker::{D1Database, D1PreparedStatement, D1Type, Request, Response, Result,
 const BOOK_MUTABLE_COLUMNS: &[&str] = &[
     "isbn",
     "isdn",
+    "dlsite_id",
     "jan",
     "title",
     "publisher",
@@ -185,6 +186,17 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
     };
     if let Err(error) = validate_fields(&body) {
         return error_response(error);
+    }
+    if body.get("dlsite_id").is_some() {
+        let id = match dantalian::dlsite::normalize_product_id(
+            body.get("dlsite_id").and_then(|value| value.as_str()),
+        ) {
+            Ok(id) => id,
+            Err(message) => return Ok(bad_request(message)),
+        };
+        body["dlsite_id"] = id
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null);
     }
     if body
         .get("series_id")

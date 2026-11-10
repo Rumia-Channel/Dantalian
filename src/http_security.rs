@@ -58,6 +58,7 @@ const SECURITY_HEADERS: [(&str, &str); 5] = [
 
 pub async fn security_headers(request: Request, next: Next) -> Response {
     let versioned_asset = is_versioned_asset(request.uri().path());
+    let api_response = request.uri().path().starts_with("/api/");
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     for (name, value) in SECURITY_HEADERS {
@@ -66,7 +67,9 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
             HeaderValue::from_static(value),
         );
     }
-    if versioned_asset {
+    if api_response {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    } else if versioned_asset {
         headers.insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=31536000, immutable"),

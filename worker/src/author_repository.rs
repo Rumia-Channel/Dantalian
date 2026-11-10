@@ -4,6 +4,7 @@ use dantalian::{
     ports::author_repository::AuthorRepository,
 };
 use serde::Deserialize;
+use std::collections::HashMap;
 use worker::{D1Database, D1Type};
 
 #[derive(Debug, Deserialize)]
@@ -37,28 +38,60 @@ impl<D: D1Prepare> D1AuthorRepository<D> {
     }
 }
 
-/// Normalized-name author lookup shared by book/CD registration (worker
-/// equivalent of native `Db::find_author_by_normalized_name`). Returns the
-/// full row so callers can backfill missing ndl_id/transcription.
-pub(crate) async fn find_author_by_normalized_name(
-    db: &D1Database,
-    name: &str,
-) -> worker::Result<Option<Author>> {
-    use dantalian::domain::author::normalize_author_name;
-    let key = normalize_author_name(name);
-    if key.is_empty() {
-        return Ok(None);
+/// One normalized-name scan per registration, retaining only requested authors.
+/// Remember inserts/backfills so equivalent spellings in the same request reuse
+/// the same row without another scan or a redundant transcription update.
+pub(crate) struct NormalizedAuthorLookup {
+    matches: HashMap<String, Option<Author>>,
+}
+
+impl NormalizedAuthorLookup {
+    pub(crate) async fn load<'a>(
+        db: &D1Database,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> worker::Result<Self> {
+        use dantalian::domain::author::normalize_author_name;
+        let matches = names
+            .into_iter()
+            .map(normalize_author_name)
+            .filter(|name| !name.is_empty())
+            .map(|name| (name, None))
+            .collect::<HashMap<_, _>>();
+        let mut lookup = Self { matches };
+        if !lookup.matches.is_empty() {
+            let mut missing = lookup.matches.len();
+            for author in db
+                .prepare("SELECT id, ndl_id, name, transcription FROM authors ORDER BY id")
+                .all()
+                .await?
+                .results::<Author>()?
+            {
+                if lookup.remember(author) {
+                    missing -= 1;
+                    if missing == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(lookup)
     }
-    let rows = db
-        .prepare("SELECT id, ndl_id, name, transcription FROM authors")
-        .all()
-        .await
-        .map_err(|error| worker::Error::from(error.to_string()))?
-        .results::<Author>()
-        .map_err(|error| worker::Error::from(error.to_string()))?;
-    Ok(rows
-        .into_iter()
-        .find(|author| normalize_author_name(&author.name) == key))
+
+    pub(crate) fn get(&mut self, name: &str) -> Option<&mut Author> {
+        self.matches
+            .get_mut(&dantalian::domain::author::normalize_author_name(name))
+            .and_then(Option::as_mut)
+    }
+
+    pub(crate) fn remember(&mut self, author: Author) -> bool {
+        let key = dantalian::domain::author::normalize_author_name(&author.name);
+        if let Some(slot @ None) = self.matches.get_mut(&key) {
+            *slot = Some(author);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl<D: D1Prepare> AuthorRepository for D1AuthorRepository<D> {

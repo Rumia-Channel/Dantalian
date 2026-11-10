@@ -3,10 +3,20 @@ use serde::{Deserialize, Serialize};
 use super::author::Author;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BookFile {
+    pub id: i64,
+    pub book_id: i64,
+    pub file_hash: String,
+    pub file_name: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BookRecord {
     pub id: i64,
     pub isbn: Option<String>,
     pub isdn: Option<String>,
+    pub dlsite_id: Option<String>,
     pub jan: Option<String>,
     pub title: String,
     pub publisher: Option<String>,
@@ -47,8 +57,8 @@ pub struct BookRecord {
     pub artist: Option<String>,
     pub label: Option<String>,
     pub disc_count: Option<i64>,
-    pub epub_file_hash: Option<String>,
-    pub epub_file_name: Option<String>,
+    #[serde(default)]
+    pub files: Vec<BookFile>,
     pub reading_status: Option<String>,
     pub storage_location_id: Option<i64>,
     pub label_id: Option<i64>,
@@ -89,10 +99,25 @@ pub struct Track {
     pub file_name: Option<String>,
 }
 
+/// Largest disc/track number the API accepts.
+///
+/// The D1 backed Worker stores these columns as integers bound through 32 bit
+/// values, so a larger number could not be read back from every deployment.
+pub const MAX_TRACK_POSITION: i64 = 2_147_483_647;
+
+/// True when `value` is a disc/track number the API can store.
+///
+/// Supplied numbers outside this range are rejected instead of being clamped,
+/// so a rejected request never silently changes the stored position.
+pub fn is_valid_track_position(value: i64) -> bool {
+    (1..=MAX_TRACK_POSITION).contains(&value)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Cd {
     pub id: i64,
     pub jan: Option<String>,
+    pub dlsite_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub publisher: Option<String>,

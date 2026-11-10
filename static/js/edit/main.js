@@ -11,20 +11,25 @@ let editCdSeriesSelect = null;
 let editCdAuthorSelect = null;
 
 (async () => {
-    // These loads are independent; a serial chain added six round trips before
-    // the edit form could render.
-    const [, , , , , , aRes, bRes] = await Promise.all([
-        loadBooks(),
-        loadCds(),
+    if (!cdId && !bookId) {
+        renderBookSelect();
+        return;
+    }
+    const loads = [
         loadSeries(),
-        loadGrandSeries(),
-        loadStorageLocations(),
-        loadLabels(),
-        fetch("/api/authors"),
-        fetch("/api/borrowers"),
-    ]);
-    if (aRes.ok) allAuthors = await aRes.json();
-    if (bRes.ok) allBorrowers = await bRes.json();
+        fetch("/api/authors").then(async response => {
+            if (response.ok) allAuthors = await response.json();
+        }),
+    ];
+    if (cdId) {
+        loads.push(loadCd(parseInt(cdId, 10)));
+    } else {
+        loads.push(loadGrandSeries(), loadStorageLocations(), loadLabels(),
+            fetch("/api/borrowers").then(async response => {
+                if (response.ok) allBorrowers = await response.json();
+            }));
+    }
+    await Promise.all(loads);
 
     if (cdId) {
         renderCdEdit(parseInt(cdId, 10));
@@ -43,11 +48,6 @@ function renderBookSelect() {
 }
 
 async function renderBookEdit(id) {
-    const summary = allBooks.find((b) => b.id === id);
-    if (!summary) {
-        editContent.innerHTML = '<p class="empty-state">書籍が見つかりません</p>';
-        return;
-    }
     // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する
     // (アップロード中は進めない。対象が変わればトークンが進む)。
     if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
@@ -58,6 +58,9 @@ async function renderBookEdit(id) {
         const response = await fetch(`/api/books/${id}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         book = await response.json();
+        const summary = allBooks.find(item => item.id === id);
+        if (summary) Object.assign(summary, book);
+        else allBooks.push(book);
     } catch {
         editContent.innerHTML = '<p class="empty-state">書籍詳細の読み込みに失敗しました</p>';
         return;
@@ -146,6 +149,10 @@ async function renderBookEdit(id) {
             <div class="edit-field">
                 <label>説明</label>
                 <textarea name="description" rows="6">${escapeHtml(book.description || '')}</textarea>
+            </div>
+            <div class="edit-field">
+                <label>DLsite ID</label>
+                <input type="text" name="dlsite_id" value="${escapeAttr(book.dlsite_id || '')}" placeholder="RJ01676238 またはDLsite作品URL">
             </div>
             <div class="edit-section">
                 <h3 class="edit-section-title">ISBN / NDL 固有</h3>
@@ -304,25 +311,13 @@ async function renderBookEdit(id) {
             <div class="edit-section">
                 <h3 class="edit-section-title">ファイル</h3>
                 <div class="edit-epub-info" id="edit-epub-info">
-                    ${
-                        book.epub_file_hash
-                            ? `<div class="edit-epub-current">
-                                <span class="edit-epub-name">${escapeHtml(book.epub_file_name || book.epub_file_hash)}</span>
-                                <a class="btn btn-xs btn-ghost" href="${escapeAttr(bookReaderUrl(book.id))}">読む</a>
-                            </div>`
-                            : `<div class="edit-epub-empty">ファイル未登録</div>`
-                    }
+                    ${renderBookFileList(book, true)}
                 </div>
                 <div class="edit-epub-actions">
                     <label class="btn btn-xs btn-outline-accent edit-epub-upload-label">
-                        ${book.epub_file_hash ? "差し替え" : "アップロード"}
-                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" hidden>
+                        ファイルを追加
+                        <input type="file" id="edit-epub-input" accept=".epub,.pdf,.zip,application/epub+zip,application/pdf,application/zip" multiple hidden>
                     </label>
-                    ${
-                        book.epub_file_hash
-                            ? `<button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteEpub(${book.id})">削除</button>`
-                            : ""
-                    }
                 </div>
             </div>
             <div class="edit-section" id="edit-tracks-section">
@@ -460,7 +455,6 @@ async function addAuthorToBook(bookId) {
     try {
         const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "POST" });
         if (res.ok) {
-            await loadBooks();
             const res2 = await fetch("/api/authors");
             if (res2.ok) allAuthors = await res2.json();
             renderBookEdit(bookId);
@@ -475,7 +469,6 @@ async function removeAuthorFromBook(bookId, authorId) {
     try {
         const res = await fetch(`/api/books/${bookId}/authors/${authorId}`, { method: "DELETE" });
         if (res.ok) {
-            await loadBooks();
             const res2 = await fetch("/api/authors");
             if (res2.ok) allAuthors = await res2.json();
             renderBookEdit(bookId);
@@ -584,7 +577,7 @@ async function describeUploadError(res, label) {
 }
 
 document.getElementById("edit-content").addEventListener("change", async (e) => {
-    if (e.target.id !== "edit-cover-input" && e.target.id !== "edit-epub-input") return;
+    if (e.target.id !== "edit-cover-input") return;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -595,28 +588,6 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
     const bid = parseInt(params.get("book"), 10);
     const cid = parseInt(params.get("cd"), 10);
 
-    if (e.target.id === "edit-epub-input") {
-        if (!bid) {
-            e.target.value = "";
-            if (coverDisplay) coverDisplay.style.opacity = "1";
-            return;
-        }
-        try {
-            const res = await uploadFileWithChunks(`/api/books/${bid}/epub`, "file", file, "epub");
-            if (!res.ok) {
-                console.error("File upload failed:", res.status);
-                alert(await describeUploadError(res, "ファイル"));
-            }
-            await loadBooks();
-            renderBookEdit(bid);
-        } catch (err) {
-            console.error("File upload error:", err);
-            alert("ファイルのアップロード中に通信エラーが発生しました");
-        }
-        e.target.value = "";
-        if (coverDisplay) coverDisplay.style.opacity = "1";
-        return;
-    }
 
     if (cid) {
         try {
@@ -625,7 +596,7 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 console.error("CD cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));
             }
-            await loadCds();
+            await loadCd(cid);
             renderCdEdit(cid);
         } catch (err) {
             console.error("CD cover upload error:", err);
@@ -639,7 +610,6 @@ document.getElementById("edit-content").addEventListener("change", async (e) => 
                 console.error("Book cover upload failed:", res.status);
                 alert(await describeUploadError(res, "カバー画像"));
             }
-            await loadBooks();
             renderBookEdit(bid);
         } catch (err) {
             console.error("Book cover upload error:", err);
@@ -656,24 +626,11 @@ async function deleteCover(bookId) {
     try {
         const res = await fetch(`/api/books/${bookId}/cover`, { method: "DELETE" });
         if (res.ok) {
-            await loadBooks();
             renderBookEdit(bookId);
         }
     } catch {}
 }
 
-async function deleteEpub(bookId) {
-    const ok = await showConfirm({ message: "EPUBを削除しますか？", okLabel: "削除" });
-    if (!ok) return;
-
-    try {
-        const res = await fetch(`/api/books/${bookId}/epub`, { method: "DELETE" });
-        if (res.ok) {
-            await loadBooks();
-            renderBookEdit(bookId);
-        }
-    } catch {}
-}
 
 let currentCdTags = null; // 編集中CDの track_metadata 由来アルバムタグ合意(参考)
 
@@ -728,6 +685,7 @@ async function renderCdEdit(cdId) {
             </div>
             <div class="edit-header-info">
                 ${cd.jan ? `<div class="edit-isbn">JAN: ${escapeHtml(cd.jan)}</div>` : ''}
+                ${cd.dlsite_id ? `<div class="edit-isbn">DLsite ID: ${escapeHtml(cd.dlsite_id)}</div>` : ''}
                 <div class="edit-isbn" style="font-size:0.75rem;color:var(--color-text-dim);">種別: ${escapeHtml(cd.media_type || 'cd')}</div>
             </div>
         </div>
@@ -841,7 +799,7 @@ async function renderCdEdit(cdId) {
         placeholder: "なし",
     });
 
-    loadAndRenderCdTracks(cdId);
+    document.getElementById("edit-tracks-list").innerHTML = renderTracksHtml(cd.tracks || [], "cd", cdId);
     loadAndRenderCdMetadata(cdId);
 
     const authorOpts = allAuthors.map((a) => ({ value: a.id, label: a.name }));
@@ -926,7 +884,7 @@ async function saveCdMetadata(cdId) {
         });
         if (r.ok) {
             alert("アルバム情報を保存しました");
-            if (typeof loadCds === "function") await loadCds();
+            await loadCd(cdId);
         } else {
             const err = await r.json().catch(() => ({}));
             alert(`保存に失敗しました (HTTP ${r.status}): ${err.error || ""}`);
@@ -1018,7 +976,7 @@ async function addAuthorToCd(cdId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "POST" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}
@@ -1050,7 +1008,7 @@ async function registerCdAlbumArtistFromTag(cdId) {
         if (res.ok) {
             const aRes = await fetch("/api/authors");
             if (aRes.ok) allAuthors = await aRes.json();
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         } else {
             const err = await res.json().catch(() => ({}));
@@ -1068,7 +1026,7 @@ async function removeAuthorFromCd(cdId, authorId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/authors/${authorId}`, { method: "DELETE" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}
@@ -1092,7 +1050,7 @@ async function deleteCdCover(cdId) {
     try {
         const res = await fetch(`/api/cds/${cdId}/cover`, { method: "DELETE" });
         if (res.ok) {
-            await loadCds();
+            await loadCd(cdId);
             renderCdEdit(cdId);
         }
     } catch {}

@@ -32,15 +32,25 @@ function renderTracksHtml(tracks, editType, parentId) {
             const isLast = idx === discTracks.length - 1;
             const discId = parseInt(d, 10);
             const hasAudio = t.file_hash ? ' has-audio' : '';
-            const numLabel = discKeys.length > 1
-                ? `${d}-${String(t.track_number).padStart(2, "0")}`
-                : String(t.track_number).padStart(2, "0");
             return `
                 <div class="edit-track-row" data-track-id="${t.id}" data-disc-number="${discId}">
                     <div class="edit-track-head">
-                        <span class="edit-track-num" title="Disc ${d} / Track ${t.track_number}">${numLabel}</span>
-                        <input type="text" class="edit-track-title-input" value="${escapeAttr(t.title)}" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'title',this.value,'${editType}')">
-                        <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
+                        <label class="edit-track-field">
+                            <span>ディスク番号</span>
+                            <input type="number" class="edit-track-number-input edit-track-disc-input" value="${discId}" min="1" max="2147483647" step="1" required inputmode="numeric" data-track-id="${t.id}" onchange="saveTrackPosition(${parentId},${t.id},'disc_number',this,'${editType}')">
+                        </label>
+                        <label class="edit-track-field">
+                            <span>トラック番号</span>
+                            <input type="number" class="edit-track-number-input edit-track-position-input" value="${t.track_number}" min="1" max="2147483647" step="1" required inputmode="numeric" data-track-id="${t.id}" onchange="saveTrackPosition(${parentId},${t.id},'track_number',this,'${editType}')">
+                        </label>
+                        <label class="edit-track-field">
+                            <span>トラックタイトル</span>
+                            <input type="text" class="edit-track-title-input" value="${escapeAttr(t.title)}" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'title',this.value,'${editType}')">
+                        </label>
+                        <label class="edit-track-field">
+                            <span>時間</span>
+                            <input type="text" class="edit-track-dur-input" value="${escapeAttr(t.duration || '')}" placeholder="MM:SS" data-track-id="${t.id}" onchange="saveTrackField(${parentId},${t.id},'duration',this.value,'${editType}')">
+                        </label>
                     </div>
                     <div class="edit-track-sub">
                         <div class="edit-track-audio">
@@ -162,6 +172,13 @@ async function saveTrackField(parentId, trackId, field, value, editType) {
         body.title = value;
     } else if (field === "duration") {
         body.duration = value;
+    } else if (field === "disc_number" || field === "track_number") {
+        const number = Number(value);
+        if (!Number.isInteger(number) || number < 1 || number > 2147483647) {
+            alert("ディスク番号・トラック番号は 1～2147483647 の整数で指定してください");
+            return false;
+        }
+        body[field] = number;
     }
     const url = editType === "cd"
         ? `/api/cds/${parentId}/tracks/${trackId}`
@@ -175,10 +192,32 @@ async function saveTrackField(parentId, trackId, field, value, editType) {
         if (!res.ok) {
             const error = await res.json().catch(() => ({}));
             alert(`トラック情報の保存に失敗しました (HTTP ${res.status}): ${error.error || ""}`);
+            return false;
         }
+        return true;
     } catch (err) {
         console.error("saveTrackField failed:", err);
         alert("トラック情報の保存中に通信エラーが発生しました");
+        return false;
+    }
+}
+
+async function saveTrackPosition(parentId, trackId, field, input, editType) {
+    if (!input.reportValidity()) {
+        input.value = input.defaultValue;
+        return;
+    }
+    input.disabled = true;
+    try {
+        if (!await saveTrackField(parentId, trackId, field, input.value, editType)) {
+            input.value = input.defaultValue;
+            return;
+        }
+        input.defaultValue = input.value;
+        const reloadFn = editType === "cd" ? loadAndRenderCdTracks : loadAndRenderTracks;
+        await reloadFn(parentId);
+    } finally {
+        input.disabled = false;
     }
 }
 
@@ -187,10 +226,18 @@ async function addTrackToDisc(parentId, discNumber, editType) {
     const title = prompt("トラック名を入力:");
     if (!title || !title.trim()) return;
 
-    const inDisc = [...document.querySelectorAll(
+    const inDisc = document.querySelectorAll(
         `#edit-tracks-list .edit-track-row[data-disc-number="${discNumber}"]`
-    )];
-    const nextNum = inDisc.length + 1;
+    );
+    let nextNum = 1;
+    for (const row of inDisc) {
+        const number = Number(row.querySelector(".edit-track-position-input").value);
+        nextNum = Math.max(nextNum, number + 1);
+    }
+    if (nextNum > 2147483647) {
+        alert("トラック番号の上限に達しています。既存の番号を変更してください。");
+        return;
+    }
 
     try {
         const res = await fetch(`/api/cds/${parentId}/tracks`, {
@@ -321,16 +368,24 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
             alert(`対応していない拡張子です: .${ext}\n許可: ${ALLOWED_AUDIO_EXTS.map(e => "." + e).join(", ")}`);
             return;
         }
-        const maxAudioMb = await getConfiguredAudioMaxMb();
-        const maxAudioBytes = maxAudioMb * 1024 * 1024;
-        if (file.size > maxAudioBytes) {
-            alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
-            return;
+        // Worker は Wasabi 直送。Native 専用設定の既定値 (100 MB) で止めない。
+        if (!await isWorkerRuntime()) {
+            const maxAudioMb = await getConfiguredAudioMaxMb();
+            const maxAudioBytes = maxAudioMb * 1024 * 1024;
+            if (file.size > maxAudioBytes) {
+                alert(`ファイルが大きすぎます: ${(file.size / 1024 / 1024).toFixed(1)} MB\n上限: ${maxAudioMb} MB`);
+                return;
+            }
         }
         // このアップロードより新しい操作が始まったら、確認ダイアログや反映を
         // 中断する (別のアップロードの結果を混ぜない)。
         const operationToken = nextTrackOperationToken();
         await runTrackAudioUpload(editType, parentId, trackId, file, operationToken);
+    } catch (error) {
+        console.error("uploadTrackAudio error:", error);
+        alert(typeof describePresignedUploadError === "function"
+            ? describePresignedUploadError(error, "音声")
+            : "音声のアップロード中に通信エラーが発生しました");
     } finally {
         trackUploadsInFlight.delete(uploadKey);
     }
@@ -369,7 +424,7 @@ async function runTrackAudioUpload(editType, parentId, trackId, file, operationT
                     trackId,
                     body.file_hash,
                     reloadFn,
-                    browserMetadata?.duration_seconds,
+                    browserMetadata?.duration_seconds ?? body.metadata?.duration_seconds,
                     operationToken,
                 );
                 if (!trackOperationIsCurrent(operationToken)) return;
@@ -404,8 +459,8 @@ async function runTrackAudioUpload(editType, parentId, trackId, file, operationT
             // 音声タグから反映されたアルバム情報もフォームへ再取得して表示する。
             // トラック一覧だけの再描画では、初期値が空のオーディオブックで
             // 自動反映されていないように見えてしまう。
-            if (editType === "cd" && typeof loadCds === "function" && typeof renderCdEdit === "function") {
-                await loadCds();
+            if (editType === "cd" && typeof loadCd === "function" && typeof renderCdEdit === "function") {
+                await loadCd(parentId);
                 await renderCdEdit(parentId);
             }
         } else {
@@ -700,63 +755,6 @@ async function showTrackMetadata(editType, parentId, trackId) {
     });
 }
 
-function secondsToMmSs(secs) {
-    if (!isFinite(secs) || secs <= 0) return null;
-    const total = Math.round(secs);
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function probeAudioDuration(url) {
-    return new Promise((resolve) => {
-        const a = new Audio();
-        a.preload = "metadata";
-        a.src = url;
-        const cleanup = () => {
-            a.onloadedmetadata = null;
-            a.onerror = null;
-        };
-        a.onloadedmetadata = () => {
-            const d = a.duration;
-            cleanup();
-            resolve(d);
-        };
-        a.onerror = () => {
-            cleanup();
-            resolve(NaN);
-        };
-    });
-}
-
-async function offerToApplyAudioDuration(
-    editType,
-    parentId,
-    trackId,
-    fileHash,
-    reloadFn,
-    knownSeconds = null,
-    operationToken = null,
-) {
-    const parsedKnownSeconds = Number(knownSeconds);
-    const secs = Number.isFinite(parsedKnownSeconds) && parsedKnownSeconds > 0
-        ? parsedKnownSeconds
-        : await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
-    const formatted = secondsToMmSs(secs);
-    if (!formatted) return;
-    // 長さの取得中に別の操作が始まっていたら、確認も反映もしない。
-    if (operationToken !== null && !trackOperationIsCurrent(operationToken)) return;
-    const ok = await showConfirm({
-        message: `音声ファイルの長さ ${formatted} をトラックの長さに設定しますか？`,
-        okLabel: "設定する",
-        cancelLabel: "設定しない",
-        okClass: "btn btn-sm btn-outline-accent",
-    });
-    if (!ok) return;
-    if (operationToken !== null && !trackOperationIsCurrent(operationToken)) return;
-    await saveTrackField(parentId, trackId, "duration", formatted, editType);
-    await reloadFn(parentId);
-}
 
 async function showExtractedMetadataModal(
     editType,
@@ -848,4 +846,8 @@ async function deleteTrackAudio(editType, parentId, trackId) {
         console.error("deleteTrackAudio error:", err);
         alert("音声の削除中に通信エラーが発生しました");
     }
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { addTrackToDisc };
 }

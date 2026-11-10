@@ -5,8 +5,7 @@ use worker::{D1Database, D1PreparedStatement, D1Type, Result};
 
 const PLAYLIST_SELECT: &str = "SELECT p.id,p.name,p.description,p.cover_cd_id,c.cover_url,p.created_at,p.updated_at FROM playlists p LEFT JOIN cds c ON c.id=p.cover_cd_id";
 
-const TRACK_SELECT: &str = "SELECT pt.playlist_id,
-         pt.position,
+const TRACK_SELECT: &str = "SELECT pt.playlist_id, pt.position,
          json_object('id',t.id,'book_id',COALESCE(t.book_id,0),'cd_id',t.cd_id,
                      'disc_number',t.disc_number,'track_number',t.track_number,
                      'title',t.title,'duration',t.duration,'file_hash',t.file_hash,'file_name',t.file_name) AS track,
@@ -19,13 +18,6 @@ const TRACK_SELECT: &str = "SELECT pt.playlist_id,
          FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id JOIN cds c ON c.id=t.cd_id";
 
 #[derive(Deserialize)]
-struct TrackRow {
-    position: i64,
-    track: String,
-    cd: String,
-}
-
-#[derive(Deserialize)]
 struct PlaylistTrackRow {
     playlist_id: i64,
     position: i64,
@@ -33,71 +25,66 @@ struct PlaylistTrackRow {
     cd: String,
 }
 
+fn with_tracks(mut playlist: serde_json::Value) -> Result<serde_json::Value> {
+    let Some(serde_json::Value::String(tracks)) = playlist
+        .as_object_mut()
+        .and_then(|row| row.remove("tracks_json"))
+    else {
+        return Err(worker::Error::from("Missing playlist tracks"));
+    };
+    playlist["tracks"] = serde_json::from_str(&tracks)?;
+    Ok(playlist)
+}
+
 pub async fn load(db: &D1Database, id: i64) -> Result<Option<serde_json::Value>> {
-    let id = D1Type::Integer(id as i32);
-    let Some(mut playlist) = db
-        .prepare(format!("{PLAYLIST_SELECT} WHERE p.id=?"))
-        .bind_refs(&id)?
+    db.prepare(format!(
+        "SELECT p.*, (SELECT json_group_array(json_object(
+             'position',position,'track',json(track),'cd',json(cd)
+         )) FROM ({TRACK_SELECT} WHERE pt.playlist_id=p.id ORDER BY pt.position,pt.rowid)) AS tracks_json
+         FROM ({PLAYLIST_SELECT}) p WHERE p.id=?"
+    ))
+        .bind_refs(&D1Type::Integer(id as i32))?
         .first::<serde_json::Value>(None)
         .await?
-    else {
-        return Ok(None);
-    };
-    let rows = db.prepare(
-        "SELECT pt.position,
-         json_object('id',t.id,'book_id',COALESCE(t.book_id,0),'cd_id',t.cd_id,
-                     'disc_number',t.disc_number,'track_number',t.track_number,
-                     'title',t.title,'duration',t.duration,'file_hash',t.file_hash,'file_name',t.file_name) AS track,
-         json_object('id',c.id,'jan',c.jan,'title',c.title,'artist',c.artist,
-                     'publisher',c.publisher,'label',c.label,'catalog_number',c.catalog_number,
-                     'publish_date',c.publish_date,'cover_url',c.cover_url,'description',c.description,
-                     'disc_count',c.disc_count,'volume',c.volume,'created_at',c.created_at,
-                     'updated_at',c.updated_at,'parent_book_id',c.parent_book_id,
-                     'media_type',c.media_type,'series_id',c.series_id) AS cd
-         FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id JOIN cds c ON c.id=t.cd_id
-         WHERE pt.playlist_id=? ORDER BY pt.position,pt.rowid"
-    ).bind_refs(&id)?.all().await?.results::<TrackRow>()?;
-    let mut tracks = Vec::with_capacity(rows.len());
-    for row in rows {
-        let track: serde_json::Value = serde_json::from_str(&row.track)?;
-        let cd: serde_json::Value = serde_json::from_str(&row.cd)?;
-        tracks.push(serde_json::json!({"position":row.position,"track":track,"cd":cd}));
-    }
-    playlist["tracks"] = serde_json::Value::Array(tracks);
-    Ok(Some(playlist))
+        .map(with_tracks)
+        .transpose()
 }
 
 pub async fn list(db: &ReadDb<'_>) -> Result<Vec<serde_json::Value>> {
-    // Two queries total regardless of the playlist count: the previous
-    // implementation ran two queries per playlist (an N+1 pattern that cost
-    // about one second for a handful of playlists).
-    let mut playlists = db
-        .prepare(format!("{PLAYLIST_SELECT} ORDER BY p.id DESC"))
-        .all()
-        .await?
-        .results::<serde_json::Value>()?;
-    let track_rows = db
-        .prepare(format!(
-            "{TRACK_SELECT} ORDER BY pt.playlist_id, pt.position, pt.rowid"
-        ))
-        .all()
-        .await?
-        .results::<PlaylistTrackRow>()?;
-    let mut grouped: HashMap<i64, Vec<serde_json::Value>> = HashMap::new();
+    let results = db
+        .batch(vec![
+            db.prepare(format!("{PLAYLIST_SELECT} ORDER BY p.id DESC")),
+            db.prepare(format!(
+                "{TRACK_SELECT} ORDER BY pt.playlist_id, pt.position, pt.rowid"
+            )),
+        ])
+        .await?;
+    let mut playlists = results[0].results::<serde_json::Value>()?;
+    let track_rows = results[1].results::<PlaylistTrackRow>()?;
+    let mut grouped: HashMap<i64, Vec<serde_json::Value>> = HashMap::with_capacity(playlists.len());
     for row in track_rows {
         let track: serde_json::Value = serde_json::from_str(&row.track)?;
         let cd: serde_json::Value = serde_json::from_str(&row.cd)?;
         grouped
             .entry(row.playlist_id)
             .or_default()
-            .push(serde_json::json!({"position":row.position,"track":track,"cd":cd}));
+            .push(serde_json::json!({"position": row.position, "track": track, "cd": cd}));
     }
-    for playlist in playlists.iter_mut() {
+    for playlist in &mut playlists {
         let id = playlist.get("id").and_then(serde_json::Value::as_i64);
-        let tracks = id.and_then(|id| grouped.remove(&id)).unwrap_or_default();
-        playlist["tracks"] = serde_json::Value::Array(tracks);
+        playlist["tracks"] =
+            serde_json::Value::Array(id.and_then(|id| grouped.remove(&id)).unwrap_or_default());
     }
     Ok(playlists)
+}
+
+pub async fn exists(db: &D1Database, id: i64) -> Result<bool> {
+    Ok(db
+        .prepare("SELECT id FROM playlists WHERE id=?")
+        .bind_refs(&D1Type::Integer(id as i32))?
+        .first::<serde_json::Value>(None)
+        .await?
+        .is_some())
 }
 
 pub async fn valid_cover(db: &D1Database, id: i64) -> Result<bool> {
@@ -110,6 +97,9 @@ pub async fn valid_cover(db: &D1Database, id: i64) -> Result<bool> {
 }
 
 pub async fn valid_tracks(db: &D1Database, ids: &[i64]) -> Result<bool> {
+    if ids.is_empty() {
+        return Ok(true);
+    }
     #[derive(Deserialize)]
     struct CountRow {
         count: usize,
@@ -156,7 +146,8 @@ fn append_statement(db: &D1Database, id: Option<i64>, ids: &[i64]) -> Result<D1P
 }
 
 fn touch_statement(db: &D1Database, id: i64) -> Result<D1PreparedStatement> {
-    db.prepare("UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    // Must immediately follow the track insert/delete in the same batch.
+    db.prepare("UPDATE playlists SET updated_at=CURRENT_TIMESTAMP WHERE id=? AND changes()>0")
         .bind_refs(&D1Type::Integer(id as i32))
 }
 
@@ -167,7 +158,9 @@ fn compact_statement(db: &D1Database, id: i64) -> Result<D1PreparedStatement> {
              FROM playlist_tracks WHERE playlist_id=?1
          ) UPDATE playlist_tracks SET position=(
              SELECT position FROM ordered WHERE ordered.track_id=playlist_tracks.track_id
-         ) WHERE playlist_id=?1",
+         ) WHERE playlist_id=?1 AND changes()>0 AND position IS NOT (
+             SELECT position FROM ordered WHERE ordered.track_id=playlist_tracks.track_id
+         )",
     )
     .bind_refs(&D1Type::Integer(id as i32))
 }
@@ -249,8 +242,8 @@ pub async fn update(
 
 pub async fn append(db: &D1Database, id: i64, tracks: &[i64]) -> Result<()> {
     db.batch(vec![
-        touch_statement(db, id)?,
         append_statement(db, Some(id), tracks)?,
+        touch_statement(db, id)?,
     ])
     .await?;
     Ok(())
@@ -263,8 +256,8 @@ pub async fn remove(db: &D1Database, id: i64, tracks: &[i64]) -> Result<u64> {
     let result = db
         .batch(vec![
             delete,
-            compact_statement(db, id)?,
             touch_statement(db, id)?,
+            compact_statement(db, id)?,
         ])
         .await?;
     Ok(result[0]

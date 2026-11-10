@@ -34,7 +34,7 @@ test("audio session URLs keep the audio object kind", () => {
 
 test("epub, cover, and lookalike URLs stay epub", () => {
   const nonAudioUrls = [
-    "/api/books/7/epub",
+    "/api/books/7/files",
     "/api/cds/11/cover",
     "/api/books/7/audiobook",
     "/api/audio/stream/abc",
@@ -72,11 +72,11 @@ test("the generic EPUB multipart route is left untouched", () => {
   // The generic session URL is the base for parts/complete; init lives at
   // /api/uploads/multipart/init (posting to the base returned 404 in 0.1.25/0.1.26).
   assert.equal(
-    uploadTargetPresignedInitUrl("/api/books/7/epub"),
+    uploadTargetPresignedInitUrl("/api/books/7/files"),
     "/api/uploads/multipart/init",
   );
   assert.equal(
-    uploadTargetPresignedSessionUrl("/api/books/7/epub"),
+    uploadTargetPresignedSessionUrl("/api/books/7/files"),
     "/api/uploads/multipart",
   );
   assert.equal(
@@ -88,20 +88,20 @@ test("the generic EPUB multipart route is left untouched", () => {
 // 大容量 EPUB は音声と同じ presigned multipart を使うが、セッションはトラック
 // 配下ではなく汎用の `/api/uploads/multipart`、finalize は書籍の EPUB URL 直下。
 test("large EPUB uploads use the generic session and the book finalize URL", () => {
-  assert.equal(uploadTargetIsEpubUpload("/api/books/7/epub"), true);
-  assert.equal(uploadTargetIsEpubUpload("https://dantalian.example/api/books/7/epub"), true);
-  assert.equal(uploadTargetIsEpubUpload("/api/books/7/epub?x=1"), true);
+  assert.equal(uploadTargetIsEpubUpload("/api/books/7/files"), true);
+  assert.equal(uploadTargetIsEpubUpload("https://dantalian.example/api/books/7/files"), true);
+  assert.equal(uploadTargetIsEpubUpload("/api/books/7/files?x=1"), true);
   assert.equal(uploadTargetIsEpubUpload("/api/books/7/cover"), false);
   assert.equal(uploadTargetIsEpubUpload("/api/cds/11/tracks/191/audio"), false);
   assert.equal(uploadTargetIsEpubUpload(undefined), false);
 
   assert.equal(
-    uploadTargetPresignedSessionUrl("/api/books/7/epub"),
+    uploadTargetPresignedSessionUrl("/api/books/7/files"),
     "/api/uploads/multipart",
   );
   assert.equal(
-    uploadTargetPresignedFinalizeUrl("/api/books/7/epub"),
-    "/api/books/7/epub/finalize",
+    uploadTargetPresignedFinalizeUrl("/api/books/7/files"),
+    "/api/books/7/files/finalize",
   );
 
   // 音声の派生 URL は従来のまま。
