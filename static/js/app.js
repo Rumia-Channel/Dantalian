@@ -27,7 +27,10 @@ async function initializeHome() {
         loadGrandSeries(),
         loadStorageLocations(),
         ...(booksOnly ? [] : [loadLabels(), loadCds()]),
-        loadBooks(),
+        (async () => {
+            if (booksOnly) await refreshNarouCatalogue();
+            return loadBooks();
+        })(),
     ]);
     if (results.every(Boolean)) renderItems();
     else renderHomeLoadError();

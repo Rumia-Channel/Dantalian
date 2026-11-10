@@ -238,13 +238,16 @@ impl Db {
         &self,
         limit: usize,
         before_id: Option<i64>,
+        exclude_narou: bool,
     ) -> Result<Vec<Book>, rusqlite::Error> {
         let conn = self.0.lock();
         let mut stmt = conn.prepare(&format!(
-            "SELECT {} FROM books WHERE (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?1",
+            "SELECT {} FROM books WHERE (?2 IS NULL OR id < ?2)
+             AND NOT EXISTS(SELECT 1 FROM narou_imports n WHERE n.book_id=books.id AND (n.active=0 OR ?3))
+             ORDER BY id DESC LIMIT ?1",
             BOOK_SELECT_COLUMNS
         ))?;
-        let rows = stmt.query_map(params![limit as i64, before_id], |row| {
+        let rows = stmt.query_map(params![limit as i64, before_id, exclude_narou], |row| {
             Self::row_to_book(&conn, row)
         })?;
         rows.collect()

@@ -20,6 +20,8 @@ const BOOK_CURSOR_MASK: i64 = 0x5A17_C0DE;
 pub struct ListBooksQuery {
     pub limit: Option<usize>,
     pub cursor: Option<String>,
+    #[serde(default)]
+    pub exclude_narou: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -62,7 +64,7 @@ pub async fn list(
     let db = state.db.clone();
     let result = tokio::task::spawn_blocking(move || {
         // limit+1 件取得して次ページの有無を判定する
-        let mut books = db.list_books_page(limit + 1, cursor)?;
+        let mut books = db.list_books_page(limit + 1, cursor, query.exclude_narou)?;
         let has_more = books.len() > limit;
         books.truncate(limit);
         let next_cursor = books

@@ -8,6 +8,12 @@ use crate::d1_read::{self, D1Prepare};
 use crate::error::{error_response, parse_json};
 
 const ALLOWED_SETTING_KEYS: &[&str] = &[
+    "narou.url",
+    "narou.token",
+    "narou.tags",
+    "narou.use_favorites",
+    "narou.cf_access_client_id",
+    "narou.cf_access_client_secret",
     "discogs_token",
     "musicbrainz_contact",
     "upload.cover_max_mb",
@@ -43,6 +49,9 @@ const ALLOWED_SETTING_KEYS: &[&str] = &[
 ];
 
 const SECRET_SETTING_KEYS: &[&str] = &[
+    "narou.token",
+    "narou.cf_access_client_id",
+    "narou.cf_access_client_secret",
     "discogs_token",
     "backup.webdav_pass",
     "backup.s3_access_key",
@@ -92,6 +101,19 @@ fn validate(key: &str, value: &str) -> std::result::Result<(), AppError> {
         )));
     }
     match key {
+        "narou.url" if !value.trim().is_empty() => {
+            crate::narou_api::validate_url(value.trim()).map_err(AppError::Validation)?;
+        }
+        "narou.tags" => {
+            dantalian::narou::parse_tags(value).map_err(AppError::Validation)?;
+        }
+        "narou.use_favorites" => {
+            if !matches!(value, "true" | "false") {
+                return Err(AppError::Validation(
+                    "narou.use_favorites は true または false で指定してください".into(),
+                ));
+            }
+        }
         "audio.data_saver.enabled" => {
             if !matches!(value.trim(), "true" | "false") {
                 return Err(AppError::Validation(format!("{key} must be true or false")));
@@ -172,18 +194,40 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         }
     }
     let db = ctx.d1("DB")?;
+    if settings.keys().any(|key| key.starts_with("narou.")) {
+        let mut merged = crate::narou_api::load_settings(&db).await?;
+        merged.extend(settings.clone());
+        if let Err(message) = dantalian::narou::validate_auth_settings(&merged) {
+            return error_response(AppError::Validation(message));
+        }
+        if merged
+            .get(dantalian::narou::KEY_URL)
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            let config = match dantalian::narou::Config::from_settings(&merged) {
+                Ok(config) => config,
+                Err(message) => return error_response(AppError::Validation(message)),
+            };
+            if let Err(message) = crate::narou_api::validate_connection(&config) {
+                return error_response(AppError::Validation(message));
+            }
+        }
+    }
+    let mut statements = Vec::with_capacity(settings.len());
     for (key, value) in settings {
         let key_value = D1Type::Text(&key);
         let value_value = D1Type::Text(&value);
-        db.prepare(
-            "INSERT INTO settings (key, value) VALUES (?, ?)
+        statements.push(
+            db.prepare(
+                "INSERT INTO settings (key, value) VALUES (?, ?)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        )
-        .bind_refs([&key_value, &value_value])
-        .map_err(db_error)?
-        .run()
-        .await
-        .map_err(db_error)?;
+            )
+            .bind_refs([&key_value, &value_value])
+            .map_err(db_error)?,
+        );
+    }
+    if !statements.is_empty() {
+        db.batch(statements).await?;
     }
     let settings = public_settings(&db).await?;
     if data_saver_changed {

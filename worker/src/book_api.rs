@@ -187,7 +187,7 @@ async fn output(db: &ReadDb<'_>, book: BookRow) -> Result<serde_json::Value> {
 }
 
 pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (limit, cursor) = match list_query(&req) {
+    let (limit, cursor, exclude_narou) = match list_query(&req) {
         Ok(query) => query,
         Err(response) => return Ok(response),
     };
@@ -203,9 +203,14 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         FROM books b
         LEFT JOIN copies c ON c.book_id = b.id
         LEFT JOIN lending_history lh ON lh.copy_id = c.id AND lh.returned_date IS NULL";
+    let visibility = if exclude_narou {
+        "NOT EXISTS(SELECT 1 FROM narou_imports n WHERE n.book_id=b.id)"
+    } else {
+        "NOT EXISTS(SELECT 1 FROM narou_imports n WHERE n.book_id=b.id AND n.active=0)"
+    };
     let rows = if let Some(cursor) = cursor {
         db.prepare(&format!(
-            "{SUMMARY_SELECT} WHERE b.id < ? GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
+            "{SUMMARY_SELECT} WHERE {visibility} AND b.id < ? GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
         ))
         .bind_refs([
             &D1Type::Integer(cursor),
@@ -219,7 +224,7 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         .map_err(db_error)?
     } else {
         db.prepare(&format!(
-            "{SUMMARY_SELECT} GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
+            "{SUMMARY_SELECT} WHERE {visibility} GROUP BY b.id ORDER BY b.id DESC LIMIT ?"
         ))
         .bind_refs(&D1Type::Integer(i32::try_from(limit + 1).unwrap_or(101)))
         .map_err(db_error)?
@@ -274,7 +279,7 @@ pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     Response::from_json(&BooksPage { items, next_cursor })
 }
 
-fn list_query(req: &Request) -> std::result::Result<(usize, Option<i32>), Response> {
+fn list_query(req: &Request) -> std::result::Result<(usize, Option<i32>, bool), Response> {
     let query = req.url().map_err(|_| bad_request("invalid request URL"))?;
     let params = query.query_pairs().into_owned().collect::<Vec<_>>();
     let limit = match params.iter().find(|(key, _)| key == "limit") {
@@ -289,7 +294,13 @@ fn list_query(req: &Request) -> std::result::Result<(usize, Option<i32>), Respon
         Some((_, value)) => Some(decode_cursor(value)?),
         None => None,
     };
-    Ok((limit, cursor))
+    let exclude_narou = match params.iter().find(|(key, _)| key == "exclude_narou") {
+        Some((_, value)) if value == "true" => true,
+        Some((_, value)) if value == "false" => false,
+        Some(_) => return Err(bad_request("exclude_narou must be true or false")),
+        None => false,
+    };
+    Ok((limit, cursor, exclude_narou))
 }
 
 fn encode_cursor(id: i64) -> String {

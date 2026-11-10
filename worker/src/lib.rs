@@ -22,6 +22,7 @@ mod label_repository;
 mod media_sync_api;
 mod multipart_api;
 mod musicbrainz_api;
+mod narou_api;
 mod ndl_coordinator;
 mod object_api;
 mod playlist_api;
@@ -82,6 +83,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/copies/:id/return", copy_api::return_copy)
         .get_async("/api/settings", settings_api::get)
         .put_async("/api/settings", settings_api::update)
+        .post_async("/api/narou/sync", narou_api::sync)
         .get_async("/api/copies/:id/history", copy_api::history)
         .post_async("/api/series", series_api::create)
         .get_async("/api/grand-series", grand_series_api::list)
