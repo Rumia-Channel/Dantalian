@@ -16,6 +16,12 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.2.7
+
+- Worker の `global_fetch_strictly_public` を有効にしました。同一 Cloudflare zone の Route 上にある narou.rs へ、公開側の Worker と Cloudflare Access を経由して接続します。
+- 正しい Service Token を設定しても、接続が Route と Access を迂回して origin に向かい、503 などになる問題を修正しました。トークンの再発行や narou.rs の DNS・Route 変更は不要です。
+- v0.2.6 からの追加 DB マイグレーションはありません。
+
 ## v0.2.6
 
 - Bibi を 2.3.3 へ更新しました。挿絵の直前の本文を再レイアウトした際、空いたページへ縦長の挿絵を配置し直し、元の本文位置（CFI）を保持します。
@@ -376,6 +382,7 @@ node --test worker/tests/reliability_contract.mjs
 - 同じ作品の更新では書籍 ID・読書状態・手動追加ファイルを維持し、同期した EPUB だけを差し替えます。対象タグから外れた作品、削除済みの作品、以前の接続先の作品は非表示にし、DB の読書状態は保持します。同期失敗時は前回の内容とエラーを表示します。
 - Bearer のみ、[Cloudflare Access Service Token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/) のみ、両方の併用に対応します。Access 側は **Service Auth** ポリシーを使用してください。Client ID / Secret は両方必要です。秘密値は設定取得 API に返さず、未入力なら維持、削除チェックで解除します。
 - 認証情報の送信には HTTPS が必要です（ループバック接続のみ HTTP 可）。URL 内の認証情報・クエリ・フラグメントと、リダイレクトは拒否します。
+- Worker 版の Wrangler 設定には [`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public) を指定します。同一 Cloudflare zone の Route 上にある narou.rs へも、公開側の Worker と Access を経由して接続するために必要です。未指定の `fetch()` は Route と Access を迂回して origin へ向かうため、正しい Service Token でも接続できない場合があります。設定変更後は Worker の再デプロイが必要です。
 - `POST /api/narou/sync` で即時同期も可能です。結果は `matched` / `imported` / `updated` / `unchanged` / `tags` / `book_ids` / `failed`。`GET /api/books?exclude_narou=true` は同期小説を除外し、通常のページングを維持します。
 
 Worker の更新時は `worker/migrations/0022_narou_imports.sql` まで D1 に適用してください。Native は起動時に移行します。
