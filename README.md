@@ -16,6 +16,13 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.2.6
+
+- Bibi を 2.3.3 へ更新しました。挿絵の直前の本文を再レイアウトした際、空いたページへ縦長の挿絵を配置し直し、元の本文位置（CFI）を保持します。
+- narou.rs の接続先・認証情報・対象タグを「管理 → 設定 → Web 小説（narou.rs）」にまとめました。
+- 一覧更新の回帰テスト用 DOM を実画面に合わせ、各ケースに10秒のタイムアウトを設定しました。Worker CI がリクエスト開始を無期限に待つ問題を修正しています。
+- v0.2.5 からの追加 DB マイグレーションはありません。
+
 ## v0.2.4
 
 - API の15秒キャッシュと更新後30秒だけ primary を優先する cookie を廃止しました。Worker の読み取りは `first-primary` で開始し、Native / Worker の API 応答とブラウザの API 取得は `no-store` にします。バージョン付き静的アセットのキャッシュは維持します。
@@ -167,7 +174,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker のブラウザ UI は全書籍ファイルを presigned multipart で直送し、`POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。`object_kind: "epub"` と `epubs/` は EPUB・ZIP・PDF 共通の内部区分・保存先であり、EPUB 専用ではない。
 
-ZIP は Bibi 2.3.2 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
+ZIP は Bibi 2.3.3 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
 
 ### DLsite 登録
 
@@ -325,7 +332,10 @@ Worker の更新時は `worker/migrations/0016_grand_series_integrity.sql` を D
 ```sh
 cargo test --features native --all-targets
 cargo test --manifest-path worker/Cargo.toml
+node --test worker/tests/data_freshness_unit.mjs
 ```
+
+一覧のタブ間更新・非表示からの復帰・BFCache 復帰の回帰テストは、ローカル HTTP fixture を使用するため Native / Worker の起動は不要です。各ケースに10秒のタイムアウトを設定しており、リクエスト開始や応答の待機が進まなくても CI を無期限に停止させません。
 
 API の検証には使い捨て DB の Native またはローカル Worker を起動し、`WORKER_BASE_URL` にその URL を指定して次を実行します。認証を有効にした場合は `WORKER_API_TOKEN` も指定してください。
 
@@ -349,7 +359,7 @@ node --test worker/tests/reliability_contract.mjs
 
 ### narou.rs の Web 小説を同期表示
 
-管理 → **Web 小説**で narou.rs の接続先と対象タグを保存します。手動の一度きりの取り込みではなく、narou.rs を正として **`/books/` を開く時・表示中の5分ごと・タブに戻った時**に API と同期します。トップの「一覧」には、シリーズ・大シリーズ内も含めて表示しません。
+管理 → **設定 → Web 小説（narou.rs）**で接続先・認証情報・対象タグを編集し、この欄の「設定を保存」または「保存して今すぐ同期」で保存します（下部の一般設定とは別保存）。手動の一度きりの取り込みではなく、narou.rs を正として **`/books/` を開く時・表示中の5分ごと・タブに戻った時**に API と同期します。トップの「一覧」には、シリーズ・大シリーズ内も含めて表示しません。
 
 | 設定キー | 内容 |
 |---|---|

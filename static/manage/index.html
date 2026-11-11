@@ -29,7 +29,6 @@
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-labels" onclick="switchSeriesTab('labels')" id="tab-labels"><span class="material-icons" aria-hidden="true">label</span>レーベル</button>
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-borrowers" onclick="switchSeriesTab('borrowers')" id="tab-borrowers"><span class="material-icons" aria-hidden="true">person</span>借り手</button>
                 <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-settings" onclick="switchSeriesTab('settings')" id="tab-settings"><span class="material-icons" aria-hidden="true">settings</span>設定</button>
-                <button class="series-tab" role="tab" aria-selected="false" aria-controls="panel-narou" onclick="switchSeriesTab('narou')" id="tab-narou"><span class="material-icons" aria-hidden="true">auto_stories</span>Web 小説</button>
             </div>
             <div id="panel-series" class="series-tab-panel" role="tabpanel" aria-labelledby="tab-series" aria-hidden="false">
                 <h3 class="manage-panel-title">シリーズ</h3>
@@ -76,12 +75,12 @@
             </div>
             <div id="panel-settings" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-settings" aria-hidden="true">
                 <h3 class="manage-panel-title">設定</h3>
+                <section aria-labelledby="narou-settings-title">
+                    <h3 id="narou-settings-title" class="manage-panel-title">Web 小説（narou.rs）</h3>
+                    <p>お気に入りタグと指定タグのいずれかに完全一致する小説を、本棚専用で同期表示します。接続先・認証情報・対象タグは、この欄の「設定を保存」で保存します。</p>
+                    <div id="narou-settings"></div>
+                </section>
                 <div id="settings-form"></div>
-            </div>
-            <div id="panel-narou" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-narou" aria-hidden="true">
-                <h3 class="manage-panel-title">narou.rs と同期する</h3>
-                <p>お気に入りタグと指定タグのいずれかに完全一致する小説を、本棚専用で同期表示します。</p>
-                <div id="narou-settings"></div>
             </div>
         </section>
     </div>
