@@ -71,7 +71,7 @@ pub async fn epub(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let Some(id) = ctx
         .param("id")
         .and_then(|value| value.parse::<i64>().ok())
-        .filter(|id| *id > 0)
+        .filter(|id| *id >= 0)
     else {
         return private_response(
             Response::from_json(&serde_json::json!({"error":"小説 ID が不正です"}))?

@@ -89,7 +89,10 @@ impl NavigationQuery {
             .strip_prefix("narou:")
             .and_then(|value| value.split_once('@'))
             .ok_or(NavigationError::InvalidRequest)?;
-        if id.is_empty() || id.starts_with('0') || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+        if id.is_empty()
+            || (id.len() > 1 && id.starts_with('0'))
+            || !id.bytes().all(|byte| byte.is_ascii_digit())
+        {
             return Err(NavigationError::InvalidRequest);
         }
         id.parse::<i64>()

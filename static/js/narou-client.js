@@ -209,7 +209,7 @@
     // 小説 1 件の書誌情報を直接取得する。
     async function loadNovel(id) {
         const novelId = Number(id);
-        if (!Number.isInteger(novelId) || novelId <= 0) {
+        if (!Number.isInteger(novelId) || novelId < 0) {
             throw new Error("小説 ID が不正です。");
         }
         const connection = await fetchConnection();

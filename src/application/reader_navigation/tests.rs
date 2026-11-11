@@ -155,8 +155,8 @@ fn an_existing_unreadable_neighbor_is_not_a_missing_neighbor() {
 #[test]
 fn narou_navigation_is_standalone_and_preserves_only_app_local_returns() {
     let query = NavigationQuery {
-        book_key: Some("narou:42@https://narou.test/library".into()),
-        content_hash: Some("narou-42-revision".into()),
+        book_key: Some("narou:0@https://narou.test/library".into()),
+        content_hash: Some("narou-0-revision".into()),
         return_to: Some("https://outside.test/".into()),
     };
     let context = query.resolve_narou("https://narou.test/library").unwrap();

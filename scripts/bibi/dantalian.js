@@ -23,7 +23,7 @@ Bibi.preset({
         try {
             const book = new URL(new URLSearchParams(location.search).get('book'), location.href);
             return book.origin === location.origin &&
-                /^\/api\/narou\/novels\/[1-9]\d*\/epub$/.test(book.pathname);
+                /^\/api\/narou\/novels\/(0|[1-9]\d*)\/epub$/.test(book.pathname);
         } catch {
             return false;
         }

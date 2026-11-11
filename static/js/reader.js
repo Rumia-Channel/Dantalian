@@ -21,7 +21,7 @@
     // Web 小説 (narou.rs) は書誌情報をブラウザが直接取得し、EPUB も
     // narou.rs から直接読む（Dantalian は 302 を発行するだけ）。
     async function openNarouReader(id, from) {
-        if (!/^[1-9]\d*$/.test(id)) throw new Error("小説 ID が正しくありません。");
+        if (!/^(0|[1-9]\d*)$/.test(id)) throw new Error("小説 ID が正しくありません。");
         const client = window.narouClient;
         if (!client) throw new Error("narou クライアントを読み込めませんでした。");
         const novelId = Number(id);

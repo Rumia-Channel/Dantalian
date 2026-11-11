@@ -73,7 +73,7 @@ pub async fn epub(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
-    if id <= 0 {
+    if id < 0 {
         return Err(error(StatusCode::BAD_REQUEST, "小説 ID が不正です"));
     }
     let config =
