@@ -76,6 +76,51 @@ impl NavigationQuery {
             return_to: self.return_to,
         })
     }
+
+    pub fn is_narou(&self) -> bool {
+        self.book_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("narou:"))
+    }
+
+    pub fn resolve_narou(self, source: &str) -> Result<NavigationContext, NavigationError> {
+        let book_key = self.book_key.ok_or(NavigationError::InvalidRequest)?;
+        let (id, key_source) = book_key
+            .strip_prefix("narou:")
+            .and_then(|value| value.split_once('@'))
+            .ok_or(NavigationError::InvalidRequest)?;
+        if id.is_empty()
+            || (id.len() > 1 && id.starts_with('0'))
+            || !id.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(NavigationError::InvalidRequest);
+        }
+        id.parse::<i64>()
+            .map_err(|_| NavigationError::InvalidRequest)?;
+        if source.is_empty() || key_source != source {
+            return Err(NavigationError::BookNotFound);
+        }
+        let content_hash = self
+            .content_hash
+            .filter(|value| !value.is_empty())
+            .ok_or(NavigationError::InvalidRequest)?;
+        let returning = match self.return_to {
+            Some(value) if safe_return_path(Some(&value)) == value => value,
+            _ => "/books/".to_owned(),
+        };
+        Ok(NavigationContext {
+            schema_version: 1,
+            book_key,
+            content_hash,
+            series: None,
+            previous: None,
+            next: None,
+            return_to: NavigationReturn {
+                href: returning,
+                label: "元のページへ戻る",
+            },
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

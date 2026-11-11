@@ -16,6 +16,13 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.3.0
+
+- narou.rs の書誌情報と EPUB は、利用者のブラウザが既存のログインを使って直接取得します。Dantalian での同期・取り込み・EPUB 保存・書誌キャッシュを廃止します。
+- Web 小説は表紙なしで一覧・本一覧へ混ぜ、narou.rs の著者名でグループ表示・検索します。通常の登録済み書籍・添付ファイルは維持します。
+- Dantalian の narou 設定は接続先と対象タグだけです。長期トークンの保存・配布、新しい Access アプリや認証発行は行いません。
+- Native スキーマ19、Worker マイグレーション `0023_retire_narou_cache.sql` で旧同期テーブルと不要な認証設定を撤去します。
+
 ## v0.2.7
 
 - Worker の `global_fetch_strictly_public` を有効にしました。同一 Cloudflare zone の Route 上にある narou.rs へ、公開側の Worker と Cloudflare Access を経由して接続します。
@@ -363,29 +370,28 @@ node --test worker/tests/reliability_contract.mjs
 
 静的アセットを追加した場合は `build.rs` の `html_files` / `js_files` にも登録してください。登録漏れがあるとキャッシュバスタ用ハッシュが更新されません。Worker は `build_assets.mjs` が `static/` をそのまま複製するため、追加作業はありません。
 
-### narou.rs の Web 小説を同期表示
+### narou.rs の Web 小説を端末から直接表示
 
-管理 → **設定 → Web 小説（narou.rs）**で接続先・認証情報・対象タグを編集し、この欄の「設定を保存」または「保存して今すぐ同期」で保存します（下部の一般設定とは別保存）。手動の一度きりの取り込みではなく、narou.rs を正として **`/books/` を開く時・表示中の5分ごと・タブに戻った時**に API と同期します。トップの「一覧」には、シリーズ・大シリーズ内も含めて表示しません。
+管理 → **設定 → Web 小説（narou.rs）**で接続先・対象タグを保存します。「接続を確認」はブラウザから narou.rs を読み、Dantalian サーバーは書誌情報や EPUB を取得しません。空の URL を保存すると表示を無効にします。
 
 | 設定キー | 内容 |
 |---|---|
-| `narou.url` | narou.rs の HTTP(S) ベース URL。パス接頭辞も利用可能。Dantalian サーバーから到達できる URL を指定 |
-| `narou.token` | Worker 版の Bearer token、または Native 版の `.narou/ui_token` |
-| `narou.cf_access_client_id` | Cloudflare Access Service Token の Client ID |
-| `narou.cf_access_client_secret` | Cloudflare Access Service Token の Client Secret |
+| `narou.url` | 利用者のブラウザから到達できる narou.rs の HTTPS ベース URL。Native のループバック接続のみ HTTP 可。パス接頭辞も利用可能 |
 | `narou.use_favorites` | narou.rs のお気に入りタグを対象にするか（既定 `true`） |
-| `narou.tags` | Dantalian 側で追加指定するタグ名の JSON 配列。画面では1行1タグで指定 |
+| `narou.tags` | 追加指定するタグ名の JSON 配列。画面では1行1タグで指定 |
 
-- 対象は **お気に入りタグと指定タグの和集合に完全一致**する小説です。タグが空なら全件取得せず、Web 小説を非表示にします。
-- `GET /api/favorite_tags`・`GET /api/list?all=true` で最新状態を確認し、更新日時・書誌情報が変わった作品だけ `GET /novels/{id}/download` から EPUB を取得します。元の小説サイトを Dantalian がスクレイピングすることはありません。
-- EPUB は既存のファイル保存先（Native: `epubs/`、Worker: Wasabi）へキャッシュし、本棚の本から既存の Bibi で読みます。narou.rs 側で EPUB の生成が可能な設定が必要です。Worker が中継する EPUB の上限は95 MiBです。
-- 同じ作品の更新では書籍 ID・読書状態・手動追加ファイルを維持し、同期した EPUB だけを差し替えます。対象タグから外れた作品、削除済みの作品、以前の接続先の作品は非表示にし、DB の読書状態は保持します。同期失敗時は前回の内容とエラーを表示します。
-- Bearer のみ、[Cloudflare Access Service Token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/) のみ、両方の併用に対応します。Access 側は **Service Auth** ポリシーを使用してください。Client ID / Secret は両方必要です。秘密値は設定取得 API に返さず、未入力なら維持、削除チェックで解除します。
-- 認証情報の送信には HTTPS が必要です（ループバック接続のみ HTTP 可）。URL 内の認証情報・クエリ・フラグメントと、リダイレクトは拒否します。
-- Worker 版の Wrangler 設定には [`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public) を指定します。同一 Cloudflare zone の Route 上にある narou.rs へも、公開側の Worker と Access を経由して接続するために必要です。未指定の `fetch()` は Route と Access を迂回して origin へ向かうため、正しい Service Token でも接続できない場合があります。設定変更後は Worker の再デプロイが必要です。
-- `POST /api/narou/sync` で即時同期も可能です。結果は `matched` / `imported` / `updated` / `unchanged` / `tags` / `book_ids` / `failed`。`GET /api/books?exclude_narou=true` は同期小説を除外し、通常のページングを維持します。
+- narou.rs の **既存ユーザー認証**を使います。必要な場合は「narou.rs を開く（ログイン）」からログインしてください。Cloudflare Access のアプリ・ポリシーや Service Token は追加・変更しません。
+- narou.rs の `external-api.allowed-origins` に Dantalian の Origin（スキーム・ホスト・ポートまで、パスなし）を登録します。`/api/read/v1` は既存ユーザー認証を要求し、許可した Origin にだけ credentialed CORS を返します。従来の `/api/v1` の Bearer 認証とは別の読み取り専用入口です。
+- ブラウザの Cookie 制約が適用されます。Native 同士は両方 `127.0.0.1`、または両方 `localhost` で開いてください。異なるサイト間では、ログイン済みでも SameSite・サードパーティ Cookie 制限により認証できない場合があります。
+- 対象は **お気に入りタグと指定タグの和集合に完全一致**する小説です。対象タグが空なら全作品一覧は取得しません。表紙は空欄とし、著者名で通常の本と同じグループへ表示します。
+- 一覧・本一覧を開いた時、表示中の5分ごと、タブへ戻った時にブラウザが再取得します。取得失敗時は Web 小説だけを消し、通常の書籍とログイン案内を表示します。
+- `GET /api/narou/connection` は接続先・対象タグだけを返します。書誌情報はブラウザから narou.rs の一覧・詳細・お気に入りタグ API へ直接取得します。Dantalian の書籍・著者レコードは作りません。
+- `GET|HEAD /api/narou/novels/{id}/epub` は、設定済み narou.rs の `/api/read/v1/novels/{id}/epub` へ **302** を返すだけです。EPUB 本文の受信・中継・ハッシュ計算・DB／ファイル／S3 への保存はしません。一覧表示中に EPUB を取得することもありません。
+- Bibi はこの宛先へ利用者の Cookie を付けて直接アクセスします。読書位置の識別子は `narou:<id>@<接続先>` と作品の更新版を使い、URL や認証情報を位置の保存キーにしません。
+- `POST /api/narou/sync` と `exclude_narou` は廃止しました。サーバーの `/api/books` は通常のローカル登録だけを返し、Web 小説はブラウザ上で混ぜます。カタログや EPUB を IndexedDB・localStorage に保存しません（Bibi の読書位置・表示設定は従来どおり端末内に保存します）。
 
-Worker の更新時は `worker/migrations/0022_narou_imports.sql` まで D1 に適用してください。Native は起動時に移行します。
+Native は起動時に旧 narou 自動添付の実ファイルを整理してスキーマ19へ移行します。手動添付と共有する実ファイル、手動の添付・コピー・読書状態は保持します。Worker は `0023` 適用**前**に旧 narou 由来の保存物を確認・削除してください。通常の `DELETE /api/books/{book_id}/files/{file_id}` は、他の本と共有しない保存物だけを削除します。S3 の実物を確認する前に DB 参照だけを消したり、通常の添付を一括削除したりしないでください。
+
 
 
 ### 読書リーダー (Bibi)

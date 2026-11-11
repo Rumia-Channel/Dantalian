@@ -1,6 +1,7 @@
 (async function openStandaloneReader() {
     const parameters = new URLSearchParams(location.search);
     const bookId = parameters.get("book");
+    const narouId = parameters.get("narou");
     const status = document.getElementById("reader-status");
     const message = document.getElementById("reader-status-message");
     const back = document.getElementById("reader-back");
@@ -17,7 +18,38 @@
         back.textContent = returnUrl.pathname === "/" ? "一覧に戻る" : returnUrl.pathname === "/edit/" ? "編集に戻る" : "本一覧に戻る";
     }
 
+    // Web 小説 (narou.rs) は書誌情報をブラウザが直接取得し、EPUB も
+    // narou.rs から直接読む（Dantalian は 302 を発行するだけ）。
+    async function openNarouReader(id, from) {
+        if (!/^(0|[1-9]\d*)$/.test(id)) throw new Error("小説 ID が正しくありません。");
+        const client = window.narouClient;
+        if (!client) throw new Error("narou クライアントを読み込めませんでした。");
+        const novelId = Number(id);
+        const { novel, connection } = await client.loadNovel(novelId);
+        document.getElementById("reader-title").textContent = novel.title || `小説 ${novelId}`;
+        const readerUrl = new URL("/vendor/bibi/dantalian.html", location.origin);
+        const readerParameters = new URLSearchParams({
+            book: client.epubUrl(novelId),
+            "book-key": client.bookKey(novelId, connection),
+            "content-hash": client.contentHash(novel),
+            "storage-namespace": "narou",
+            "storage-user": "local",
+            "host-return-to": from,
+        });
+        const entry = parameters.get("entry");
+        if (entry === "start" || entry === "end") {
+            readerParameters.set("edge", entry === "start" ? "head" : "foot");
+        }
+        readerUrl.search = readerParameters;
+        // Replace the launcher so browser Back returns directly to the catalogue.
+        location.replace(readerUrl.href);
+    }
+
     try {
+        if (narouId) {
+            await openNarouReader(narouId, returnPath);
+            return;
+        }
         if (!bookId || !/^[1-9]\d*$/.test(bookId)) throw new Error("読書する本が指定されていません。");
         edit.href = `/edit/?mode=book&book=${encodeURIComponent(bookId)}`;
         edit.classList.remove("hidden");
@@ -58,5 +90,15 @@
     } catch (error) {
         status.setAttribute("role", "alert");
         message.textContent = `本を開けませんでした。${error.message}`;
+        // 認証が必要なときは、narou.rs でのログインを案内する。
+        const source = window.narouClient?.openUrl(error.connection);
+        if (source) {
+            const anchor = document.createElement("a");
+            anchor.href = source;
+            anchor.target = "_blank";
+            anchor.rel = "noopener noreferrer";
+            anchor.textContent = "narou.rs でログイン";
+            message.append(" ", anchor);
+        }
     }
 })();
