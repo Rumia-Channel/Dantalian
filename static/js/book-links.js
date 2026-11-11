@@ -11,8 +11,18 @@ function isCatalogueBook(item) {
     return item.sourceType !== "cd" && item.media_type !== "cd" && item.media_type !== "audiobook";
 }
 
+// Web 小説はローカルに書籍レコードが無いので、専用の読書 URL へ遷移する。
+function narouReaderUrl(narouId) {
+    const parameters = new URLSearchParams({
+        narou: String(narouId),
+        from: location.pathname + location.search + location.hash,
+    });
+    return `/reader/?${parameters}`;
+}
+
 function catalogueItemClickHandler(item) {
     if (item.sourceType === "cd") return `showCdDetail(${item.originalId})`;
+    if (item.sourceType === "narou") return `location.href='${escapeJs(narouReaderUrl(item.narou_id))}'`;
     if (document.body.dataset.catalogue !== "books" || !isCatalogueBook(item)) return `showDetail(${item.id})`;
     return `location.href='${escapeJs(bookReaderUrl(item.id))}'`;
 }

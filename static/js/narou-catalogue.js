@@ -1,30 +1,61 @@
-// narou.rs is authoritative. Local book/file rows cache its current tagged shelf
-// for the existing reader; every visible bookshelf refresh checks the remote API.
+// Web 小説 (narou.rs) のカタログはブラウザが narou.rs から直接取得する。
+//
+// Dantalian には写しや EPUB を作らない。ローカル書籍の一覧とは独立して読み込む:
+// 取得が遅くても失敗しても、ローカル書籍はそのまま表示し、異常は状態行で知らせる。
+const NAROU_CATALOGUE_MIN_INTERVAL_MS = 60 * 1000;
+let narouCatalogueLoadedAt = 0;
+
 async function refreshNarouCatalogue() {
-    const status = document.getElementById("narou-sync-status");
-    status.hidden = false;
-    status.textContent = "Web 小説を narou.rs と同期中…";
+    const status = document.getElementById("narou-catalogue-status");
+    const client = window.narouClient;
+    if (!client) return;
+    setNarouCatalogueStatus(status, "Web 小説を narou.rs から取得中…");
     try {
-        const response = await fetch("/api/narou/sync", { method: "POST", cache: "no-store" });
-        const report = await response.json();
-        if (!response.ok) throw new Error(report.error || `HTTP ${response.status}`);
-        if (report.failed.length) {
-            status.textContent = `Web 小説の一部を更新できませんでした（${report.failed.length} 件）。${report.failed.map(failure => `${failure.title}：${failure.error}`).join(" / ")}`;
-        } else if (report.tags.length) {
-            status.textContent = `Web 小説 ${report.matched} 件を同期済み（${new Date().toLocaleTimeString()}）。表示中は 5 分ごとに更新します。`;
+        const result = await client.loadCatalogueOnce();
+        narouCatalogueLoadedAt = Date.now();
+        if (result.state === "disabled") {
+            setNarouCatalogueStatus(status, "");
+        } else if (!result.items.length) {
+            setNarouCatalogueStatus(status, "対象の Web 小説はありません。");
         } else {
-            status.textContent = "";
-            status.hidden = true;
+            const tags = result.tags.join("、");
+            setNarouCatalogueStatus(status,
+                `Web 小説 ${result.items.length} 件を narou.rs から直接取得しました（対象タグ: ${tags}）。カバーは表示されません。`);
         }
+        // 届いたぶんだけ一覧を描き直す（ローカル書籍の読み込みを妨げない）。
+        document.dispatchEvent(new CustomEvent("dantalian:narou-catalogue", { detail: result }));
     } catch (error) {
-        status.textContent = `Web 小説の同期に失敗しました。前回の同期内容を表示します。${error.message}`;
+        client.items = [];
+        client.state = "error";
+        document.dispatchEvent(new CustomEvent("dantalian:narou-catalogue"));
+        const source = client.openUrl(error.connection);
+        setNarouCatalogueStatus(status,
+            `Web 小説を取得できませんでした: ${error.message}。ローカル書籍はそのまま表示しています。`,
+            source ? { href: source, label: "narou.rs でログイン" } : null);
     }
 }
 
+function setNarouCatalogueStatus(status, message, link) {
+    if (!status) return;
+    status.textContent = message || "";
+    if (link && link.href) {
+        const anchor = document.createElement("a");
+        anchor.href = link.href;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = link.label || "narou.rs を開く";
+        status.append(" ", anchor);
+    }
+    status.hidden = !message;
+}
+
 setInterval(() => {
-    if (document.visibilityState === "visible") void refreshHome();
+    if (document.visibilityState === "visible") void refreshNarouCatalogue();
 }, 5 * 60 * 1000);
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void refreshHome();
+    // タブ back 回来た直後は取り直さない（5 分ごとの更新に任せる）。
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - narouCatalogueLoadedAt < NAROU_CATALOGUE_MIN_INTERVAL_MS) return;
+    void refreshNarouCatalogue();
 });

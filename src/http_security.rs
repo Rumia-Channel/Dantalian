@@ -36,7 +36,7 @@ const SECURITY_HEADERS: [(&str, &str); 5] = [
     ),
     // ホスト UI はインラインイベントハンドラを、Bibi は DOMPurify 済み EPUB の
     // インラインスタイル・new Function を使うため inline/eval は許可する。
-    // それ以外は同一 origin に限定し、object/base/form とフレーム外埋め込みを塞ぐ。
+    // 直読 API・ストレージへの HTTPS 通信と Native narou のループバック接続を許可する。
     (
         "content-security-policy",
         "default-src 'self'; \
@@ -48,7 +48,7 @@ const SECURITY_HEADERS: [(&str, &str); 5] = [
          frame-src 'self' blob:; \
          worker-src 'self' blob:; \
          child-src 'self' blob:; \
-         connect-src 'self'; \
+         connect-src 'self' https: http://localhost:* http://127.0.0.1:*; \
          object-src 'none'; \
          base-uri 'none'; \
          form-action 'self'; \
@@ -62,10 +62,9 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     for (name, value) in SECURITY_HEADERS {
-        headers.insert(
-            HeaderName::from_static(name),
-            HeaderValue::from_static(value),
-        );
+        headers
+            .entry(HeaderName::from_static(name))
+            .or_insert_with(|| HeaderValue::from_static(value));
     }
     if api_response {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));

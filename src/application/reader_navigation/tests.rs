@@ -151,3 +151,42 @@ fn an_existing_unreadable_neighbor_is_not_a_missing_neighbor() {
     assert_eq!(next.status, "unsupported-format");
     assert!(next.href.is_none());
 }
+
+#[test]
+fn narou_navigation_is_standalone_and_preserves_only_app_local_returns() {
+    let query = NavigationQuery {
+        book_key: Some("narou:42@https://narou.test/library".into()),
+        content_hash: Some("narou-42-revision".into()),
+        return_to: Some("https://outside.test/".into()),
+    };
+    let context = query.resolve_narou("https://narou.test/library").unwrap();
+    assert!(context.series.is_none());
+    assert!(context.previous.is_none());
+    assert!(context.next.is_none());
+    assert_eq!(context.return_to.href, "/books/");
+}
+
+#[test]
+fn narou_navigation_rejects_changed_sources_and_noncanonical_ids() {
+    for (key, expected) in [
+        ("narou:42@https://old.test", NavigationError::BookNotFound),
+        (
+            "narou:042@https://narou.test",
+            NavigationError::InvalidRequest,
+        ),
+        (
+            "narou:9223372036854775808@https://narou.test",
+            NavigationError::InvalidRequest,
+        ),
+    ] {
+        let query = NavigationQuery {
+            book_key: Some(key.into()),
+            content_hash: Some("revision".into()),
+            return_to: None,
+        };
+        assert_eq!(
+            query.resolve_narou("https://narou.test").err(),
+            Some(expected)
+        );
+    }
+}

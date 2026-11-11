@@ -19,5 +19,13 @@ Bibi.preset({
     'host-navigation-api': '/api/reader-navigation',
     'host-navigation-paths': ['/', '/books/', '/edit/', '/reader/'],
     'allow-scripts-in-content': false,
-    'request-with-credentials': false
+    'request-with-credentials': (() => {
+        try {
+            const book = new URL(new URLSearchParams(location.search).get('book'), location.href);
+            return book.origin === location.origin &&
+                /^\/api\/narou\/novels\/[1-9]\d*\/epub$/.test(book.pathname);
+        } catch {
+            return false;
+        }
+    })()
 });

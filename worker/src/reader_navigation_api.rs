@@ -30,6 +30,15 @@ pub async fn get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
             return response(Err(NavigationError::InvalidRequest));
         }
     }
+    if query.is_narou() {
+        let db = ctx.env.d1("DB")?;
+        let db = crate::d1_read::read_db(&req, &db)?;
+        let config = match crate::narou_api::load_config(&db).await {
+            Ok(config) => config,
+            Err(_) => return response(Err(NavigationError::Database)),
+        };
+        return response(query.resolve_narou(&config.url));
+    }
     let request = match query.validate() {
         Ok(request) => request,
         Err(error) => return response(Err(error)),

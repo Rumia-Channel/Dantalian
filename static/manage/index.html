@@ -77,7 +77,7 @@
                 <h3 class="manage-panel-title">設定</h3>
                 <section aria-labelledby="narou-settings-title">
                     <h3 id="narou-settings-title" class="manage-panel-title">Web 小説（narou.rs）</h3>
-                    <p>お気に入りタグと指定タグのいずれかに完全一致する小説を、本棚専用で同期表示します。接続先・認証情報・対象タグは、この欄の「設定を保存」で保存します。</p>
+                    <p>ブラウザが narou.rs へ直接アクセスして書誌情報を取得し、通常の一覧に混ぜて表示します。Dantalian には書誌情報・EPUB を保存せず、接続先・認証情報・対象タグだけをこの欄で管理します。</p>
                     <div id="narou-settings"></div>
                 </section>
                 <div id="settings-form"></div>
@@ -95,6 +95,7 @@
     <script src="/js/labels.js?v=ASSET_VERSION"></script>
     <script src="/js/borrowers.js?v=ASSET_VERSION"></script>
     <script src="/js/settings-manage.js?v=ASSET_VERSION"></script>
+    <script src="/js/narou-client.js?v=ASSET_VERSION"></script>
     <script src="/js/narou-manage.js?v=ASSET_VERSION"></script>
     <script>
         (async () => {

@@ -112,7 +112,15 @@ Bibi.preset({
     'host-navigation-api': '/api/reader-navigation',
     'host-navigation-paths': ['/', '/books/', '/edit/', '/reader/'],
     'allow-scripts-in-content': false,
-    'request-with-credentials': false
+    'request-with-credentials': (() => {
+        try {
+            const book = new URL(new URLSearchParams(location.search).get('book'), location.href);
+            return book.origin === location.origin &&
+                /^\/api\/narou\/novels\/[1-9]\d*\/epub$/.test(book.pathname);
+        } catch {
+            return false;
+        }
+    })()
 });
 ```
 
@@ -127,7 +135,7 @@ Bibi.preset({
 
 Native の `/epubs/` は `src/epub.rs` の middleware を経由する。Bibi が ZIP の末尾を読む `Range: bytes=-65557` に対し、非空ファイルが指定 suffix より短ければ `bytes=0-` に正規化する。[RFC 9110 §14.1.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-14.1.2) に合わせて全体を `206` で返し、小さな EPUB が既存 `ServeDir` の `416` で開けなくなる問題を解消する。その他の Range・ディレクトリ配信・ストリーミング本体は `ServeDir` に委ねる。
 
-`request-with-credentials:false` は**すべての cookie を禁止する意味ではない**。ZIP Worker/全体取得は `credentials:'same-origin'` を使用し、同一 origin の認証 cookie は送る。クロス origin には送らない。`true` の場合だけ `include` を使用する。Native endpoint の認証・認可はサーバー側で行い、未認証に EPUB 内容を返さない。
+通常の登録済み書籍に使う `request-with-credentials:false` は**すべての cookie を禁止する意味ではない**。ZIP Worker/全体取得は `credentials:'same-origin'` を使用し、同一 origin の認証 cookie は送る。クロス origin には送らない。`true` の場合だけ `include` を使用する。Native endpoint の認証・認可はサーバー側で行い、未認証に EPUB 内容を返さない。
 
 ### Worker → Wasabi のリダイレクト
 
@@ -139,6 +147,14 @@ Worker の `/epubs/{file_hash}` が署名付き Wasabi URL にリダイレクト
 - 資格情報なしの署名付きストレージ応答では `Allow-Origin:*` を使用できる。credentialed CORS では exact origin と `Allow-Credentials:true` が必要で、`*` を使わない。
 - 署名の期限が複数 Range 要求を完了するまで有効か、期限切れ時にホストがどう再取得・位置復元するかを決める。署名 URL は短命の capability であり、長期認証 token を reader URL に渡す代替ではない。
 - ローカルの cookie 認証・別 origin 署名相当リダイレクト・CORS/Range は確認済み。`v0.1.16` の認証済み Firefox でも本番 Worker → Wasabi の登録済み EPUB が開き、最終 Range 応答 `206` と実際の表紙表示・ページ移動を確認した。署名失効後の再取得まで検証したものではない。
+
+### narou.rs → 利用者の端末
+
+narou の本は `/reader/?narou=<id>` から起動し、書誌情報をブラウザが `/api/read/v1/novels/{id}` で直接確認する。Bibi の `book` は同一 origin の `/api/narou/novels/{id}/epub` とし、この endpoint は信頼した設定済み narou の URL に302を返すだけで、本文を取得しない。
+
+ホスト preset はこの同一 origin・正の ID の宛先だけ `request-with-credentials:true` にする。narou.rs の既存ユーザー認証 Cookie を使い、任意の外部 `book` URL や従来の S3 配信には credentialed fetch を広げない。narou は許可済みの exact Origin と `Access-Control-Allow-Credentials:true` を返す必要がある。Access アプリ・ポリシーや別の認証発行は追加しない。
+
+EPUB が Range に非対応なら、既存 Bibi が全体 GET を端末内で展開する。Dantalian での EPUB・カタログ保存は行わない。`storage-namespace=narou`、`book-key=narou:<id>@<接続先>`、更新日時・話数・長さから作る `content-hash` を使い、読書位置に認証 URL を記録しない。narou の `reader-navigation` は設定済み接続先を照合して前後巻なしの文脈だけを返し、ローカル書籍照会や narou 書誌取得は行わない。
 
 ### origin / CSP
 
