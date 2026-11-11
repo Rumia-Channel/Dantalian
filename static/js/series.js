@@ -10,7 +10,6 @@ function switchSeriesTab(tab) {
     document.getElementById("tab-borrowers").classList.toggle("active", tab === "borrowers");
     const tabSettings = document.getElementById("tab-settings");
     if (tabSettings) tabSettings.classList.toggle("active", tab === "settings");
-    document.getElementById("tab-narou")?.classList.toggle("active", tab === "narou");
     const panelStates = {
         series: "panel-series",
         "grand-series": "panel-grand-series",
@@ -18,7 +17,6 @@ function switchSeriesTab(tab) {
         labels: "panel-labels",
         borrowers: "panel-borrowers",
         settings: "panel-settings",
-        narou: "panel-narou",
     };
     Object.entries(panelStates).forEach(([name, panelId]) => {
         const panel = document.getElementById(panelId);
@@ -31,8 +29,10 @@ function switchSeriesTab(tab) {
     if (tab === "storage-locations") renderStorageLocations();
     if (tab === "labels") renderLabels();
     if (tab === "borrowers") renderBorrowerList();
-    if (tab === "settings" && typeof renderSettingsForm === "function") renderSettingsForm();
-    if (tab === "narou") renderNarouSettings();
+    if (tab === "settings") {
+        if (typeof renderSettingsForm === "function") renderSettingsForm();
+        renderNarouSettings();
+    }
 }
 
 function renderSeriesManager() {

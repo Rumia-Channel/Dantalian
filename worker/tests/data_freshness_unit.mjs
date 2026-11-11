@@ -45,6 +45,7 @@ async function fixture(t) {
     const events = new EventTarget();
     const document = Object.assign(new EventTarget(), {
       visibilityState: "visible", getElementById: () => null, cookie: "",
+      body: { dataset: { activeNav: "home" } },
     });
     const session = new Map();
     const state = { titles: [], pending: Promise.resolve() };
@@ -123,7 +124,7 @@ async function fixture(t) {
   };
 }
 
-test("another tab's successful registration updates the catalogue without a reload; failures do not reread D1", async t => {
+test("another tab's successful registration updates the catalogue without a reload; failures do not reread D1", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   const registration = f.tab();
@@ -138,7 +139,7 @@ test("another tab's successful registration updates the catalogue without a relo
   assert.equal(f.reads(), 2);
 });
 
-test("hidden catalogue tabs coalesce registrations into one read when shown", async t => {
+test("hidden catalogue tabs coalesce registrations into one read when shown", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   const registration = f.tab();
@@ -153,7 +154,7 @@ test("hidden catalogue tabs coalesce registrations into one read when shown", as
   assert.equal(f.reads(), 2);
 });
 
-test("back-forward restoration rereads even without a local revision, including writes racing a read", async t => {
+test("back-forward restoration rereads even without a local revision, including writes racing a read", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   const registration = f.tab();
@@ -172,7 +173,7 @@ test("back-forward restoration rereads even without a local revision, including 
   assert.equal(f.reads(), 4);
 });
 
-test("a tab's own mutation does not duplicate its explicit UI refresh with a whole-catalogue read", async t => {
+test("a tab's own mutation does not duplicate its explicit UI refresh with a whole-catalogue read", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   await catalogue.refresh();
@@ -181,7 +182,7 @@ test("a tab's own mutation does not duplicate its explicit UI refresh with a who
   assert.equal(f.reads(), 1);
 });
 
-test("restoration visibility, storage and pageshow events cause only one fresh read", async t => {
+test("restoration visibility, storage and pageshow events cause only one fresh read", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   const registration = f.tab();
@@ -195,7 +196,7 @@ test("restoration visibility, storage and pageshow events cause only one fresh r
   assert.equal(f.reads(), 2);
 });
 
-test("a read begun before navigation cannot replace restoration revalidation", async t => {
+test("a read begun before navigation cannot replace restoration revalidation", { timeout: 10000 }, async t => {
   const f = await fixture(t);
   const catalogue = f.tab();
   await catalogue.refresh();

@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.3.2** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.2/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.3** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.3/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -35,6 +35,8 @@ Bibi **2.3.2** のホスト連携機能を使用する。固定した repository
 
 2.3.2 では `keep-settings` が有効な場合、PDF・画像ZIPの読み方向を位置と同じ本・ユーザー・ファイル版の識別子で保存し、初回レイアウト前に復元する。画像ZIPは見開きの両ページを一組として先読みし、順序を変更しても描画済みページを消去・再取得しない。ホスト preset は既に `keep-settings: yes` を明示しているため変更不要。位置・ホストナビ API の schemaVersion は 1 のまま。
 
+2.3.3 では、挿絵の直前の本文を再レイアウトして空きができた場合、縦長の挿絵の配置先を再評価する。挿絵の元ソース CFI を維持したまま先行本文と同じ見開きへ戻す。ホスト preset と schemaVersion 1 の位置・ホストナビ API は変更しない。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -42,7 +44,7 @@ Bibi **2.3.2** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.2
+git checkout --detach v2.3.3
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -66,7 +68,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.3.2` であること。 |
+| `schemaVersion` / `version` | `1` / `2.3.3` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -356,6 +358,14 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - Native build、Worker assets 再生成と release Wasm build が成功し、両方の `/api/health` は `version:"0.2.3"` を返した。
 - 使い捨て Native DB の EPUB・6ページPDF・10ページ画像ZIPを Firefox の `/reader/?book=<id>` から開き、ready/operable と位置 API を確認した。PDF・画像ZIPは UI で右読みへ変更後、再起動して方向が復元されることを確認した。画像ZIPの設定が別書籍のPDFへ漏れないことも確認した。
 - ローカル Worker でも3形式を実 upload API で登録し、描画・位置取得を確認した。画像ZIPは開いた時点で後続の見開きを先読みし、キー操作で次の見開きの両ページへ移動できた。object transport は同一 origin のローカル HTTP fixture で、正規 CSP を変更せず確認した。live Wasabi の署名・資格情報・期限は対象外である。
+
+### Dantalian 0.2.6 / Bibi 2.3.3 の検証
+
+- 公開済みの [Bibi v2.3.3](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.3) の ZIP は GitHub release の SHA-256 `bc3229551c1c22cf9aa18d3aece0f6d8e5ef392fd0214a0c2ce3d298c9f1b10b` と一致した。clean checkout `54922d222b14cfd5db23ff1136ebc6eff1ba1a93` の正規 lock/license blob と公開 manifest を照合し、`sourceDateEpoch 1794372030`、Node 24.22.2 / Bun 1.4.2 を固定した。公開成果物をそのまま製品 importer に通し、Native / Worker 配置先の reader assets 222 件を検証した。
+- 上流 unit tests 102 件、配布物の取り込み検証 6 件、Chromium の読書回帰 38 シナリオとホストナビ 13 シナリオが成功した。本文の再レイアウト後に先行ページの空きを再評価し、縦長の挿絵と元ソース CFI を維持する新規ケースを含む。ローカルのテスト実行環境は Node 26.13.0 / Bun 1.4.4 であり、公開成果物の固定 toolchain は変更していない。
+- Native build、Worker assets 再生成と release Wasm build が成功した。Worker の検証プロセスでは worker-build 0.8.4 と wasm-bindgen 0.2.127 を使用し、ユーザーのグローバル toolchain は変更していない。
+- 隔離 DB の Native `/api/health` は `version:"0.2.6"` を返した。上流の挿絵 EPUB を実 upload API で登録し、Firefox の `/reader/?book=1` から standalone の `dantalian.html` へ遷移した。本文・挿絵の描画、`ready/operable`、schemaVersion 1 と書籍・ファイル識別子、CFI `/6/4!/4/2/2` への復元を確認した。
+- 今回の実ブラウザによるホスト確認は Native。Worker は静的配布物と Wasm build の確認までで、live Wasabi と本番デプロイは検証していない。v0.2.5 からの追加 DB マイグレーションは不要。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 
