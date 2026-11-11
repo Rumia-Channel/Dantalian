@@ -16,7 +16,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
-## v0.3.1（開発中）
+## v0.3.1
 
 - Bibi のブラウザ検証用 runner を Ubuntu 24.04 に固定し、`ubuntu-latest` の Ubuntu 26 への自動移行を避けます。
 
