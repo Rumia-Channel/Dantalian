@@ -40,7 +40,7 @@ jobs:
         with:
           bun-version: ${{ steps.pin.outputs.bun }}
       - name: Install Japanese browser fonts
-        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+        run: node scripts/install_ci_fonts.mjs && fc-cache -f
       - name: Build and verify pinned Bibi
         working-directory: .tmp/bibi-source
         env:
@@ -50,7 +50,7 @@ jobs:
           bun test
           bun run build
           bun run verify:dist
-          bunx playwright install --with-deps chromium
+          bunx playwright install chromium
           bun run test:browser
       - name: Verify host import boundaries
         run: node --test scripts/bibi/distribution.test.mjs

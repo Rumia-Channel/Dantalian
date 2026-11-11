@@ -19,6 +19,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 ## v0.3.1
 
 - Bibi のブラウザ検証用 runner を Ubuntu 24.04 に固定し、`ubuntu-latest` の Ubuntu 26 への自動移行を避けます。
+- 日本語フォントを固定した上流 commit と SHA-256 で検証して導入します。Chromium のシステム依存は hosted runner の既存環境を使い、到達不能な Ubuntu ミラーへの `apt-get` をブラウザ検証から除去します。
 
 ## v0.3.0
 
