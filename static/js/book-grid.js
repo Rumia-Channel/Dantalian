@@ -72,6 +72,11 @@ function getAllItems() {
     if (!isBooksCatalogue && allCds && allCds.length > 0) {
         items = items.concat(allCds.map(normalizeCd));
     }
+    // Web 小説 (narou.rs) は一覧に混ぜるだけで、ローカルにはレコードを作らない。
+    const narouItems = window.narouClient?.items || [];
+    if (narouItems.length > 0) {
+        items = items.concat(narouItems);
+    }
     return items;
 }
 
@@ -157,14 +162,46 @@ function getPrimaryCreator(item) {
         return { key, name: artist.name };
     }
     const author = getPrimaryAuthor(item);
-    return author
-        ? {
-            key: author.id != null
-                ? `author:${author.id}`
+    if (!author) return null;
+    if (item.sourceType === "narou") {
+        // Web 小説は著者名だけでグループにする。同じ著者のローカル書籍が
+        // あれば同じグループへまとめる。
+        const localId = findLocalAuthorId(author.name);
+        return {
+            key: localId != null
+                ? `author:${localId}`
                 : `author-name:${normalizeSearchText(author.name)}`,
             name: author.name,
+        };
+    }
+    return {
+        key: author.id != null
+            ? `author:${author.id}`
+            : `author-name:${normalizeSearchText(author.name)}`,
+        name: author.name,
+    };
+}
+
+// 著者名からローカル書籍の著者 ID を引く（同じ名前の Web 小説を同じグループに）。
+let localAuthorIndex = null;
+let localAuthorIndexSource = null;
+
+function findLocalAuthorId(name) {
+    const target = normalizeSearchText(name);
+    if (!target) return null;
+    if (localAuthorIndexSource !== allBooks) {
+        const index = new Map();
+        for (const book of allBooks || []) {
+            for (const author of book.authors || []) {
+                if (!author || author.id == null) continue;
+                const key = normalizeSearchText(author.name);
+                if (key && !index.has(key)) index.set(key, author.id);
+            }
         }
-        : null;
+        localAuthorIndex = index;
+        localAuthorIndexSource = allBooks;
+    }
+    return localAuthorIndex.get(target) ?? null;
 }
 
 function getBookAuthorLabel(book) {
@@ -179,7 +216,7 @@ function getItemSearchText(item) {
     const grandSeriesNames = [];
     for (const gs of allGrandSeries) {
         if (gs.items.some((it) =>
-            (it.item_type === "book" && it.item_id === item.originalId) ||
+            (it.item_type === "book" && item.sourceType === "book" && it.item_id === item.originalId) ||
             (it.item_type === "cd" && item.sourceType === "cd" && it.item_id === item.originalId) ||
             (it.item_type === "series" && ((item.sourceType === "book" && item.series_id === it.item_id) || (item.sourceType === "cd" && item.series_id === it.item_id)))
         )) {
@@ -220,7 +257,10 @@ function getFilteredItems() {
         } else if (currentTypeFilter === "audiobook") {
             items = items.filter((item) => item.sourceType === "cd" && item.media_type === "audiobook");
         } else {
-            items = items.filter((item) => item.sourceType === "book" && item.media_type !== "cd" && item.media_type !== "audiobook");
+            // Web 小説も書籍として扱う（ローカルにレコードは無い）。
+            items = items.filter((item) =>
+                (item.sourceType === "book" && item.media_type !== "cd" && item.media_type !== "audiobook") ||
+                item.sourceType === "narou");
         }
     }
     return items;
@@ -299,7 +339,7 @@ function sortBookList(books) {
             const va = parseVolumeSortKey(a.volume);
             const vb = parseVolumeSortKey(b.volume);
             if (va[0] !== vb[0] || va[1] !== vb[1]) return va[0] - vb[0] || va[1] - vb[1];
-            return b.id - a.id;
+            return getSortId(b) - getSortId(a);
         }
 
         let cmp = 0;
@@ -310,18 +350,24 @@ function sortBookList(books) {
             const db = b.publish_date || "";
             cmp = db.localeCompare(da);
         } else {
-            cmp = b.id - a.id;
+            cmp = getSortId(b) - getSortId(a);
         }
         if (cmp !== 0) return cmp;
         const va = parseVolumeSortKey(a.volume);
         const vb = parseVolumeSortKey(b.volume);
         if (va[0] !== vb[0] || va[1] !== vb[1]) return va[0] - vb[0] || va[1] - vb[1];
-        return b.id - a.id;
+        return getSortId(b) - getSortId(a);
     });
 }
 
+// 並び順の比較に使う数値 ID。Web 小説は narou_id、ローカル書籍は id。
+function getSortId(item) {
+    if (item.sourceType === "narou") return Number(item.narou_id) || 0;
+    return Number(item.id) || 0;
+}
+
 function getMaxId(books) {
-    return books.length > 0 ? Math.max(...books.map((b) => b.id)) : 0;
+    return books.length > 0 ? Math.max(...books.map(getSortId)) : 0;
 }
 
 function getLatestDate(books) {
@@ -331,20 +377,29 @@ function getLatestDate(books) {
 }
 
 function renderBookCard(item) {
+    const isNarou = item.sourceType === "narou";
     const copiesBadge = item.copies_count > 0
         ? ` <span class="copy-count-badge${item.lent_count > 0 ? ' copy-lent-badge' : ''}">${item.copies_count}${item.lent_count > 0 ? ' (' + item.lent_count + '貸出)' : ''}</span>`
         : "";
     const mediaType = item.media_type || "book";
     const mediaBadges = { cd: "CD", audiobook: "AB" };
-    const mediaBadge = mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "";
+    // Web 小説はカバーが配信されないので、種類だけを示す。
+    const mediaBadge = isNarou
+        ? '<span class="media-badge" style="background: var(--color-success)">Web</span>'
+        : (mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "");
     const readsBook = isBooksCatalogue && isCatalogueBook(item);
     const clickHandler = catalogueItemClickHandler(item);
+    const readHref = isNarou ? narouReaderUrl(item.narou_id) : bookReaderUrl(item.id);
     const cardOpening = readsBook
-        ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(bookReaderUrl(item.id))}" aria-label="${escapeAttr(item.title)}を読む">`
+        ? `<div class="book-card"><a class="book-card-read" href="${escapeAttr(readHref)}" aria-label="${escapeAttr(item.title)}を読む">`
         : `<div class="book-card" role="button" tabindex="0" aria-label="${escapeAttr(item.title)}を表示" onclick="${clickHandler}" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();this.click();}">`;
     const authorLabel = item.sourceType === "book"
         ? getBookAuthorLabel(item)
         : (item.authors || []).map((author) => author.name).join(", ");
+    // Web 小説にローカル専用の操作は出さない（詳細・編集・削除は無い）。
+    const narouLink = isNarou && item.toc_url
+        ? `<div class="book-id" onclick="event.stopPropagation()"><a href="${escapeAttr(item.toc_url)}" target="_blank" rel="noopener noreferrer">元のページを開く</a></div>`
+        : "";
     return `
     ${cardOpening}
         ${
@@ -360,7 +415,8 @@ function renderBookCard(item) {
         </div>
     ${readsBook ? "</a>" : ""}
     ${item.sourceType === "book" ? `<div class="book-id" onclick="event.stopPropagation()">書籍ID: <code>${item.id}</code> <button type="button" class="btn btn-xs btn-ghost" aria-label="書籍ID ${item.id} をコピー" onclick="copyBookId(event, ${item.id}, this)">コピー</button><span class="book-id-status" role="status"></span></div>` : ""}
-    ${readsBook ? `<button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
+    ${narouLink}
+    ${readsBook && !isNarou ? `<button type="button" class="btn btn-xs btn-ghost book-card-details" onclick="showDetail(${item.id})" aria-label="${escapeAttr(item.title)}の詳細">詳細</button>` : ""}
     </div>`;
 }
 

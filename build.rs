@@ -67,6 +67,7 @@ fn main() {
         "static/js/borrowers.js",
         "static/js/settings-manage.js",
         "static/js/narou-manage.js",
+        "static/js/narou-client.js",
         "static/js/narou-catalogue.js",
         "static/js/player/audio-source.js",
         "static/js/player/audio-cache.js",

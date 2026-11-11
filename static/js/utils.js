@@ -299,7 +299,6 @@ async function loadBooks() {
         let cursor = null;
         do {
             const query = new URLSearchParams({ limit: "100" });
-            if (document.body.dataset.activeNav === "home") query.set("exclude_narou", "true");
             if (cursor) query.set("cursor", cursor);
             const res = await fetch(`/api/books?${query.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
