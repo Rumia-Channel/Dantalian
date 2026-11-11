@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, params};
 use std::sync::Arc;
 
-const SCHEMA_VERSION: u32 = 18;
+const SCHEMA_VERSION: u32 = 19;
 
 /// Idempotent indexes for the hot read paths (list/detail pages, lending
 /// counts, playlist playback). Executed on every open so existing databases
@@ -592,7 +592,6 @@ impl Db {
             conn.execute_batch(SCHEMA_SQL)?;
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(GRAND_SERIES_INTEGRITY_SQL)?;
-            conn.execute_batch(crate::narou::IMPORT_SCHEMA)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema initialized");
         } else if current_version < SCHEMA_VERSION {
@@ -666,9 +665,7 @@ impl Db {
                      CREATE UNIQUE INDEX idx_cds_dlsite_id ON cds(dlsite_id) WHERE dlsite_id IS NOT NULL;",
                 )?;
             }
-            if current_version < 18 {
-                conn.execute_batch(crate::narou::IMPORT_SCHEMA)?;
-            }
+            super::narou_retirement::migrate(&conn)?;
             ensure_track_metadata_columns(&conn)?;
             conn.execute_batch(&format!("PRAGMA user_version = {};", SCHEMA_VERSION))?;
             tracing::info!(version = SCHEMA_VERSION, "Database schema migrated");

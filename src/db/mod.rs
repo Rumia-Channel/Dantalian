@@ -6,7 +6,7 @@ pub mod cd_metadata;
 pub mod cds;
 pub mod copies;
 pub mod labels;
-mod narou;
+pub mod narou_retirement;
 pub mod playlists;
 pub mod reader_navigation;
 pub mod schema;

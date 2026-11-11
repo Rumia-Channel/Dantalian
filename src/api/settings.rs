@@ -3,11 +3,8 @@ use std::collections::{HashMap, HashSet};
 
 const ALLOWED_SETTING_KEYS: &[&str] = &[
     "narou.url",
-    "narou.token",
     "narou.tags",
     "narou.use_favorites",
-    "narou.cf_access_client_id",
-    "narou.cf_access_client_secret",
     "discogs_token",
     "musicbrainz_contact",
     "upload.cover_max_mb",
@@ -43,9 +40,6 @@ const ALLOWED_SETTING_KEYS: &[&str] = &[
 ];
 
 const SECRET_SETTING_KEYS: &[&str] = &[
-    "narou.token",
-    "narou.cf_access_client_id",
-    "narou.cf_access_client_secret",
     "discogs_token",
     "backup.webdav_pass",
     "backup.s3_access_key",
@@ -206,33 +200,6 @@ pub async fn update_settings(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": error})),
             ));
-        }
-    }
-    if settings.keys().any(|key| key.starts_with("narou.")) {
-        let mut merged = state.db.get_all_settings();
-        merged.extend(settings.clone());
-        crate::narou::validate_auth_settings(&merged).map_err(|message| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error":message})),
-            )
-        })?;
-        if merged
-            .get(crate::narou::KEY_URL)
-            .is_some_and(|value| !value.trim().is_empty())
-        {
-            let config = crate::narou::Config::from_settings(&merged).map_err(|message| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error":message})),
-                )
-            })?;
-            super::narou::validate_connection(&config).map_err(|message| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error":message})),
-                )
-            })?;
         }
     }
     state.db.set_settings(&settings).map_err(|error| {

@@ -22,6 +22,13 @@ pub async fn get(
     query: Result<Query<NavigationQuery>, QueryRejection>,
 ) -> Response {
     let result = match query {
+        Ok(Query(query)) if query.is_narou() => match super::narou::load_config(&state.db) {
+            Ok(config) => match query.resolve_narou(&config.url) {
+                Ok(context) => Json(context).into_response(),
+                Err(reason) => error(reason),
+            },
+            Err(_) => error(NavigationError::Database),
+        },
         Ok(Query(query)) => match query.validate() {
             Ok(request) => match state
                 .db

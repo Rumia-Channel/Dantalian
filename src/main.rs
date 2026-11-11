@@ -109,6 +109,8 @@ async fn main() {
 
     let db_path = format!("{}{}dantalian.db", db_dir, std::path::MAIN_SEPARATOR);
     tracing::info!(%data_dir, %db_path, %images_dir, %audio_dir, %epubs_dir, "Data directories");
+    dantalian::db::narou_retirement::remove_retired_narou_epubs(&db_path, &epubs_dir)
+        .expect("Failed to remove retired narou EPUB cache");
 
     let db = Db::new(&db_path).expect("Failed to initialize database");
 

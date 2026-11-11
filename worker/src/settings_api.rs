@@ -9,11 +9,8 @@ use crate::error::{error_response, parse_json};
 
 const ALLOWED_SETTING_KEYS: &[&str] = &[
     "narou.url",
-    "narou.token",
     "narou.tags",
     "narou.use_favorites",
-    "narou.cf_access_client_id",
-    "narou.cf_access_client_secret",
     "discogs_token",
     "musicbrainz_contact",
     "upload.cover_max_mb",
@@ -49,9 +46,6 @@ const ALLOWED_SETTING_KEYS: &[&str] = &[
 ];
 
 const SECRET_SETTING_KEYS: &[&str] = &[
-    "narou.token",
-    "narou.cf_access_client_id",
-    "narou.cf_access_client_secret",
     "discogs_token",
     "backup.webdav_pass",
     "backup.s3_access_key",
@@ -194,25 +188,6 @@ pub async fn update(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         }
     }
     let db = ctx.d1("DB")?;
-    if settings.keys().any(|key| key.starts_with("narou.")) {
-        let mut merged = crate::narou_api::load_settings(&db).await?;
-        merged.extend(settings.clone());
-        if let Err(message) = dantalian::narou::validate_auth_settings(&merged) {
-            return error_response(AppError::Validation(message));
-        }
-        if merged
-            .get(dantalian::narou::KEY_URL)
-            .is_some_and(|value| !value.trim().is_empty())
-        {
-            let config = match dantalian::narou::Config::from_settings(&merged) {
-                Ok(config) => config,
-                Err(message) => return error_response(AppError::Validation(message)),
-            };
-            if let Err(message) = crate::narou_api::validate_connection(&config) {
-                return error_response(AppError::Validation(message));
-            }
-        }
-    }
     let mut statements = Vec::with_capacity(settings.len());
     for (key, value) in settings {
         let key_value = D1Type::Text(&key);
