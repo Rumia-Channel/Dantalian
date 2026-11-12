@@ -16,6 +16,12 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.3.2
+
+- Bibi を 2.3.4 へ更新しました。narou.rs が Range 要求へ EPUB 全体を返した場合、その応答を端末内で展開し、同じ EPUB の二重生成・二重取得を防ぎます。
+- 上流の 503 などをフォルダ読み込みの 404 に置き換えず、元の HTTP エラーとして表示します。
+- DB スキーマ・認証方式は変更しません。Dantalian への narou.rs の EPUB・書誌キャッシュ保存も追加しません。
+
 ## v0.3.1
 
 - Bibi のブラウザ検証用 runner を Ubuntu 24.04 に固定し、`ubuntu-latest` の Ubuntu 26 への自動移行を避けます。
@@ -192,7 +198,7 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker のブラウザ UI は全書籍ファイルを presigned multipart で直送し、`POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。`object_kind: "epub"` と `epubs/` は EPUB・ZIP・PDF 共通の内部区分・保存先であり、EPUB 専用ではない。
 
-ZIP は Bibi 2.3.3 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
+ZIP は Bibi 2.3.4 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
 
 ### DLsite 登録
 

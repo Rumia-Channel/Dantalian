@@ -2,7 +2,7 @@
 
 ## 対象バージョンと役割
 
-Bibi **2.3.3** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.3/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.4** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.4/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -44,7 +44,7 @@ Bibi **2.3.3** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.3
+git checkout --detach v2.3.4
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -68,7 +68,7 @@ node scripts/import_bibi.mjs --verify
 
 | フィールド | 取り込み時の検証 |
 | --- | --- |
-| `schemaVersion` / `version` | `1` / `2.3.3` であること。 |
+| `schemaVersion` / `version` | `1` / `2.3.4` であること。 |
 | `source.commit` / `source.dirty` | 上記固定 SHA / `false`。作業中ビルドは `dirty:true` を正直に記録するため、正式取り込みには使わない。 |
 | `source.lockSha256` | 固定 checkout の `bun.lock` SHA-256 と一致。 |
 | `source.sourceDateEpoch` | `SOURCE_DATE_EPOCH` または commit 時刻由来の固定値。 |
@@ -154,7 +154,9 @@ narou の本は `/reader/?narou=<id>` から起動し、書誌情報をブラウ
 
 ホスト preset はこの同一 origin・正の ID の宛先だけ `request-with-credentials:true` にする。narou.rs の既存ユーザー認証 Cookie を使い、任意の外部 `book` URL や従来の S3 配信には credentialed fetch を広げない。narou は許可済みの exact Origin と `Access-Control-Allow-Credentials:true` を返す必要がある。Access アプリ・ポリシーや別の認証発行は追加しない。
 
-EPUB が Range に非対応なら、既存 Bibi が全体 GET を端末内で展開する。Dantalian での EPUB・カタログ保存は行わない。`storage-namespace=narou`、`book-key=narou:<id>@<接続先>`、更新日時・話数・長さから作る `content-hash` を使い、読書位置に認証 URL を記録しない。narou の `reader-navigation` は設定済み接続先を照合して前後巻なしの文脈だけを返し、ローカル書籍照会や narou 書誌取得は行わない。
+EPUB が Range に非対応で probe に全体の `200` 応答を返した場合、Bibi はその受信済みの応答を端末内で展開し、同じ EPUB をもう一度取得しない。認証・レート制限・サーバーエラーは HTTP 状態を保持し、フォルダ形式の再取得が返す 404 で隠さない。
+
+Dantalian での EPUB・カタログ保存は行わない。`storage-namespace=narou`、`book-key=narou:<id>@<接続先>`、更新日時・話数・長さから作る `content-hash` を使い、読書位置に認証 URL を記録しない。narou の `reader-navigation` は設定済み接続先を照合して前後巻なしの文脈だけを返し、ローカル書籍照会や narou 書誌取得は行わない。
 
 ### origin / CSP
 
