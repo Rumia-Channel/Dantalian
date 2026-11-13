@@ -60,7 +60,7 @@ node scripts/import_bibi.mjs --verify
 
 固定 toolchain は Bun 1.4.2 / Node.js 24.22.2。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
-固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
+固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset と host entry の digest に含むキャッシュ・narou クライアント JS も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
 [`scripts/import_bibi.mjs`](../scripts/import_bibi.mjs) が検証済みの `__dist/bibi/` 全体を `static/vendor/bibi/` に配置する。SHA・クリーンな checkout・lock・toolchain・必須ファイル・一覧・サイズ・digest を確認し、ステージングの検証に成功してから既存配布物と入れ替える。検証失敗時は既存配布物を変更しない。`--verify` は配置済み成果物を再検証し、`--destination DIRECTORY` で Worker の複製先等も確認できる。生成ディレクトリは Git 管理しない。配下の相対関係を維持し `/vendor/bibi/` で配信する。デモ・サンプル本は不要。Jo だけ、reader JS だけを抜き出す配布は不可。
 
