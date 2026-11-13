@@ -16,6 +16,12 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 
 配布時の確認事項は [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) にまとめています。
 
+## v0.3.3
+
+- EPUB をこの端末のブラウザ内へキャッシュします。管理画面の「設定」→「ローカル EPUB キャッシュ」で容量上限（既定 512 MiB）、使用量・保存数、全削除を管理できます。0 MiB は無効化と保存済み EPUB の削除です。
+- 通常の EPUB はファイルハッシュ、narou.rs は接続先・作品 ID・API の `last_update` で照合します。未更新なら本文を再取得せず、更新版の取得・展開後に旧版を置き換えます。上限超過は最終利用の古い順に削除します。
+- Dantalian のサーバー DB に EPUB は保存しません。narou.rs の書誌情報も永続保存せず、認証・鮮度確認はオンラインで行います。503 や認証失敗時に旧版を最新版として表示することはありません。
+
 ## v0.3.2
 
 - Bibi を 2.3.4 へ更新しました。narou.rs が Range 要求へ EPUB 全体を返した場合、その応答を端末内で展開し、同じ EPUB の二重生成・二重取得を防ぎます。
@@ -199,6 +205,13 @@ Fraunhofer の名称を承認・推奨の表示に使用してはなりません
 Native / Worker 共通で `POST /api/books/{id}/files` にファイルを追加し、`DELETE /api/books/{id}/files/{file_id}` で1件だけ削除する。書籍詳細 API は `files` 配列（`id`, `book_id`, `file_hash`, `file_name`, `created_at`）を返す。従来の単一ファイルは `book_files` へ移行し、他の書籍が同じファイルを参照している場合は実ファイルを削除しない。Worker のブラウザ UI は全書籍ファイルを presigned multipart で直送し、`POST /api/books/{id}/files/finalize` でアップロード済みオブジェクトを追加する。`object_kind: "epub"` と `epubs/` は EPUB・ZIP・PDF 共通の内部区分・保存先であり、EPUB 専用ではない。
 
 ZIP は Bibi 2.3.4 で EPUB 構成の ZIP に加えて、画像だけを含む ZIP も書籍として開けます。画像は PNG・JPEG・GIF・WebP・AVIF・BMP に対応し、自然順（`1`,`2`,`10`）とサブフォルダの順でページになります。EPUB 構成・BibiZine・画像ブックの順に判定し、対応しない ZIP は開けません。PDF・画像ZIPで選んだ左右の読み方向は書籍ごとに保存・復元します。
+
+### 端末内 EPUB キャッシュ
+
+`/manage/` の設定タブで容量を MiB 単位で指定する。設定も EPUB 本体も同じブラウザプロファイル・同じ origin の IndexedDB にだけ保存し、サーバー設定 API へ送らない。別端末・別ブラウザとは共有しない。共有端末では本文がプロファイル内に残るため、利用後は全削除または容量 0 を指定する。
+
+キャッシュを使う前にも、通常書籍は書籍 API のファイル登録、narou.rs は既存認証で `last_update` を確認する。取得元が利用できない場合のオフライン閲覧は行わない。上限より大きい EPUB やブラウザの保存容量が不足した場合も、取得できた本文は保存せずに読める。ブラウザによる自動削除もあり得る。PDF・画像 ZIP はこのキャッシュの対象外。
+
 
 ### DLsite 登録
 

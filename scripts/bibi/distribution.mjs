@@ -15,15 +15,25 @@ export const requiredAssets = [
 ];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-export function renderHostEntry(indexBytes, presetBytes) {
+export async function hostReaderVersion() {
+    const scripts = ['epub-cache.js', 'epub-cache-reader.js', 'epub-cache-bibi.js', 'narou-client.js'];
+    const digests = await Promise.all(scripts.map(async name =>
+        `${name}\0${sha256(await readFile(new URL(`../../static/js/${name}`, import.meta.url)))}`));
+    return sha256(Buffer.from(digests.join('\n')));
+}
+
+export function renderHostEntry(indexBytes, presetBytes, hostVersion) {
     const html = indexBytes.toString('utf8');
     const presetAttribute = 'data-bibi-preset=""';
-    const scriptVersion = /src="resources\/scripts\/bibi\.js\?v=([^"]+)"/g;
-    if (html.split(presetAttribute).length !== 2 || [...html.matchAll(scriptVersion)].length !== 1) {
-        throw new Error('Bibi entry must have one empty document preset and one versioned reader bundle.');
+    const readerScript = /<script\b[^>]*\bsrc="resources\/scripts\/bibi\.js\?v=([^"]+)"[^>]*>\s*<\/script>/g;
+    if (html.split(presetAttribute).length !== 2 || [...html.matchAll(readerScript)].length !== 1 ||
+        !/^[a-f0-9]{64}$/.test(hostVersion)) {
+        throw new Error('Bibi entry must have one empty preset, one versioned reader bundle and a host asset digest.');
     }
-    return Buffer.from(html.replace(presetAttribute, 'data-bibi-preset="dantalian"')
-        .replace(scriptVersion, (_, version) => `src="resources/scripts/bibi.js?v=${version}.${sha256(presetBytes)}"`));
+    return Buffer.from(html.replace(readerScript, (_, version) =>
+        `<script src="/js/epub-cache.js?v=${hostVersion}"></script>\n` +
+        `<script src="/js/narou-client.js?v=${hostVersion}"></script>\n` +
+        `<script id="dantalian-reader-bootstrap" src="/js/epub-cache-reader.js?v=${hostVersion}" data-bibi-source="resources/scripts/bibi.js?v=${version}.${sha256(presetBytes)}.${hostVersion}"></script>`));
 }
 
 export async function filesUnder(root) {
@@ -85,7 +95,7 @@ export async function verifyUpstream(root, pin, additions = []) {
 export async function verifyImported(root, pin, presetBytes) {
     const additions = ['LICENSE', 'dantalian.html', 'presets/dantalian.js'];
     const upstream = await verifyUpstream(root, pin, [...additions, importManifestName]);
-    const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), presetBytes);
+    const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), presetBytes, await hostReaderVersion());
     const metadata = JSON.parse(await readFile(join(root, importManifestName)));
     if (metadata.schemaVersion !== 1 || metadata.repository !== pin.repository ||
         metadata.upstreamManifestSha256 !== sha256(upstream.manifestBytes)) {

@@ -77,10 +77,14 @@
                 <h3 class="manage-panel-title">設定</h3>
                 <section aria-labelledby="narou-settings-title">
                     <h3 id="narou-settings-title" class="manage-panel-title">Web 小説（narou.rs）</h3>
-                    <p>ブラウザが narou.rs へ直接アクセスして書誌情報を取得し、通常の一覧に混ぜて表示します。Dantalian には書誌情報・EPUB を保存せず、接続先・認証情報・対象タグだけをこの欄で管理します。</p>
+                    <p>ブラウザが narou.rs へ直接アクセスして書誌情報を取得し、通常の一覧に混ぜて表示します。Dantalian のサーバー（DB・ファイル・S3）には書誌情報・EPUB を保存せず、接続先・対象タグだけをこの欄で管理します。EPUB だけは下の設定に従ってこのブラウザ内へキャッシュします（既定 512 MiB、容量 0 で無効）。</p>
                     <div id="narou-settings"></div>
                 </section>
                 <div id="settings-form"></div>
+                <section aria-labelledby="epub-cache-settings-title">
+                    <h3 id="epub-cache-settings-title" class="manage-panel-title">ローカル EPUB キャッシュ（このブラウザのみ）</h3>
+                    <div id="epub-cache-settings"></div>
+                </section>
             </div>
         </section>
     </div>
@@ -95,6 +99,8 @@
     <script src="/js/labels.js?v=ASSET_VERSION"></script>
     <script src="/js/borrowers.js?v=ASSET_VERSION"></script>
     <script src="/js/settings-manage.js?v=ASSET_VERSION"></script>
+    <script src="/js/epub-cache.js?v=ASSET_VERSION"></script>
+    <script src="/js/epub-cache-manage.js?v=ASSET_VERSION"></script>
     <script src="/js/narou-client.js?v=ASSET_VERSION"></script>
     <script src="/js/narou-manage.js?v=ASSET_VERSION"></script>
     <script>

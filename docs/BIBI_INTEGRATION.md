@@ -60,7 +60,7 @@ node scripts/import_bibi.mjs --verify
 
 固定 toolchain は Bun 1.4.2 / Node.js 24.22.2。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
-固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
+固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset と host entry の digest に含むキャッシュ・narou クライアント JS も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
 [`scripts/import_bibi.mjs`](../scripts/import_bibi.mjs) が検証済みの `__dist/bibi/` 全体を `static/vendor/bibi/` に配置する。SHA・クリーンな checkout・lock・toolchain・必須ファイル・一覧・サイズ・digest を確認し、ステージングの検証に成功してから既存配布物と入れ替える。検証失敗時は既存配布物を変更しない。`--verify` は配置済み成果物を再検証し、`--destination DIRECTORY` で Worker の複製先等も確認できる。生成ディレクトリは Git 管理しない。配下の相対関係を維持し `/vendor/bibi/` で配信する。デモ・サンプル本は不要。Jo だけ、reader JS だけを抜き出す配布は不可。
 
@@ -79,7 +79,7 @@ node scripts/import_bibi.mjs --verify
 
 ZIP はエントリー順・UTC/DOS 時刻・権限を固定する。同じソース・lock・ツールチェーン・環境入力なら同じバイト列となる。異なるツールバージョン、dirty 状態、改変済み成果物まで同一という意味ではない。ホスト独自 preset は別ファイルとして管理し、元の manifest と独自追加分の一覧・ハッシュを取り込み側でも記録する。
 
-upstream の `index.html` と `build-manifest.json` は改変せず、`LICENSE`、[`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js)、生成した `dantalian.html` を追加する。host entry は document の `data-bibi-preset="dantalian"` と preset digest を含む cache key を持つ。`import-manifest.json` は全追加分の一覧・サイズ・SHA-256 を記録する。配置済み検証は自己申告のハッシュだけでなく、固定 LICENSE・tracked preset・元 HTML から再計算した host entry と照合する。
+upstream の `index.html` と `build-manifest.json` は改変せず、`LICENSE`、[`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js)、生成した `dantalian.html` を追加する。host entry はホストのキャッシュ・narou クライアントと bootstrap を読み、bootstrap が固定 preset `dantalian` で Bibi を一度だけ起動する。reader の cache key には preset と依存ホスト JS の digest を含める。`import-manifest.json` は全追加分の一覧・サイズ・SHA-256 を記録する。配置済み検証は固定 LICENSE・tracked preset・ホスト JS・元 HTML から再計算した host entry と照合する。
 
 [`build.yml`](../.github/workflows/build.yml) の `bibi` job が frozen install、unit/browser 検証、ビルド、取り込みを行い、`bibi-reader` artifact を一度だけ作る。Native・Worker・develop・staging・production は同じ artifact を取得する。Native は Cargo 実行前、Worker/デプロイは `worker/build_assets.mjs` の冒頭で再検証する。Worker は旧 reader ディレクトリを削除してから静的配布物を複製し、削除された upstream ファイルを残さない。Native の `build.rs` と Worker のアセットハッシュには manifest・preset・LICENSE も反映する。`v0.1.16` の [Linux CI](https://github.com/Rumia-Channel/Dantalian/actions/runs/38429352764) で Bibi・Native・Worker・本番デプロイが成功した。
 
@@ -91,38 +91,7 @@ upstream の `index.html` と `build-manifest.json` は改変せず、`LICENSE`�
 
 拡張子のない EPUB/ZIP endpoint は専用 preset で展開対象にする。Dantalian の起動先は `/vendor/bibi/dantalian.html`。HTML が basename `dantalian` を preset として固定するので、URL の `preset=dantalian` は付けない。URL で有効な preset を選んだだけでは巻間移動・戻るの機能を許可しない:
 
-```javascript
-Bibi.preset({
-    'extract-if-necessary': ['*'],
-    'autostart': 'yes',
-    'resume-from-last-position': 'yes',
-    'keep-settings': 'yes',
-    'item-padding-top': 48,
-    'item-padding-bottom': 48,
-    'item-padding-left': 24,
-    'item-padding-right': 24,
-    'use-menubar': 'yes',
-    'use-full-height': 'yes',
-    'use-arrows': 'yes',
-    'use-keys': 'yes',
-    'use-slider': 'yes',
-    'flipper-width': 1 / 3,
-    'use-nombre': 'yes',
-    'use-host-navigation': true,
-    'host-navigation-api': '/api/reader-navigation',
-    'host-navigation-paths': ['/', '/books/', '/edit/', '/reader/'],
-    'allow-scripts-in-content': false,
-    'request-with-credentials': (() => {
-        try {
-            const book = new URL(new URLSearchParams(location.search).get('book'), location.href);
-            return book.origin === location.origin &&
-                /^\/api\/narou\/novels\/[1-9]\d*\/epub$/.test(book.pathname);
-        } catch {
-            return false;
-        }
-    })()
-});
-```
+設定の正本は [`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js)。端末キャッシュの対象だけ公式 at-once extractor とホスト拡張 [`epub-cache-bibi.js`](../static/js/epub-cache-bibi.js) を読み込む。Bibi の配布コードは変更せず、既存の EPUB 展開処理へ Blob を渡す。対象外・容量 0 の場合は通常の取得経路を維持する。
 
 この preset は EPUB を返す Dantalian の書籍 endpoint 用。2.1.0 の判定では空拡張子 `''` を含めるとその分岐が先に返り、`['.epub', '.zip', '']` でも `.epub` 入力をフォルダーとして取得してしまう。実配信で確認したため、拡張子なし・`.epub` の両方を展開対象にする文書化済みの `['*']` を使用する。
 
@@ -152,11 +121,21 @@ Worker の `/epubs/{file_hash}` が署名付き Wasabi URL にリダイレクト
 
 narou の本は `/reader/?narou=<id>` から起動し、書誌情報をブラウザが `/api/read/v1/novels/{id}` で直接確認する。Bibi の `book` は同一 origin の `/api/narou/novels/{id}/epub` とし、この endpoint は信頼した設定済み narou の URL に302を返すだけで、本文を取得しない。
 
-ホスト preset はこの同一 origin・正の ID の宛先だけ `request-with-credentials:true` にする。narou.rs の既存ユーザー認証 Cookie を使い、任意の外部 `book` URL や従来の S3 配信には credentialed fetch を広げない。narou は許可済みの exact Origin と `Access-Control-Allow-Credentials:true` を返す必要がある。Access アプリ・ポリシーや別の認証発行は追加しない。
+ホスト preset はこの同一 origin・非負整数 ID の宛先だけ `request-with-credentials:true` にする。narou.rs の既存ユーザー認証 Cookie を使い、任意の外部 `book` URL や従来の S3 配信には credentialed fetch を広げない。narou は許可済みの exact Origin と `Access-Control-Allow-Credentials:true` を返す必要がある。Access アプリ・ポリシーや別の認証発行は追加しない。
 
 EPUB が Range に非対応で probe に全体の `200` 応答を返した場合、Bibi はその受信済みの応答を端末内で展開し、同じ EPUB をもう一度取得しない。認証・レート制限・サーバーエラーは HTTP 状態を保持し、フォルダ形式の再取得が返す 404 で隠さない。
 
-Dantalian での EPUB・カタログ保存は行わない。`storage-namespace=narou`、`book-key=narou:<id>@<接続先>`、更新日時・話数・長さから作る `content-hash` を使い、読書位置に認証 URL を記録しない。narou の `reader-navigation` は設定済み接続先を照合して前後巻なしの文脈だけを返し、ローカル書籍照会や narou 書誌取得は行わない。
+Dantalian サーバーでの EPUB・カタログ保存は行わない。`storage-namespace=narou`、`book-key=narou:<id>@<接続先>`、更新日時・話数・長さから作る `content-hash` を使い、読書位置に認証 URL を記録しない。narou の `reader-navigation` は設定済み接続先を照合して前後巻なしの文脈だけを返し、ローカル書籍照会や narou 書誌取得は行わない。
+
+### 端末内 EPUB キャッシュ
+
+[`epub-cache.js`](../static/js/epub-cache.js) は IndexedDB の設定・管理情報・Blob を別ストアに置く。既定 512 MiB、管理画面で容量変更・使用状況確認・全削除ができ、0 は無効化と削除。本文の合計バイト数を制限し、LRU で削除する。容量変更・削除は世代を進め、取得中の古い処理が書き戻して復活させることを防ぐ。同時タブの容量計算・入れ替えは単一の readwrite transaction で行う。
+
+[`epub-cache-reader.js`](../static/js/epub-cache-reader.js) が起動前にオンラインで認証・版を確認する。通常の EPUB は書籍 API に登録された `file_hash`、narou.rs は接続先・作品 ID と正確な `last_update` を照合する。カタログや認証情報・署名 URL は保存しない。narou の取得後にも版を再確認し、取得中に更新された本文を古い版として保存しない。Web Locks 対応ブラウザでは同じ作品の同時取得をまとめる。
+
+一致したキャッシュは本文のネットワーク取得をせず展開する。不一致は取得・EPUB 展開後にその作品の旧版を置き換える。認証・メタデータ確認の失敗や更新版の 503 に対して旧版を返さない。容量超過・保存失敗は読書を失敗させず、保存しなかった理由を通知する。共有プロファイルに本文が残ること、ブラウザによる削除、オフライン閲覧ではないことを設定 UI に明示する。PDF・画像 ZIP・任意の外部 URL は対象外。
+
+回帰検証は `node scripts/epub-cache/browser.test.mjs --bibi-source .tmp/bibi-source`。固定 Bibi の開発依存と Chromium を使い、実際の EPUB 描画・再利用・更新・503・認証拒否・LRU/容量縮小・同時取得・削除中の書き戻し・設定 UI を検証する。同時取得は取得元への HTTP 要求開始で同期し、どちらのタブが先にロックを取るかに依存しない。CI は verified reader の取り込み後に実行する。
 
 ### origin / CSP
 
