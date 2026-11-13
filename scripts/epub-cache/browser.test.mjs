@@ -59,7 +59,7 @@ test('failed update preserves the real 503 and never supplies old bytes as the n
     await page.goto(readerUrl()); await ready();
     Object.assign(fixture.state, { revision: '2026-01-02T00:00:00Z', edition: 'b', epubStatus: 503 });
     await page.reload();
-    await page.waitForFunction(() => Bibi.API.getState().status === 'error');
+    await page.waitForFunction(() => window.Bibi?.API?.getState().status === 'error');
     assert.match(await page.locator('body').innerText(), /503/);
     assert.doesNotMatch(await contents(), /Revision A: the complete original EPUB/);
     assert.equal(fixture.state.sourceDownloads, 2);
@@ -115,7 +115,7 @@ test('simultaneous readers share one download and clear prevents an in-flight ca
     fixture.state.delay = new Promise(resolve => { release = resolve; });
     const second = await context.newPage();
     await Promise.all([page.goto(readerUrl()), second.goto(readerUrl())]);
-    await page.waitForFunction(() => window.dantalianEpubReader?.cacheStatus === 'miss');
+    await fixture.waitForSourceDownloads(1);
     release(); fixture.state.delay = null;
     await Promise.all([ready(), ready(second)]);
     assert.equal(fixture.state.sourceDownloads, 1);
@@ -124,7 +124,7 @@ test('simultaneous readers share one download and clear prevents an in-flight ca
     await page.evaluate(() => epubCache.clear());
     fixture.state.delay = new Promise(resolve => { release = resolve; });
     await page.reload();
-    await page.waitForFunction(() => window.dantalianEpubReader?.cacheStatus === 'miss');
+    await fixture.waitForSourceDownloads(2);
     await page.evaluate(() => epubCache.clear());
     release(); fixture.state.delay = null;
     await ready();
@@ -170,7 +170,7 @@ test('a revision changed during generation is not stored under the earlier last_
     let release;
     fixture.state.delay = new Promise(resolve => { release = resolve; });
     await page.goto(readerUrl());
-    await page.waitForFunction(() => window.dantalianEpubReader?.cacheStatus === 'miss');
+    await fixture.waitForSourceDownloads(1);
     Object.assign(fixture.state, { revision: '2026-01-02T00:00:00Z', edition: 'b' });
     release(); fixture.state.delay = null;
     await ready();

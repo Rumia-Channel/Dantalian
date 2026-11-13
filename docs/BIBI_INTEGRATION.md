@@ -135,7 +135,7 @@ Dantalian サーバーでの EPUB・カタログ保存は行わない。`storage
 
 一致したキャッシュは本文のネットワーク取得をせず展開する。不一致は取得・EPUB 展開後にその作品の旧版を置き換える。認証・メタデータ確認の失敗や更新版の 503 に対して旧版を返さない。容量超過・保存失敗は読書を失敗させず、保存しなかった理由を通知する。共有プロファイルに本文が残ること、ブラウザによる削除、オフライン閲覧ではないことを設定 UI に明示する。PDF・画像 ZIP・任意の外部 URL は対象外。
 
-回帰検証は `node scripts/epub-cache/browser.test.mjs --bibi-source .tmp/bibi-source`。固定 Bibi の開発依存と Chromium を使い、実際の EPUB 描画・再利用・更新・503・認証拒否・LRU/容量縮小・同時取得・削除中の書き戻し・設定 UI を検証する。CI は verified reader の取り込み後に実行する。
+回帰検証は `node scripts/epub-cache/browser.test.mjs --bibi-source .tmp/bibi-source`。固定 Bibi の開発依存と Chromium を使い、実際の EPUB 描画・再利用・更新・503・認証拒否・LRU/容量縮小・同時取得・削除中の書き戻し・設定 UI を検証する。同時取得は取得元への HTTP 要求開始で同期し、どちらのタブが先にロックを取るかに依存しない。CI は verified reader の取り込み後に実行する。
 
 ### origin / CSP
 

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
+import { EventEmitter, once } from 'node:events';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +23,7 @@ async function epub(marker) {
 export async function startCacheFixture(port = 0) {
     const books = { a: await epub('Revision A: the complete original EPUB.'), b: await epub('Revision B: the updated EPUB replaces the original.') };
     const state = { revision: '2026-01-01T00:00:00Z', edition: 'a', epubStatus: 200, metadataStatus: 200, sourceDownloads: 0, s3Downloads: 0, metadataReads: 0, settingsWrites: 0, delay: null };
+    const sourceRequests = new EventEmitter();
     let hostOrigin, sourceOrigin;
     const json = (response, value, status = 200, headers = {}) => { response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }); response.end(JSON.stringify(value)); };
     const source = http.createServer(async (request, response) => {
@@ -41,6 +43,7 @@ export async function startCacheFixture(port = 0) {
         }
         if (url.pathname === '/api/read/v1/novels/1/epub') {
             state.sourceDownloads++;
+            sourceRequests.emit('download');
             if (state.delay) await state.delay;
             if (state.epubStatus !== 200) { json(response, { error: 'memory_capacity', retryable: true }, state.epubStatus, headers); return; }
             response.writeHead(200, { ...headers, 'Content-Type': 'application/epub+zip' });
@@ -88,6 +91,11 @@ export async function startCacheFixture(port = 0) {
     hostOrigin = await listen(host, port); sourceOrigin = await listen(source);
     return {
         origin: hostOrigin, sourceOrigin, state,
+        async waitForSourceDownloads(count) {
+            while (state.sourceDownloads < count) {
+                await once(sourceRequests, 'download', { signal: AbortSignal.timeout(10000) });
+            }
+        },
         async close() { await Promise.all([host, source].map(server => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }))); },
     };
 }
