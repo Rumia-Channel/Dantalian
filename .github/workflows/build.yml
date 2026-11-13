@@ -58,6 +58,8 @@ jobs:
         run: |
           node scripts/import_bibi.mjs .tmp/bibi-source
           node scripts/import_bibi.mjs --verify
+      - name: Test device EPUB cache and reader
+        run: node scripts/epub-cache/browser.test.mjs --bibi-source .tmp/bibi-source
       - uses: actions/upload-artifact@v4
         with:
           name: bibi-reader

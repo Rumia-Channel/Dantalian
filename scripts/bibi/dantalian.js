@@ -1,4 +1,11 @@
 Bibi.preset({
+    'extensions': window.dantalianEpubReader?.descriptor ? [
+        {
+            'src': `../extensions/extractor/at-once.js?v=${encodeURIComponent(window.dantalianEpubReader.readerVersion)}`,
+            '-extract-': ['*']
+        },
+        { 'src': `/js/epub-cache-bibi.js?v=${window.dantalianEpubReader.version}` }
+    ] : [],
     'extract-if-necessary': ['*'],
     'autostart': 'yes',
     'accept-pdf': 'yes',

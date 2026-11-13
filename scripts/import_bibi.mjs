@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { importManifestName, renderHostEntry, sha256, verifyImported, verifyUpstream } from './bibi/distribution.mjs';
+import { hostReaderVersion, importManifestName, renderHostEntry, sha256, verifyImported, verifyUpstream } from './bibi/distribution.mjs';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pin = JSON.parse(await readFile(join(project, 'bibi.lock.json'), 'utf8'));
@@ -41,7 +41,7 @@ if (verifyOnly) {
         await cp(reader, prepared, { recursive: true, preserveTimestamps: true });
         await writeFile(join(prepared, 'LICENSE'), license);
         await writeFile(join(prepared, 'presets/dantalian.js'), preset);
-        const hostEntry = renderHostEntry(await readFile(join(reader, 'index.html')), preset);
+        const hostEntry = renderHostEntry(await readFile(join(reader, 'index.html')), preset, await hostReaderVersion());
         await writeFile(join(prepared, 'dantalian.html'), hostEntry);
         const files = [
             { path: 'LICENSE', bytes: license.length, sha256: sha256(license) },

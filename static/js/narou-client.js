@@ -1,8 +1,8 @@
 // narou.rs の書誌情報と EPUB はブラウザが直接取得する。
 //
-// Dantalian は「接続情報」（接続先 URL・対象タグ）と「EPUB の宛先」（302）だけ
-// を用意する。カタログの写しや EPUB の内容はどこにも保存せず、ブラウザも
-// IndexedDB / localStorage にも残さない。
+// Dantalian は接続情報・対象タグと EPUB 宛先の 302 だけを用意する。
+// カタログはサーバーにも端末にも永続保存しない。EPUB だけは端末側の
+// 容量制限付きキャッシュを使用でき、鮮度は API の last_update で確認する。
 //
 // 認証は narou.rs の既存ユーザー認証（Cloudflare Access セッション /
 // ネイティブの UI セッション）をそのまま使う。access_token のような新しい

@@ -3,11 +3,12 @@ import { test } from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { importManifestName, manifestName, renderHostEntry, requiredAssets, sha256, verifyImported, verifyUpstream } from './distribution.mjs';
+import { hostReaderVersion, importManifestName, manifestName, renderHostEntry, requiredAssets, sha256, verifyImported, verifyUpstream } from './distribution.mjs';
 
 const project = new URL('../../', import.meta.url);
 const sourcePin = JSON.parse(await readFile(new URL('bibi.lock.json', project)));
 const preset = await readFile(new URL('scripts/bibi/dantalian.js', project));
+const hostVersion = await hostReaderVersion();
 
 async function fixture(t, imported = false) {
     const temp = await mkdtemp(join(tmpdir(), 'dantalian-bibi-integrity-'));
@@ -33,7 +34,7 @@ async function fixture(t, imported = false) {
     if (imported) {
         await writeFile(join(root, 'LICENSE'), license);
         await writeFile(join(root, 'presets/dantalian.js'), preset);
-        const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), preset);
+        const hostEntry = renderHostEntry(await readFile(join(root, 'index.html')), preset, hostVersion);
         await writeFile(join(root, 'dantalian.html'), hostEntry);
         metadata = {
             schemaVersion: 1, repository: pin.repository, upstreamManifestSha256: sha256(manifestBytes),
