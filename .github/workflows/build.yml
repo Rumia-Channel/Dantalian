@@ -150,6 +150,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Test NDL coordination and lookup contracts
         run: node --test tests/ndl_api_contract.mjs
+      - name: Test isolated audio conversion scheduling
+        run: node --test tests/audio_data_saver_unit.mjs
       - name: Check Container Controller
         working-directory: .
         run: npm run typecheck:container
@@ -249,6 +251,9 @@ jobs:
       - name: Test client track editing policy
         working-directory: .
         run: node --test worker/tests/track_duration_unit.mjs worker/tests/track_position_unit.mjs worker/tests/track_upload_unit.mjs
+      - name: Test player volume and audio source selection
+        working-directory: .
+        run: node --test worker/tests/player_volume_unit.mjs worker/tests/audio_source_selection_unit.mjs
       - name: Test catalogue freshness and deferred refreshes
         working-directory: .
         run: node --test worker/tests/data_freshness_unit.mjs

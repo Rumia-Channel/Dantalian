@@ -1,6 +1,6 @@
 [package]
 name = "dantalian-worker"
-version = "0.4.2"
+version = "0.4.3"
 license = "BSD-2-Clause"
 edition = "2024"
 

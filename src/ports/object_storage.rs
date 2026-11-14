@@ -90,6 +90,21 @@ pub trait ObjectStorage {
     fn temporary_get_url(&self, key: &str) -> impl Future<Output = Result<String, AppError>>;
 }
 
+/// Resolves the object id of a stored media reference.
+///
+/// Media object ids are content hashes, but older direct uploads recorded
+/// `<hash>.<extension>` as the file hash while presigned multipart uploads
+/// record the bare hash. Both forms address the same object, so the legacy
+/// extension is stripped before the id is used in an object key. Without this
+/// the legacy form is rejected as an invalid object id and the encoded
+/// variants of such a track are never generated or found.
+pub fn media_object_id(file_hash: &str) -> &str {
+    match file_hash.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => stem,
+        _ => file_hash,
+    }
+}
+
 pub fn object_key(
     prefix: Option<&str>,
     kind: ObjectKind,
@@ -129,6 +144,47 @@ pub fn object_key(
     Ok(match prefix {
         Some(prefix) => format!("{prefix}/{path}"),
         None => path,
+    })
+}
+
+/// The canonical object keys of one audio source: the original object and the
+/// two converted variants the data saver produces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioObjectKeys {
+    pub original: String,
+    pub opus: String,
+    pub aac: String,
+}
+
+/// Resolves the object keys of an audio source from its stored file hash.
+///
+/// Both file hash conventions resolve to the same object id, so the original
+/// and the converted variants of a track are always found under the same keys
+/// no matter which upload route stored it.
+pub fn audio_object_keys(
+    prefix: Option<&str>,
+    file_hash: &str,
+    extension: &str,
+) -> Result<AudioObjectKeys, AppError> {
+    let object_id = media_object_id(file_hash);
+    Ok(AudioObjectKeys {
+        original: object_key(prefix, ObjectKind::OriginalAudio, object_id, extension)?,
+        opus: object_key(
+            prefix,
+            ObjectKind::EncodedAudio {
+                codec: AudioCodec::Opus,
+            },
+            object_id,
+            "opus",
+        )?,
+        aac: object_key(
+            prefix,
+            ObjectKind::EncodedAudio {
+                codec: AudioCodec::Aac,
+            },
+            object_id,
+            "aac",
+        )?,
     })
 }
 
@@ -197,5 +253,59 @@ mod tests {
         assert!(validate_object_key("audio/original.mp3").is_ok());
         assert!(validate_object_key("audio/../secret.mp3").is_err());
         assert!(validate_object_key("/audio/file.mp3").is_err());
+    }
+
+    #[test]
+    fn resolves_the_same_object_id_for_both_file_hash_conventions() {
+        assert_eq!(media_object_id("abc123"), "abc123");
+        assert_eq!(media_object_id("abc123.flac"), "abc123");
+        assert_eq!(media_object_id("abc123."), "abc123.");
+        assert_eq!(media_object_id(".flac"), ".flac");
+    }
+
+    #[test]
+    fn builds_the_same_encoded_key_for_both_file_hash_conventions() {
+        let bare = object_key(
+            None,
+            ObjectKind::EncodedAudio {
+                codec: AudioCodec::Opus,
+            },
+            media_object_id("abc123"),
+            "opus",
+        )
+        .unwrap();
+        let legacy = object_key(
+            None,
+            ObjectKind::EncodedAudio {
+                codec: AudioCodec::Opus,
+            },
+            media_object_id("abc123.flac"),
+            "opus",
+        )
+        .unwrap();
+        assert_eq!(bare, "audio/encoded/opus/abc123.opus");
+        assert_eq!(legacy, bare);
+    }
+
+    #[test]
+    fn resolves_the_same_audio_keys_for_both_file_hash_conventions() {
+        let bare = audio_object_keys(None, "abc123", "flac").unwrap();
+        let legacy = audio_object_keys(None, "abc123.flac", "flac").unwrap();
+
+        assert_eq!(bare.original, "audio/abc123.flac");
+        assert_eq!(bare.opus, "audio/encoded/opus/abc123.opus");
+        assert_eq!(bare.aac, "audio/encoded/aac/abc123.aac");
+        assert_eq!(legacy, bare);
+    }
+
+    #[test]
+    fn resolves_the_same_prefixed_audio_keys_for_both_file_hash_conventions() {
+        let bare = audio_object_keys(Some("media"), "abc123", "flac").unwrap();
+        let legacy = audio_object_keys(Some("media"), "abc123.flac", "flac").unwrap();
+
+        assert_eq!(bare.original, "media/audio/abc123.flac");
+        assert_eq!(bare.opus, "media/audio/encoded/opus/abc123.opus");
+        assert_eq!(bare.aac, "media/audio/encoded/aac/abc123.aac");
+        assert_eq!(legacy, bare);
     }
 }

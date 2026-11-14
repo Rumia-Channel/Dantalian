@@ -108,21 +108,19 @@ async function deleteAudioCacheRecord(fileHash) {
     writeAudioCacheManifest(manifest);
 }
 
-function audioCacheExtension(track) {
-    const fileName = String(track?.file_name || "");
-    const dot = fileName.lastIndexOf(".");
-    return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : "";
-}
 function audioCacheUsesCompressedVariant(track) {
     return typeof audioDataSaverPolicy !== "undefined"
         && audioDataSaverPolicy.enabled
-        && audioDataSaverPolicy.extensions.has(audioCacheExtension(track));
+        && audioDataSaverPolicy.extensions.has(audioTrackExtension(track));
 }
 
 function audioCacheRecordIsUsable(track, record) {
     if (!isAudioCacheBlob(record?.blob)) return false;
     if (!audioCacheUsesCompressedVariant(track)) return record.format === "original";
-    return record.format === "opus" || record.format === "aac";
+    if (record.format !== "opus" && record.format !== "aac") return false;
+    // このブラウザが復号できない形式のキャッシュを先に再生すると読み込みが失敗し、
+    // 配信元の候補へ落ちる。再生できないキャッシュは優先も利用もしない。
+    return audioVariantCanPlay(record.format);
 }
 
 
@@ -143,20 +141,6 @@ function audioCacheEncodedUrl(fileHash, extension, format) {
 function audioCacheHashStem(fileHash) {
     const dot = fileHash.lastIndexOf(".");
     return dot > 0 ? fileHash.slice(0, dot) : fileHash;
-}
-
-function audioCacheCanPlayFormat(format) {
-    const probe = document.createElement("audio");
-    if (format === "opus") {
-        return probe.canPlayType('audio/ogg; codecs="opus"') !== "";
-    }
-    if (format === "aac") {
-        return [
-            "audio/aac",
-            'audio/mp4; codecs="mp4a.40.2"',
-        ].some((mime) => probe.canPlayType(mime) !== "");
-    }
-    return true;
 }
 
 function audioCacheIsEncodedResponse(response, fileHash, format) {
@@ -194,7 +178,7 @@ async function fetchAudioCacheCandidate(url) {
 function audioCacheCandidates(track, playability = null) {
     const fileHash = String(track?.file_hash || "");
     if (!fileHash) return [];
-    const extension = audioCacheExtension(track);
+    const extension = audioTrackExtension(track);
     if (!audioCacheUsesCompressedVariant(track)) {
         return [{ format: "original", mime: "application/octet-stream", url: audioCacheOriginalUrl(fileHash) }];
     }
@@ -203,7 +187,7 @@ function audioCacheCandidates(track, playability = null) {
         : ["opus", "aac"];
     const candidates = formats.map((format) => ({
         format,
-        mime: format === "opus" ? "audio/ogg; codecs=opus" : "audio/aac",
+        mime: AUDIO_VARIANT_MIME_TYPES[format]?.[0] || "application/octet-stream",
         url: audioCacheEncodedUrl(fileHash, extension, format),
     }));
     return candidates;
@@ -219,13 +203,16 @@ async function cacheAudioTrack(track, context = {}) {
     }
 
     let playability = null;
-    if (audioCacheUsesCompressedVariant(track) && typeof fetchAudioPlayability === "function") {
-        playability = await fetchAudioPlayability(track, audioCacheExtension(track));
+    const compressedVariant = audioCacheUsesCompressedVariant(track);
+    if (compressedVariant && typeof fetchAudioPlayability === "function") {
+        playability = await fetchAudioPlayability(track, audioTrackExtension(track));
     }
     let lastError = null;
+    let playableCompressed = false;
     for (const candidate of audioCacheCandidates(track, playability)) {
-        if (candidate.format !== "original" && !audioCacheCanPlayFormat(candidate.format)) {
-            continue;
+        if (candidate.format !== "original") {
+            if (!audioVariantCanPlay(candidate.format)) continue;
+            playableCompressed = true;
         }
 
         try {
@@ -263,6 +250,9 @@ async function cacheAudioTrack(track, context = {}) {
         }
     }
 
+    if (!lastError && compressedVariant && !playableCompressed) {
+        return { ok: false, error: "このブラウザは省データ再生の圧縮音声を再生できません" };
+    }
     return { ok: false, error: lastError?.message || "再生可能な音声を取得できませんでした" };
 }
 
