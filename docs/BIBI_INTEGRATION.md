@@ -1,7 +1,7 @@
 # Bibi 組み込み仕様と Dantalian 側の追加・接続作業
 
 ## 対象バージョンと役割
-Bibi **2.3.5** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.5/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.6** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.6/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -40,6 +40,8 @@ Bibi **2.3.5** のホスト連携機能を使用する。固定した repository
 
 2.3.5 では、メニュー・サブパネル・目次・検索バー・スライダー履歴・PoweredBy のタッチ領域を 44px に拡大し、タップ許容とフリック距離を 10px のポインタ誤差に統一した。パネル・スライダー・ヘルプバー・nombre・通知・PoweredBy バーはセーフエリア (ノッチ・ホームインジケータ・ジェスチャーバー) を避け、iPadOS のデスクトップモード・デュアルスクリーン・タッチ付きPC など UA が iOS/Android と判定しない coarse-pointer 端末にも `pointer: coarse` でタッチ UI を適用する。位置・ホストナビ API の schemaVersion は 1 のまま。
 
+2.3.6 では、タッチ端末の検索欄が閉じるボタンと重なる問題を修正した。iPad の読書領域・リサイズ中のページ配置と横書き目次の配置を安定させ、狭い読書領域でも左右のページ送りと中央メニューを利用できる。画面最外端での連続タップも一度につき一ページ移動する。ホスト preset と schemaVersion 1 の位置・ホストナビ API は変更しない。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -47,7 +49,7 @@ Bibi **2.3.5** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.5
+git checkout --detach v2.3.6
 bun install --frozen-lockfile
 bun test
 bun run build
@@ -376,6 +378,13 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - 公開済みの [Bibi v2.3.5](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.5) の ZIP は GitHub release の asset digest `sha256:6c1fc393a7ab405f02b5c25122c06369ee565a97e1547c6b295260479f41caa7` と一致した。公開 manifest の `commit c42d5ae3c6e64134138cde8e260a6e289552ad0f`、`sourceDateEpoch 1794667127`、Node 24.22.2 / Bun 1.4.2 を固定した。ZIP 内の `bibi/` を clean checkout の `__dist/` に配置し、製品 importer が manifest と Git checkout を照合して取り込んだ。
 - 上流 unit tests 102 件（ローカル Bun 1.4.4）、配布物の取り込み検証 6 件、Chromium の読書回帰・ホストナビ 13 シナリオが成功した。iPad サイズの視覚ビューポートでツールバーとセーフエリア制御の完全表示、タッチ境界ジェスチャーを含む。ローカルのテスト実行環境は Node 26.13.0 / Bun 1.4.4 であり、公開成果物の固定 toolchain は変更していない。
 - Native build (`cargo build --features native`) が成功し、`static/vendor/bibi/` は 222 reader assets + ホスト追加分で `--verify` に成功した。取り込み後の実 Native で、スマートフォン (393px)・タブレット (810px)・デスクトップの実画面表示を確認した。
+
+### Dantalian 0.4.3 / Bibi 2.3.6 の検証
+
+- 公開済みの [Bibi v2.3.6](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.6) の ZIP の SHA-256 は GitHub release の `41d90eaab873f7042ab9755b9b3c3287ecea5fa3c97e47f02d5a3d33d1e5b427` と一致した。clean checkout `a8d41a36e956d70ff7881e4776fa8267144e67a5` の Git blob 由来の lock/license digest と公開 manifest を照合し、`sourceDateEpoch 1794675006`、Node 24.22.2 / Bun 1.4.2 を固定した。公開成果物を製品 importer に通し、222 reader assets とホスト追加分を取り込んだ。
+- 配布物の取り込み検証 6 件、ホストの EPUB キャッシュ回帰 9 件、ホストナビゲーション 13 シナリオが成功した。iPad サイズの Chromium / WebKit では 14 チェックが成功し、最外端の連続タップ、目次から本文への移動、狭い読書領域の中央メニュー、ページ配置中のリサイズ、WebKit の復帰時の再配置を確認した。ローカル実行環境は Node 26.13.0 / Bun 1.4.4 で、公開成果物の固定 toolchain は変更していない。
+- Native build、Worker assets 再生成と release Wasm build が成功した。隔離 DB の Native `/api/health` は `version:"0.4.3"` を返し、配信中の Bibi manifest は `2.3.6` と固定 commit を返した。
+- 実 upload API で縦書き EPUB・6 ページ PDF・3 ページ画像 ZIP を登録し、Windows Firefox で描画、ready/operable、キー操作による次ページ移動と位置 API の更新を確認した。`/books/` のシリーズ展開から EPUB の standalone 専用ページへ入る導線も確認した。iPadOS Safari 実機と live Wasabi の資格情報・署名期限はローカル検証対象外である。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 
