@@ -231,6 +231,8 @@ fn generate_basic_license_page(version: &str) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dantalian - ライセンス</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v={version}">
+    <meta name="theme-color" content="#05070f">
+    <script src="/js/theme.js?v={version}"></script>
     <link rel="stylesheet" href="/css/base.css?v={version}">
     <link rel="stylesheet" href="/css/auth.css?v={version}">
     <link rel="stylesheet" href="/css/settings.css?v={version}">
