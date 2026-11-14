@@ -317,6 +317,13 @@
         margin-bottom: 1rem;
     }
 
+    /* スティッキーな保存/編集アクションはボトムナビ (高さ+セーフエリア) に
+       隠れないようその直上に浮かせる */
+    .edit-actions,
+    .settings-form-actions {
+        bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 0.5rem);
+    }
+
     #book-grid,
     .author-group-grid,
     .book-grid-author {
@@ -386,7 +393,8 @@
     body:has(.confirm-overlay:not(.hidden)) nav,
     body:has(.auth-dialog-overlay:not(.hidden)) nav,
     body:has(.cd-candidate-modal:not([hidden])) nav,
-    body:has(.playlist-modal:not([hidden])) nav {
+    body:has(.playlist-modal:not([hidden])) nav,
+    body:has(.player-root.queue-open) nav {
         visibility: hidden;
     }
 
@@ -724,6 +732,8 @@
 
 /* ===== デュアルスクリーン (Surface Duo など) =====
    ヒンジをまたぐモーダル・ドロワーは左ペインに寄せる。
+   env(viewport-segment-right 0 0) は左ペインの右端 (= ヒンジ左端) を返すため、
+   100vw との差が右ペイン+ヒンジの幅になり、左ペイン内に収まる。
    env(viewport-segment-*) 非対応ブラウザではメディアクエリ自体が
    マッチしないため無害。 */
 @media (horizontal-viewport-segments: 2) {
@@ -733,15 +743,11 @@
     .playlist-modal,
     .confirm-overlay,
     .player-queue-backdrop {
-        padding-right: calc(
-            100vw - env(viewport-segment-left 1 0) - env(viewport-segment-width 1 0)
-        );
+        padding-right: calc(100vw - env(viewport-segment-right 0 0));
     }
     .player-queue,
     .player-mini {
-        right: calc(
-            100vw - env(viewport-segment-left 1 0) - env(viewport-segment-width 1 0)
-        );
+        right: calc(100vw - env(viewport-segment-right 0 0));
     }
 }
 
