@@ -6,7 +6,12 @@
     var header = document.createElement("div");
     header.id = "dantalian-header";
     header.innerHTML =
-        '<h1 class="header-brand"><a href="/">Dantalian</a></h1>' +
+        '<h1 class="header-brand"><a href="/"><span class="header-brand-initial">D</span>antalian</a></h1>' +
+        '<div class="header-tools">' +
+            '<div class="header-auth hidden" id="auth-settings">' +
+                '<button type="button" class="btn btn-ghost btn-sm auth-open" id="auth-open">APIログイン</button>' +
+            '</div>' +
+        '</div>' +
         '<nav>' +
             '<a href="/" id="nav-home">一覧</a>' +
             '<a href="/books/" id="nav-books"><span class="nav-book-label">本</span></a>' +
@@ -16,9 +21,6 @@
             '<a href="/authors/" id="nav-authors">アーティスト</a>' +
             '<a href="/licenses/" id="nav-licenses">ライセンス</a>' +
         '</nav>' +
-        '<div class="header-auth hidden" id="auth-settings">' +
-            '<button type="button" class="btn btn-ghost btn-sm auth-open" id="auth-open">APIログイン</button>' +
-        '</div>' +
         '<div class="settings-bar">' +
             '<span class="settings-label">表示幅</span>' +
             '<div class="settings-buttons" id="width-buttons"></div>' +

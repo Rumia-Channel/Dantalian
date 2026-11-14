@@ -10,11 +10,17 @@
     }
 
     .header-brand {
-        font-size: 1.2rem;
+        font-size: 1.3rem;
     }
 
     nav {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    nav::-webkit-scrollbar {
+        display: none;
     }
 
     .edit-actions,
@@ -24,7 +30,10 @@
         z-index: 20;
         margin-left: -0.25rem;
         margin-right: -0.25rem;
-        box-shadow: 0 -0.35rem 1rem rgba(0, 0, 0, 0.22);
+        padding: 0.75rem;
+        background: var(--color-bg-surface);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-popover);
     }
 
 

@@ -70,7 +70,7 @@ function showGrandSeriesModal(gsId) {
 
     detailContent.innerHTML = `
         <div class="detail-title" style="margin-bottom:1rem;">${escapeHtml(gs.name)}</div>
-        ${contentHtml || '<p style="color:#555;">アイテムがありません</p>'}
+        ${contentHtml || '<p class="text-dim">アイテムがありません</p>'}
     `;
 
     detailOverlay.classList.remove("hidden");

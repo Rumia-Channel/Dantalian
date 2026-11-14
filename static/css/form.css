@@ -75,8 +75,10 @@
 
 .register-tab {
     font-family: inherit;
-    padding: 0.5rem 1.2rem;
-    font-size: 0.9rem;
+    padding: 0.55rem 1.2rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
     background: transparent;
     border: none;
     border-bottom: 0.125rem solid transparent;
@@ -413,7 +415,7 @@
 
 .manual-cd-track-meta > summary:hover {
     color: var(--color-text-primary);
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-tint-soft);
 }
 
 .manual-cd-track-meta-grid {
@@ -457,7 +459,7 @@
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: rgba(3, 8, 18, 0.78);
+    background: var(--color-scrim-deep);
 }
 
 .cd-candidate-modal[hidden] {
@@ -469,9 +471,10 @@
     max-height: min(44rem, calc(100vh - 2rem));
     overflow: hidden;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border-top: 0.1875rem solid var(--color-primary);
+    border-radius: var(--radius-md);
     background: var(--color-bg-surface);
-    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-modal);
 }
 
 .cd-candidate-header {
@@ -487,13 +490,15 @@
     color: var(--color-primary);
     font-size: 0.68rem;
     font-weight: 700;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
 }
 
 .cd-candidate-header h2 {
     margin: 0.35rem 0 0;
     color: var(--color-text-primary);
-    font-size: 1.15rem;
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
 }
 
 .cd-candidate-close {
@@ -577,5 +582,5 @@
 }
 
 .cd-candidate-status.error {
-    color: var(--color-danger, #ef7878);
+    color: var(--color-danger);
 }

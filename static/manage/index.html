@@ -6,12 +6,13 @@
     <title>Dantalian - 管理</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ASSET_VERSION">
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
-    <meta name="theme-color" content="#08090f">
+    <meta name="theme-color" content="#05070f">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dantalian">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <script src="/js/theme.js?v=ASSET_VERSION"></script>
     <link rel="stylesheet" href="/css/base.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/auth.css?v=ASSET_VERSION">
     <link rel="stylesheet" href="/css/series.css?v=ASSET_VERSION">
@@ -75,6 +76,21 @@
             </div>
             <div id="panel-settings" class="series-tab-panel hidden" role="tabpanel" aria-labelledby="tab-settings" aria-hidden="true">
                 <h3 class="manage-panel-title">設定</h3>
+                <section aria-labelledby="appearance-settings-title">
+                    <h3 id="appearance-settings-title" class="manage-panel-title">表示設定（このブラウザ）</h3>
+                    <div class="settings-form-section">
+                        <div class="settings-form-row">
+                            <span class="settings-form-label-inline">テーマ</span>
+                            <div class="settings-buttons" role="group" aria-label="テーマ">
+                                <button type="button" class="width-btn theme-btn" data-theme-mode="system">自動</button>
+                                <button type="button" class="width-btn theme-btn" data-theme-mode="light">ライト</button>
+                                <button type="button" class="width-btn theme-btn" data-theme-mode="dark">ダーク</button>
+                            </div>
+                        </div>
+                        <p class="settings-note">「自動」は OS の外観設定に合わせます。選択はこのブラウザにだけ保存されます。</p>
+                    </div>
+                </section>
+
                 <section aria-labelledby="narou-settings-title">
                     <h3 id="narou-settings-title" class="manage-panel-title">Web 小説（narou.rs）</h3>
                     <p>ブラウザが narou.rs へ直接アクセスして書誌情報を取得し、通常の一覧に混ぜて表示します。Dantalian のサーバー（DB・ファイル・S3）には書誌情報・EPUB を保存せず、接続先・対象タグだけをこの欄で管理します。EPUB だけは下の設定に従ってこのブラウザ内へキャッシュします（既定 512 MiB、容量 0 で無効）。</p>

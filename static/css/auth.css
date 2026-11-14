@@ -13,7 +13,7 @@
     display: grid;
     place-items: center;
     padding: 1rem;
-    background: rgb(0 0 0 / 45%);
+    background: var(--color-scrim-soft);
 }
 
 .auth-dialog-overlay.hidden {
@@ -24,14 +24,17 @@
     width: min(100%, 28rem);
     padding: 1.5rem;
     border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-lg);
+    border-top: 0.1875rem solid var(--color-primary);
+    border-radius: var(--radius-md);
     background: var(--color-bg-surface);
     color: var(--color-text-primary);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-modal);
 }
 
 .auth-dialog h2 {
     margin: 0 0 0.75rem;
+    font-family: var(--font-serif);
+    letter-spacing: 0.02em;
 }
 
 .auth-dialog p {
@@ -70,5 +73,5 @@
 .auth-dialog small {
     display: block;
     margin-top: 1rem;
-    color: var(--color-text-dim, #777);
+    color: var(--color-text-dim);
 }

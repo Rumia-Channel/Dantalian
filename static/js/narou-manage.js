@@ -18,7 +18,7 @@
                     <div class="settings-form-row">
                         <a id="narou-open" class="btn btn-ghost" href="${escapeAttr(source)}" target="_blank" rel="noopener noreferrer">narou.rs を開く（ログイン）</a>
                     </div>
-                    <p>ブラウザが narou.rs へ直接アクセスします。narou.rs には利用者自身のログイン（Cloudflare Access セッションなど）が使われ、アクセス権のトークンをブラウザへ配る必要はありません。</p>
+                    <p class="settings-note">ブラウザが narou.rs へ直接アクセスします。narou.rs には利用者自身のログイン（Cloudflare Access セッションなど）が使われ、アクセス権のトークンをブラウザへ配る必要はありません。</p>
                     <div class="settings-form-row">
                         <label class="settings-form-label"><input id="narou-favorites" type="checkbox" ${settings["narou.use_favorites"] !== "false" ? "checked" : ""}> narou.rs のお気に入りタグを対象にする</label>
                     </div>
@@ -26,14 +26,14 @@
                         <label class="settings-form-label-inline" for="narou-tags">追加の対象タグ<br>（1 行に 1 タグ）</label>
                         <textarea id="narou-tags" class="form-input" rows="5">${escapeHtml(tags.join("\n"))}</textarea>
                     </div>
-                    <p>対象は指定タグとお気に入りタグの和集合に完全一致する小説です。画面にはブラウザが取得した書誌情報だけを表示し、カバーは表示されません。接続先・対象タグ以外は保存しません。</p>
+                    <p class="settings-note">対象は指定タグとお気に入りタグの和集合に完全一致する小説です。画面にはブラウザが取得した書誌情報だけを表示し、カバーは表示されません。接続先・対象タグ以外は保存しません。</p>
                     <div class="settings-form-group">
                         <button class="btn btn-primary" type="submit">設定を保存</button>
                         <button class="btn btn-ghost" id="narou-check" type="button">接続を確認</button>
                         <a class="btn btn-ghost" href="/books/">本棚を開く</a>
                     </div>
                 </form>
-                <div id="narou-result" role="status" aria-live="polite"></div>`;
+                <div id="narou-result" class="settings-msg" role="status" aria-live="polite"></div>`;
             const form = container.querySelector("form");
             const result = document.getElementById("narou-result");
             const urlInput = document.getElementById("narou-url");
