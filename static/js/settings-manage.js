@@ -213,7 +213,7 @@ async function renderSettingsForm() {
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="s-discogs-token">Discogs Token</label>
                 ${secretInput(settings, "discogs_token", "s-discogs-token")}
-                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);margin-left:0.5rem">CD検索のMusicBrainzフォールバックに使用</span>
+                <span class="settings-note settings-note--inline">CD検索のMusicBrainzフォールバックに使用</span>
             </div>
         </div>
 
@@ -235,7 +235,7 @@ async function renderSettingsForm() {
                 <input type="number" id="s-upload-file-mb" value="${escapeAttr(uploadFileMb)}" min="1" max="4096" class="form-input" style="width:6rem"${workerDisabledAttr}>
             </div>
             <div class="settings-form-row">
-                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</span>
+                <p class="settings-note">アプリ側の上限です。前面のリバースプロキシ (nginx: client_max_body_size 等) や Cloudflare の上限もこれ以上に引き上げる必要があります。上限は 4096MB (4GB) まで。</p>
             </div>
             `}
         </div>
@@ -253,7 +253,7 @@ async function renderSettingsForm() {
                 <input type="text" id="s-data-saver-extensions" value="${escapeAttr(dataSaverExtensions)}" class="form-input" placeholder="wav,flac,aiff,alac">
             </div>
             <div class="settings-form-row">
-                <span class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">${workerSettingsRuntime ? "Workerでは保存時と定期スキャン時に対象音声のエンコードjobを自動登録し、ContainerでOpus/AACを生成します。生成中の曲は原音を再生します。" : "カンマ区切り。設定を有効にするとバックグラウンドで順番に Opus と AAC を生成し、生成中の曲は原音を再生します。"}</span>
+                <p class="settings-note">${workerSettingsRuntime ? "Workerでは保存時と定期スキャン時に対象音声のエンコードjobを自動登録し、ContainerでOpus/AACを生成します。生成中の曲は原音を再生します。" : "カンマ区切り。設定を有効にするとバックグラウンドで順番に Opus と AAC を生成し、生成中の曲は原音を再生します。"}</p>
             </div>
         </div>
 
@@ -320,9 +320,9 @@ async function renderSettingsForm() {
             </div>
 
             <div class="settings-form-row">
-                <span class="settings-label" style="font-size:0.78rem;color:var(--color-text-dim)">
+                <p class="settings-note">
                     S3 設定が空の場合はバックアップの S3 設定を流用します。
-                </span>
+                </p>
             </div>
 
             <div class="settings-form-row">
@@ -352,7 +352,7 @@ async function renderSettingsForm() {
 
             <div class="settings-form-row">
                 <button class="btn btn-ghost" type="button" onclick="runMediaSyncNow()"${workerDisabledAttr}>今すぐ同期</button>
-                <span class="settings-label" style="font-size:0.75rem;color:var(--color-text-dim)">※ upload-only。S3 側の削除は行いません。</span>
+                <span class="settings-note">※ upload-only。S3 側の削除は行いません。</span>
             </div>
 
             <div id="media-sync-result"></div>
@@ -507,20 +507,20 @@ function renderMediaSyncResult(container, data, isError) {
     }
     const lines = [];
     if (isError) {
-        lines.push(`<div style="color:var(--color-danger,#c0392b);font-size:0.85rem;">エラー: ${escapeHtml(data.error || "unknown")}</div>`);
+        lines.push(`<div class="settings-msg settings-msg--error">エラー: ${escapeHtml(data.error || "unknown")}</div>`);
     } else {
         const failed = data.failed ?? 0;
         const ok = data.ok === true && failed === 0;
-        const headerColor = ok ? "var(--color-text-secondary)" : "var(--color-danger,#c0392b)";
+        const headerClass = ok ? "settings-msg--dim" : "settings-msg--error";
         const headerText = ok ? "同期完了" : (failed > 0 ? `同期失敗 (${failed}件)` : "同期に失敗しました");
         const message = data.message ? ` — ${escapeHtml(String(data.message))}` : "";
-        lines.push(`<div style="font-size:0.85rem;color:${headerColor};">${headerText}: scanned=${data.scanned ?? 0}, uploaded=${data.uploaded ?? 0}, skipped=${data.skipped ?? 0}, failed=${failed}, missing_local=${data.missing_local ?? 0}${message}</div>`);
+        lines.push(`<div class="settings-msg ${headerClass}">${headerText}: scanned=${data.scanned ?? 0}, uploaded=${data.uploaded ?? 0}, skipped=${data.skipped ?? 0}, failed=${failed}, missing_local=${data.missing_local ?? 0}${message}</div>`);
         if (data.per_type && typeof data.per_type === "object") {
             const rows = Object.keys(data.per_type).map((k) => {
                 const r = data.per_type[k];
                 return `<li>${escapeHtml(k)}: scanned=${r.scanned ?? 0}, uploaded=${r.uploaded ?? 0}, skipped=${r.skipped ?? 0}, failed=${r.failed ?? 0}, missing_local=${r.missing_local ?? 0}</li>`;
             }).join("");
-            if (rows) lines.push(`<ul style="margin:0.25rem 0 0 1rem;font-size:0.8rem;">${rows}</ul>`);
+            if (rows) lines.push(`<ul class="settings-msg-list">${rows}</ul>`);
         }
     }
     container.innerHTML = lines.join("");
@@ -528,7 +528,7 @@ function renderMediaSyncResult(container, data, isError) {
 
 async function runMediaSyncNow() {
     const container = document.getElementById("media-sync-result");
-    if (container) container.innerHTML = '<div style="font-size:0.85rem;color:var(--color-text-dim);">同期中...</div>';
+    if (container) container.innerHTML = '<div class="settings-msg settings-msg--dim">同期中...</div>';
     try {
         const res = await fetch("/api/media-sync/run", { method: "POST" });
         let body = null;

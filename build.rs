@@ -82,6 +82,7 @@ fn main() {
         "static/js/music/main.js",
         "static/js/licenses.js",
         "static/js/app.js",
+        "static/js/theme.js",
         "static/js/pwa.js",
         "static/sw.js",
     ];

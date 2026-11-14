@@ -17,9 +17,10 @@
     margin: 0;
     padding: 0;
     border: none;
+    font-family: var(--font-serif);
     font-size: 1.6rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
+    font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 
@@ -40,10 +41,11 @@
     background: transparent;
     border: 1px solid var(--color-border-light);
     color: var(--color-text-secondary);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-sm);
     padding: 0.35rem 1rem;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 600;
+    letter-spacing: 0.06em;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
@@ -86,17 +88,18 @@
 .music-album-coverwrap {
     position: relative;
     aspect-ratio: 1 / 1;
-    border-radius: 0.6rem;
+    border-radius: var(--radius-sm);
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-tint-soft);
     border: 1px solid var(--color-border);
     box-shadow: var(--shadow-md);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .music-album:hover .music-album-coverwrap {
     transform: translateY(-4px);
-    box-shadow: var(--shadow-lg), 0 0.75rem 2rem rgba(0, 0, 0, 0.35);
+    border-color: var(--color-border-light);
+    box-shadow: var(--shadow-lg);
 }
 
 .music-album-cover {
@@ -126,7 +129,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(8, 9, 15, 0.45);
+    background: var(--color-cover-scrim);
     opacity: 0;
     transition: opacity 0.22s ease;
 }
@@ -144,11 +147,11 @@
     height: 3.4rem;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
-    color: #fff;
-    box-shadow: 0 0.4rem 1.2rem rgba(79, 140, 255, 0.45);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0.4rem 1.2rem var(--color-primary-alpha-mid);
     transform: scale(0.8);
-    transition: transform 0.22s ease;
+    transition: transform 0.22s ease, background 0.22s ease;
     cursor: pointer;
 }
 
@@ -165,25 +168,27 @@
     position: absolute;
     top: 0.5rem;
     left: 0.5rem;
-    padding: 0.12rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.68rem;
+    padding: 0.16rem 0.45rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    background: rgba(8, 9, 15, 0.75);
-    color: var(--color-text-faint);
-    border: 1px solid var(--color-border-light);
+    letter-spacing: 0.12em;
+    background: var(--color-cover-scrim-strong);
+    color: var(--color-text-on-image);
+    border: 1px solid rgba(240, 242, 248, 0.3);
 }
 
 .music-album-badge--audiobook {
-    color: var(--color-warning);
-    border-color: rgba(255, 152, 0, 0.4);
+    color: var(--color-primary-hover);
+    border-color: var(--color-primary-alpha-border);
 }
 
 /* テキスト情報 */
 .music-album-name {
+    font-family: var(--font-serif);
     font-size: 0.95rem;
-    font-weight: 700;
+    font-weight: 600;
+    letter-spacing: 0.01em;
     color: var(--color-text-primary);
     line-height: 1.35;
     display: -webkit-box;

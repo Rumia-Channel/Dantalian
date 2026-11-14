@@ -385,7 +385,7 @@ function renderBookCard(item) {
     const mediaBadges = { cd: "CD", audiobook: "AB" };
     // Web 小説はカバーが配信されないので、種類だけを示す。
     const mediaBadge = isNarou
-        ? '<span class="media-badge" style="background: var(--color-success)">Web</span>'
+        ? '<span class="media-badge media-badge--web">Web</span>'
         : (mediaBadges[mediaType] ? `<span class="media-badge media-badge--${mediaType}">${mediaBadges[mediaType]}</span>` : "");
     const readsBook = isBooksCatalogue && isCatalogueBook(item);
     const clickHandler = catalogueItemClickHandler(item);

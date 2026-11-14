@@ -1,4 +1,4 @@
-/* UAPP-inspired player details: technical metadata, queue drawer and blue playback accent. */
+/* プレイヤー詳細要素: 技術メタデータ・キュードロワー・再生アクセント。 */
 
 .player-root {
     --player-accent: var(--color-primary);
@@ -14,12 +14,12 @@
 }
 
 .player-root .player-playbtn {
-    background: linear-gradient(135deg, var(--player-accent), var(--player-accent-strong));
-    box-shadow: 0 0.5rem 1.5rem rgba(79, 140, 255, 0.36);
+    background: var(--player-accent);
+    box-shadow: 0 0.5rem 1.5rem var(--color-primary-alpha-mid);
 }
 
 .player-root .player-playbtn:hover {
-    box-shadow: 0 0.6rem 2rem rgba(79, 140, 255, 0.5);
+    box-shadow: 0 0.6rem 2rem var(--color-primary-alpha-strong);
 }
 
 .player-root .player-track--current .player-track-title-cell,
@@ -33,7 +33,7 @@
 }
 
 .player-root .player-mini-play:hover {
-    color: #17120b;
+    color: var(--color-on-accent);
     background: var(--player-accent);
 }
 
@@ -50,12 +50,12 @@
     gap: 0.35rem;
     min-height: 1.75rem;
     padding: 0.25rem 0.6rem;
-    border: 1px solid rgba(79, 140, 255, 0.25);
-    border-radius: 999px;
-    background: rgba(79, 140, 255, 0.08);
+    border: 1px solid var(--color-primary-alpha-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-primary-alpha-faint);
     color: var(--color-text-secondary);
-    font-size: 0.7rem;
-    letter-spacing: 0.05em;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
@@ -82,17 +82,18 @@
     gap: 0.3rem;
     padding: 0.35rem 0.6rem;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-dim);
     cursor: pointer;
     font-size: 0.72rem;
+    letter-spacing: 0.04em;
     transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
 .player-secondary-btn:hover,
 .player-secondary-btn.is-active {
-    border-color: rgba(79, 140, 255, 0.3);
+    border-color: var(--color-primary-alpha-border);
     background: var(--player-accent-alpha);
     color: var(--player-accent);
 }
@@ -110,7 +111,7 @@
 }
 
 .player-resume-btn {
-    border-color: rgba(79, 140, 255, 0.3);
+    border-color: var(--color-primary-alpha-border);
     background: var(--player-accent-alpha);
     color: var(--player-accent);
 }
@@ -124,7 +125,7 @@
 .player-cache-btn.is-cached:hover {
     border-color: var(--color-danger-hover);
     background: var(--color-danger);
-    color: #fff;
+    color: var(--color-on-primary);
 }
 
 .player-track {
@@ -144,7 +145,7 @@
     position: fixed;
     inset: 0;
     z-index: 2;
-    background: rgba(0, 0, 0, 0.42);
+    background: var(--color-scrim-soft);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;
@@ -161,9 +162,8 @@
     width: min(26rem, 92vw);
     padding: 1.35rem 1rem 1rem;
     border-left: 1px solid var(--color-border-light);
-    background: rgba(12, 14, 26, 0.96);
-    box-shadow: -1rem 0 3rem rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(1.2rem);
+    background: var(--color-bg-elevated);
+    box-shadow: var(--shadow-modal);
     transform: translateX(100%);
     visibility: hidden;
     pointer-events: none;
@@ -224,7 +224,7 @@
 }
 
 .player-queue-clear:hover {
-    border-color: rgba(79, 140, 255, 0.3);
+    border-color: var(--color-primary-alpha-border);
     background: var(--player-accent-alpha);
     color: var(--player-accent);
 }
@@ -271,7 +271,7 @@
 }
 
 .player-queue-track:hover {
-    background: rgba(255, 255, 255, 0.07);
+    background: var(--color-tint-faint);
 }
 
 .player-queue-track.is-current {

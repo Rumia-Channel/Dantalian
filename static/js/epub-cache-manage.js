@@ -14,6 +14,7 @@
         usage: null,
         status: null,
         error: null,
+        meter: null,
         buttons: [],
         limitDirty: false,
         busy: false,
@@ -65,12 +66,26 @@
     function setError(text) {
         if (!state.error) return;
         state.error.textContent = text || "";
-        state.error.style.color = text ? "var(--color-danger)" : "";
     }
 
     function setUsage(text) {
         if (!state.usage) return;
         state.usage.textContent = text;
+    }
+
+    // 使用量メーター。上限や使用量が不明なときは非表示に戻す。
+    function updateMeter(usedBytes, limitBytes) {
+        const meter = state.meter;
+        if (!meter) return;
+        const fill = meter.querySelector(".epub-cache-meter-fill");
+        if (!Number.isFinite(usedBytes) || !Number.isFinite(limitBytes) || limitBytes <= 0) {
+            meter.hidden = true;
+            return;
+        }
+        const ratio = Math.min(Math.max(usedBytes / limitBytes, 0), 1);
+        meter.hidden = false;
+        fill.style.width = `${(ratio * 100).toFixed(1)}%`;
+        meter.dataset.level = ratio >= 0.95 ? "full" : ratio >= 0.75 ? "warn" : "ok";
     }
 
     function updateDisabledState() {
@@ -107,10 +122,12 @@
         if (limitText) {
             parts.push(limitBytes === 0 ? `/ 上限 ${limitText}（キャッシュは無効）` : `/ 上限 ${limitText}`);
         }
+        updateMeter(usedBytes, limitBytes);
         setUsage(parts.join(" "));
     }
 
     function applyUnknownUsage(clearLimit) {
+        updateMeter(NaN, NaN);
         setUsage("使用量・保存数・上限を取得できませんでした。");
         if (clearLimit && !state.limitDirty && state.limitInput) {
             state.limitInput.value = "";
@@ -273,26 +290,27 @@
         form.id = "epub-cache-form";
         form.noValidate = true;
         form.innerHTML = `
-            <p>この設定とキャッシュ本体は、このブラウザ・この端末（ブラウザプロファイル）の中だけに保存されます。サーバー（Dantalian の DB・ファイル・S3）へ EPUB を保存することはなく、容量設定もサーバーへは送信されません。</p>
+            <p class="settings-note">この設定とキャッシュ本体は、このブラウザ・この端末（ブラウザプロファイル）の中だけに保存されます。サーバー（Dantalian の DB・ファイル・S3）へ EPUB を保存することはなく、容量設定もサーバーへは送信されません。</p>
             <div class="settings-form-row">
                 <label class="settings-form-label-inline" for="epub-cache-limit-mib">キャッシュ容量 (MiB)</label>
                 <input type="number" id="epub-cache-limit-mib" class="form-input" min="0" step="1" inputmode="numeric" placeholder="${DEFAULT_LIMIT_MIB}" style="width:8rem" aria-describedby="epub-cache-limit-hint">
             </div>
-            <div class="settings-form-row">
-                <span id="epub-cache-limit-hint" class="settings-label" style="font-size:0.72rem;color:var(--color-text-dim);">0 を指定すると、このブラウザの EPUB キャッシュを無効にし、保存済みの EPUB も削除します。</span>
-            </div>
+            <p id="epub-cache-limit-hint" class="settings-note settings-note--tight">0 を指定すると、このブラウザの EPUB キャッシュを無効にし、保存済みの EPUB も削除します。</p>
             <div class="settings-form-row">
                 <span class="settings-form-label-inline">使用状況</span>
-                <span id="epub-cache-usage" class="settings-label">取得中…</span>
+                <span class="epub-cache-meter" id="epub-cache-meter" hidden>
+                    <span class="epub-cache-meter-fill"></span>
+                </span>
+                <span id="epub-cache-usage" class="settings-label epub-cache-usage-text">取得中…</span>
             </div>
             <div class="settings-form-group">
                 <button type="submit" class="btn btn-primary">保存</button>
                 <button type="button" class="btn btn-ghost" id="epub-cache-refresh">状態を更新</button>
                 <button type="button" class="btn btn-outline-danger" id="epub-cache-clear">キャッシュした EPUB を削除</button>
             </div>
-            <p>共有端末では、EPUB はこのブラウザプロファイルに残ります。ブラウザの容量制限などで自動削除される場合もあります。利用時には書誌情報と認証をオンラインで確認するため、オフライン閲覧機能ではありません。narou.rs の書誌情報や EPUB を Dantalian サーバーへ取り込むことはありません。</p>
-            <div id="epub-cache-status" role="status" aria-live="polite"></div>
-            <div id="epub-cache-error" role="alert"></div>`;
+            <p class="settings-note">共有端末では、EPUB はこのブラウザプロファイルに残ります。ブラウザの容量制限などで自動削除される場合もあります。利用時には書誌情報と認証をオンラインで確認するため、オフライン閲覧機能ではありません。narou.rs の書誌情報や EPUB を Dantalian サーバーへ取り込むことはありません。</p>
+            <div id="epub-cache-status" class="settings-msg settings-msg--ok" role="status" aria-live="polite"></div>
+            <div id="epub-cache-error" class="settings-msg settings-msg--error" role="alert"></div>`;
         container.append(form);
 
         state.form = form;
@@ -300,6 +318,7 @@
         state.usage = form.querySelector("#epub-cache-usage");
         state.status = form.querySelector("#epub-cache-status");
         state.error = form.querySelector("#epub-cache-error");
+        state.meter = form.querySelector("#epub-cache-meter");
         state.buttons = Array.from(form.querySelectorAll("button"));
 
         form.addEventListener("submit", saveLimit);

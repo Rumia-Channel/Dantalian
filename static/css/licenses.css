@@ -38,9 +38,10 @@
 
 .licenses-eyebrow {
     margin-bottom: 0.35rem;
-    color: var(--color-text-label);
-    font-size: 0.8rem;
-    letter-spacing: 0.08em;
+    color: var(--color-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
 }
 
@@ -108,7 +109,7 @@
 }
 
 .license-entry summary:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-tint-soft);
 }
 
 .license-entry-name {
@@ -159,7 +160,7 @@
     max-height: 32rem;
     overflow: auto;
     padding: 1rem;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--color-tint-strong);
     border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-sm);
     color: var(--color-text-faint);

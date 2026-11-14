@@ -1,7 +1,9 @@
 #book-count {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 500;
-    color: var(--color-text-secondary);
+    letter-spacing: 0.1em;
+    color: var(--color-text-dim);
+    font-variant-numeric: tabular-nums;
 }
 
 .book-id {
@@ -47,8 +49,8 @@
     width: 100%;
     padding-left: 2.5rem;
     padding-right: 2.25rem;
-    border-radius: var(--radius-md);
-    background: var(--color-bg-surface);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-input);
     border: 0.0625rem solid var(--color-border);
 }
 
@@ -106,7 +108,7 @@
 }
 
 .book-search-clear:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--color-tint-strong);
     color: var(--color-text-primary);
 }
 
@@ -122,9 +124,10 @@
 
 .view-tab {
     font-family: inherit;
-    padding: 0.4rem 1rem;
+    padding: 0.45rem 1rem;
     font-size: 0.8rem;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.06em;
     background: transparent;
     border: none;
     border-bottom: 0.125rem solid transparent;
@@ -170,8 +173,8 @@
 }
 
 .author-group-header:hover {
-    color: var(--color-accent);
-    border-bottom-color: var(--color-accent-alpha);
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary-alpha-border);
 }
 
 .author-group-header::before {
@@ -203,12 +206,14 @@
 }
 
 .author-group-header--none:hover {
-    color: var(--color-accent);
+    color: var(--color-primary);
 }
 
 .author-group-name {
-    font-size: 1.1rem;
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
     font-weight: 600;
+    letter-spacing: 0.04em;
     color: var(--color-text-primary);
 }
 
@@ -217,12 +222,14 @@
 }
 
 .author-group-count {
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
     color: var(--color-text-secondary);
-    background: rgba(255, 255, 255, 0.06);
-    padding: 0.1rem 0.45rem;
+    border: 0.0625rem solid var(--color-border);
+    padding: 0.15rem 0.5rem;
     border-radius: var(--radius-sm);
+    font-variant-numeric: tabular-nums;
 }
 
 .author-group-grid {
@@ -260,30 +267,36 @@
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     cursor: pointer;
     position: relative;
-    backdrop-filter: blur(0.4rem);
-    box-shadow: var(--shadow-sm);
 }
 
 .media-badge {
     position: absolute;
     top: 0.4rem;
     left: 0.4rem;
-    padding: 0.15rem 0.35rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.65rem;
+    padding: 0.2rem 0.45rem;
+    border: 0.0625rem solid rgba(240, 242, 248, 0.3);
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.03em;
-    color: #fff;
+    letter-spacing: 0.14em;
+    background: var(--color-cover-scrim-strong);
+    color: var(--color-text-on-image);
     line-height: 1.2;
     z-index: 1;
 }
 
 .media-badge--cd {
-    background: var(--color-accent);
+    color: var(--color-accent-hover);
+    border-color: var(--color-accent-alpha);
 }
 
 .media-badge--audiobook {
-    background: var(--color-primary);
+    color: var(--color-primary-hover);
+    border-color: var(--color-primary-alpha-border);
+}
+
+.media-badge--web {
+    color: var(--color-success-hover);
+    border-color: var(--color-success-alpha);
 }
 
 .book-card:hover {

@@ -16,14 +16,15 @@
 .detail-modal {
     background: var(--color-bg-surface);
     border: 0.0625rem solid var(--color-border-light);
-    border-radius: var(--radius-xl);
+    border-top: 0.1875rem solid var(--color-primary);
+    border-radius: var(--radius-md);
     max-width: 56.25rem;
     width: 95%;
     max-height: 90vh;
     overflow-y: auto;
     padding: 2rem;
     position: relative;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-modal);
 }
 
 .detail-close {
@@ -82,14 +83,18 @@
 }
 
 .detail-title {
-    font-size: 1.3rem;
-    font-weight: bold;
+    font-family: var(--font-serif);
+    font-size: 1.4rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     margin-bottom: 0.5rem;
     line-height: 1.4;
 }
 
 .detail-series-name {
     font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     color: var(--color-primary);
     margin-bottom: 0.3rem;
 }
@@ -133,8 +138,10 @@
 }
 
 .detail-meta-label {
-    color: var(--color-text-dim);
-    font-size: 0.75rem;
+    color: var(--color-text-label);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .detail-description {
@@ -262,8 +269,8 @@
 }
 
 .detail-author-link:hover {
-    color: var(--color-accent);
-    border-bottom-color: var(--color-accent);
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
 }
 
 .edit-form {
@@ -381,8 +388,8 @@
 }
 
 .edit-author-tag:hover {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .edit-section {
@@ -552,9 +559,10 @@
 
 .detail-copies {
     margin-bottom: 1.5rem;
-    padding: 0.75rem;
-    background: var(--color-bg-input);
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-tint-subtle);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-md);
 }
 
 .detail-copies-empty {
@@ -585,7 +593,7 @@
 }
 
 .detail-copy-item.copy-lent {
-    background: rgba(255, 152, 0, 0.08);
+    background: var(--color-warning-alpha-faint);
     margin: 0 -0.75rem;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
@@ -641,7 +649,7 @@
 }
 
 .copy-count-badge.copy-lent-badge {
-    background: rgba(255, 152, 0, 0.15);
+    background: var(--color-warning-alpha);
     color: var(--color-warning);
 }
 
@@ -655,7 +663,7 @@
 }
 
 .edit-copy-item.copy-lent {
-    background: rgba(255, 152, 0, 0.06);
+    background: var(--color-warning-alpha-faint);
     margin: 0 -0.75rem;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
@@ -965,9 +973,10 @@
 
 .detail-epub {
     margin: 1rem 0 1.5rem 0;
-    padding: 0.75rem;
-    background: var(--color-bg-input);
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-tint-subtle);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-md);
 }
 
 .detail-epub-title {
@@ -1077,7 +1086,7 @@
     padding: 0.6rem 0.75rem;
     border: 1px dashed var(--color-border-light);
     border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--color-tint-subtle);
 }
 
 .edit-tag-ref-title {
@@ -1114,7 +1123,7 @@
     margin: 0.3rem 0;
     border: 1px dashed var(--color-border-light);
     border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--color-tint-subtle);
 }
 
 .edit-tag-hint strong {

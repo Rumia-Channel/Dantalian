@@ -19,7 +19,9 @@
 
 .settings-label {
     color: var(--color-text-secondary);
-    font-weight: 500;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
 }
 
 .settings-buttons {
@@ -34,7 +36,9 @@
 .width-btn {
     padding: 0.25rem 0.65rem;
     font-size: 0.75rem;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
     border-radius: var(--radius-sm);
     background: transparent;
     border: none;
@@ -45,13 +49,93 @@
 
 .width-btn:hover {
     color: var(--color-text-primary);
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--color-tint-hover);
 }
 
 .width-btn.active {
     background: var(--color-primary);
-    color: #fff;
+    color: var(--color-on-primary);
 }
+
+/* 補足説明の小さいテキスト（フォーム内の注記はこのクラスに統一） */
+.settings-note {
+    font-size: 0.78rem;
+    color: var(--color-text-dim);
+    line-height: 1.6;
+    margin: 0.25rem 0;
+}
+
+.settings-note--inline {
+    margin: 0;
+}
+
+.settings-note--tight {
+    margin: -0.25rem 0 0;
+    margin-inline-start: calc(8rem + 0.75rem);
+}
+
+.settings-msg-list {
+    margin: 0.25rem 0 0 1rem;
+    font-size: 0.8rem;
+    color: var(--color-text-dim);
+}
+
+/* 操作結果メッセージ（保存・同期など） */
+.settings-msg {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.settings-msg:empty {
+    display: none;
+}
+
+.settings-msg--ok {
+    color: var(--color-success);
+}
+
+.settings-msg--error {
+    color: var(--color-danger);
+}
+
+.settings-msg--dim {
+    color: var(--color-text-dim);
+}
+
+/* ローカル EPUB キャッシュの使用量メーター */
+.epub-cache-meter {
+    display: flex;
+    flex: 1 1 12rem;
+    max-width: 22rem;
+    height: 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-tint-faint);
+    overflow: hidden;
+    align-self: center;
+}
+
+.epub-cache-meter-fill {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: var(--color-primary);
+    transition: width 0.4s ease, background 0.3s ease;
+}
+
+.epub-cache-meter[data-level="warn"] .epub-cache-meter-fill {
+    background: var(--color-warning);
+}
+
+.epub-cache-meter[data-level="full"] .epub-cache-meter-fill {
+    background: var(--color-danger);
+}
+
+.epub-cache-usage-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .settings-form-row {
     display: flex;
     align-items: center;
@@ -95,8 +179,10 @@
 }
 
 .settings-form-section h3 {
-    font-size: 1.05rem;
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
     font-weight: 600;
+    letter-spacing: 0.02em;
     margin: 0 0 1rem;
     color: var(--color-text-primary);
     padding-bottom: 0.5rem;
@@ -104,10 +190,9 @@
 
 .settings-form-actions {
     justify-content: flex-end;
-    padding: 0.75rem;
-    background: var(--color-bg-surface);
-    border: 0.0625rem solid var(--color-border);
-    border-radius: var(--radius-md);
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 0.0625rem solid var(--color-border);
 }
 
 .settings-form-label {

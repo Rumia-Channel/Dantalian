@@ -72,8 +72,8 @@ body.player-mini-active #app {
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(120% 90% at 50% 0%, rgba(8, 9, 15, 0.15) 0%, rgba(8, 9, 15, 0.55) 70%),
-        linear-gradient(180deg, rgba(8, 9, 15, 0.25) 0%, rgba(8, 9, 15, 0.75) 100%);
+        radial-gradient(120% 90% at 50% 0%, var(--color-cover-scrim) 0%, var(--color-cover-scrim-strong) 70%),
+        linear-gradient(180deg, var(--color-cover-scrim) 0%, var(--color-cover-scrim-strong) 100%);
 }
 
 /* ---------- シェル ---------- */
@@ -127,14 +127,14 @@ body.player-mini-active #app {
 
 .player-eyebrow-dot.is-playing {
     background: var(--color-primary);
-    box-shadow: 0 0 0 0 rgba(79, 140, 255, 0.5);
+    box-shadow: 0 0 0 0 var(--color-primary-alpha-strong);
     animation: dotPulse 1.6s ease-out infinite;
 }
 
 @keyframes dotPulse {
-    0%   { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0.45); }
-    70%  { box-shadow: 0 0 0 0.55rem rgba(79, 140, 255, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0); }
+    0%   { box-shadow: 0 0 0 0 var(--color-primary-alpha-mid); }
+    70%  { box-shadow: 0 0 0 0.55rem transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* ---------- メインレイアウト ---------- */
@@ -155,11 +155,11 @@ body.player-mini-active #app {
 .player-cover {
     position: relative;
     aspect-ratio: 1 / 1;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-tint-soft);
     border: 1px solid var(--color-border-light);
-    box-shadow: var(--shadow-lg), 0 0 0 rgba(79, 140, 255, 0);
+    box-shadow: var(--shadow-lg), 0 0 0 transparent;
     transition: box-shadow 0.6s ease, transform 0.6s ease;
 }
 
@@ -176,8 +176,8 @@ body.player-mini-active #app {
 }
 
 @keyframes coverBreathe {
-    0%, 100% { box-shadow: var(--shadow-lg), 0 0 2.5rem rgba(79, 140, 255, 0.18); transform: scale(1); }
-    50%      { box-shadow: var(--shadow-lg), 0 0 4rem rgba(79, 140, 255, 0.32); transform: scale(1.012); }
+    0%, 100% { box-shadow: var(--shadow-lg), 0 0 2.5rem var(--color-primary-alpha-border); transform: scale(1); }
+    50%      { box-shadow: var(--shadow-lg), 0 0 4rem var(--color-primary-alpha-mid); transform: scale(1.012); }
 }
 
 .player-cover-fallback {
@@ -218,10 +218,11 @@ body.player-mini-active #app {
 
 .player-track-title {
     margin: 0;
+    font-family: var(--font-serif);
     font-size: 1.9rem;
-    font-weight: 800;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
     color: var(--color-text-primary);
     overflow-wrap: break-word;
 }
@@ -248,7 +249,7 @@ body.player-mini-active #app {
     position: relative;
     height: 0.375rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--color-tint-hover);
     cursor: pointer;
     outline: none;
     transition: height 0.15s ease;
@@ -266,7 +267,7 @@ body.player-mini-active #app {
     bottom: 0;
     width: 0%;
     border-radius: 999px;
-    background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+    background: var(--color-primary);
 }
 
 .player-progress-thumb {
@@ -276,7 +277,7 @@ body.player-mini-active #app {
     width: 0.85rem;
     height: 0.85rem;
     border-radius: 50%;
-    background: #fff;
+    background: var(--color-text-on-image);
     transform: translate(-50%, -50%) scale(0);
     box-shadow: var(--shadow-md);
     transition: transform 0.15s ease;
@@ -319,7 +320,7 @@ body.player-mini-active #app {
 
 .player-iconbtn:hover {
     color: var(--color-text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-tint-faint);
     transform: scale(1.08);
 }
 
@@ -344,15 +345,15 @@ body.player-mini-active #app {
     border-radius: 50%;
     border: none;
     cursor: pointer;
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
-    color: #fff;
-    box-shadow: 0 0.5rem 1.5rem rgba(79, 140, 255, 0.4);
-    transition: transform 0.18s ease, box-shadow 0.25s ease;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0.5rem 1.5rem var(--color-primary-alpha-mid);
+    transition: transform 0.18s ease, box-shadow 0.25s ease, background 0.18s ease;
 }
 
 .player-playbtn:hover {
     transform: scale(1.07);
-    box-shadow: 0 0.6rem 2rem rgba(79, 140, 255, 0.55);
+    box-shadow: 0 0.6rem 2rem var(--color-primary-alpha-strong);
 }
 
 .player-playbtn:active {
@@ -424,14 +425,14 @@ body.player-mini-active #app {
     height: 0.25rem;
     border: none;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--color-tint-strong);
 }
 
 .player-volslider::-moz-range-track {
     height: 0.25rem;
     border: none;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--color-tint-strong);
 }
 
 .player-volslider::-webkit-slider-thumb {
@@ -443,7 +444,7 @@ body.player-mini-active #app {
     margin-top: calc((0.25rem - 0.8rem) / 2);
     border: none;
     border-radius: 50%;
-    background: #fff;
+    background: var(--color-text-on-image);
     box-shadow: var(--shadow-sm);
     transition: transform 0.15s ease;
 }
@@ -457,7 +458,7 @@ body.player-mini-active #app {
     height: 0.8rem;
     border: none;
     border-radius: 50%;
-    background: #fff;
+    background: var(--color-text-on-image);
 }
 
 /* ---------- トラックリスト ---------- */
@@ -596,7 +597,7 @@ body.player-mini-active #app {
 }
 
 .player-track:hover {
-    background: rgba(255, 255, 255, 0.07);
+    background: var(--color-tint-faint);
 }
 
 .player-track--disabled {
@@ -687,8 +688,7 @@ body.player-mini-active #app {
 .player-mini {
     background: var(--color-bg-surface);
     border-top: 1px solid var(--color-border-light);
-    box-shadow: 0 -0.5rem 1.75rem rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(0.75rem);
+    box-shadow: var(--shadow-modal-deep);
     animation: miniSlideUp 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -699,13 +699,13 @@ body.player-mini-active #app {
 
 .player-mini-progress {
     height: 3px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-tint-hover);
 }
 
 .player-mini-progress-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+    background: var(--color-primary);
     transition: width 0.2s linear;
 }
 
@@ -725,10 +725,10 @@ body.player-mini-active #app {
     height: 3rem;
     padding: 0;
     border: none;
-    border-radius: 0.45rem;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-tint-soft);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -804,7 +804,7 @@ body.player-mini-active #app {
 
 .player-mini-btn:hover {
     color: var(--color-text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-tint-faint);
     transform: scale(1.08);
 }
 
@@ -823,7 +823,7 @@ body.player-mini-active #app {
 
 .player-mini-play:hover {
     background: var(--color-primary);
-    color: #fff;
+    color: var(--color-on-primary);
 }
 
 .player-mini-close {
