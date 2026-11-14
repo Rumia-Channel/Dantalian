@@ -93,6 +93,10 @@ upstream の `index.html` と `build-manifest.json` は改変せず、`LICENSE`�
 
 設定の正本は [`scripts/bibi/dantalian.js`](../scripts/bibi/dantalian.js)。端末キャッシュの対象だけ公式 at-once extractor とホスト拡張 [`epub-cache-bibi.js`](../static/js/epub-cache-bibi.js) を読み込む。Bibi の配布コードは変更せず、既存の EPUB 展開処理へ Blob を渡す。対象外・容量 0 の場合は通常の取得経路を維持する。
 
+管理画面の「読書設定（このブラウザ）」で、PDF・画像ZIPの既定の読み方向を左右から選べる。正本は [`reader-preferences.js`](../static/js/reader-preferences.js) で、`localStorage` の `dantalian_reader_direction` に `rtl` / `ltr` を保存する。未設定時は右読み (`rtl`)。サーバーへの設定保存・端末間同期は行わず、開いている本は変更しない。
+
+専用ページでは [`reader-preferences-bibi.js`](../static/js/reader-preferences-bibi.js) を常に拡張として読み込み、`bibi:is-going-to:process-package-spine` でPDF・画像ZIPのsynthetic spineに既定方向を設定する。PDFの自動判定よりこの指定を優先し、見開き構築前に反映する。その後のBibi標準の書籍別設定復元が既定方向を上書きするため、作品ごとの選択は維持される。EPUB・BibiZineには適用しない。両ホストスクリプトは専用ページのasset digestに含め、配布物本体の変更は不要。
+
 この preset は EPUB を返す Dantalian の書籍 endpoint 用。2.1.0 の判定では空拡張子 `''` を含めるとその分岐が先に返り、`['.epub', '.zip', '']` でも `.epub` 入力をフォルダーとして取得してしまう。実配信で確認したため、拡張子なし・`.epub` の両方を展開対象にする文書化済みの `['*']` を使用する。
 
 独自 preset は `default.js` の操作 UI 設定を自動継承しない。目次・表示設定のメニューバー、左右のページ送り、キー操作、位置スライダー、ページ表示を明示的に有効にする。自動起動だけを指定すると本文を取得できてもこれらの操作が無効になる。
