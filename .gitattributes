@@ -2,3 +2,4 @@
 scripts/bibi/dantalian.js text eol=lf
 static/js/epub-cache*.js text eol=lf
 static/js/narou-client.js text eol=lf
+static/js/reader-preferences*.js text eol=lf
