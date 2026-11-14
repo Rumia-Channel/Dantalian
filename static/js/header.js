@@ -34,6 +34,12 @@
         navEl.setAttribute("aria-current", "page");
     }
 
+    /* 短いページでフッターを画面最下部へ押し下げる伸縮スペーサー */
+    var spacer = document.createElement("div");
+    spacer.className = "app-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    app.appendChild(spacer);
+
     var credit = document.createElement("footer");
     credit.className = "service-credit";
     credit.innerHTML =
