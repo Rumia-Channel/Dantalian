@@ -24,9 +24,29 @@ async function loadAudioDataSaverPolicy() {
     }
 }
 
+// 生成物の実体に合わせて再生可否を判定する。
+// Opus は Ogg コンテナ、AAC は ADTS の裸ストリームで、MP4 コンテナは別の形式なので
+// audio/mp4 の対応結果を raw AAC の再生可否として流用しない。
+const AUDIO_VARIANT_MIME_TYPES = {
+    opus: ['audio/ogg; codecs="opus"'],
+    aac: ["audio/aac"],
+};
+
+function audioVariantCanPlay(format) {
+    const mimeTypes = AUDIO_VARIANT_MIME_TYPES[format];
+    if (!mimeTypes) return false;
+    const probe = document.createElement("audio");
+    return mimeTypes.some((mimeType) => probe.canPlayType(mimeType) !== "");
+}
+
+// 拡張子の解決順はサーバー側 (source_extension) と同じにする。
+// ファイル名に拡張子が無ければ、末尾が拡張子を表す旧形式の file_hash を使う。
 function audioTrackExtension(track) {
     const fileName = String(track?.file_name || "");
-    return fileName.includes(".") ? fileName.split(".").pop().toLowerCase() : "";
+    const fromName = fileName.includes(".") ? fileName.split(".").pop().toLowerCase() : "";
+    if (fromName) return fromName;
+    const fileHash = String(track?.file_hash || "");
+    return fileHash.includes(".") ? fileHash.split(".").pop().toLowerCase() : "";
 }
 
 async function fetchAudioPlayability(track, extension) {
@@ -68,12 +88,12 @@ function audioSourceCandidatesFromPlayability(track, playability) {
         {
             format: "opus",
             url: `/api/audio/stream/${encodeURIComponent(fileHash)}?${query}&format=opus`,
-            playable: document.createElement("audio").canPlayType('audio/ogg; codecs="opus"') !== "",
+            playable: audioVariantCanPlay("opus"),
         },
         {
             format: "aac",
             url: `/api/audio/stream/${encodeURIComponent(fileHash)}?${query}&format=aac`,
-            playable: document.createElement("audio").canPlayType("audio/aac") !== "",
+            playable: audioVariantCanPlay("aac"),
         },
     ];
     const candidates = variants.filter((variant) => {

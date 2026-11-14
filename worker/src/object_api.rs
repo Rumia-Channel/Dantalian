@@ -3,7 +3,9 @@ use worker::{D1Type, Date, FormEntry, Request, Response, Result, RouteContext};
 
 use dantalian::{
     application::error::AppError,
-    ports::object_storage::{AudioCodec, ObjectKind, WORKER_DIRECT_UPLOAD_MAX_BYTES, object_key},
+    ports::object_storage::{
+        AudioCodec, ObjectKind, WORKER_DIRECT_UPLOAD_MAX_BYTES, media_object_id, object_key,
+    },
 };
 
 use crate::{
@@ -170,10 +172,7 @@ pub async fn stream(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     // Presigned finalize rows keep only the hash stem in `file_hash`, while
     // older direct uploads kept `<hash>.<ext>` there. Both must resolve to the
     // canonical `audio/<stem>.<ext>` object the media migration writes.
-    let object_id = match file_hash.rsplit_once('.') {
-        Some((stem, _)) if !stem.is_empty() => stem,
-        _ => file_hash,
-    };
+    let object_id = media_object_id(file_hash);
     let key = match object_key(config.prefix.as_deref(), kind, object_id, &extension) {
         Ok(key) => key,
         Err(error) => return error_response(error),
@@ -426,7 +425,15 @@ async fn upload(
         .await
         .map_err(db_error)?;
     if matches!(kind, ObjectKind::OriginalAudio) {
-        if let Err(error) = crate::audio_job_api::enqueue_data_saver_jobs(&ctx.env).await {
+        // Only the uploaded source can be missing a converted variant, so the
+        // job is scheduled for it directly. A full scan would re-check every
+        // track on every upload and still miss the source when the data saver
+        // only matches the extension of the uploaded file.
+        if let Err(error) = crate::audio_job_api::enqueue_data_saver_job_for_source(
+            &ctx.env, &file_hash, &extension,
+        )
+        .await
+        {
             worker::console_error!("data saver job scheduling deferred after upload: {error}");
         }
     }

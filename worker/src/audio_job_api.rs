@@ -10,7 +10,9 @@ use dantalian::{
             AudioJobClaim, AudioJobDispatchMessage, AudioJobFailure, AudioJobRepository,
             AudioJobStatus,
         },
-        object_storage::{AudioCodec, ObjectKind, ObjectStorage, object_key},
+        object_storage::{
+            AudioCodec, ObjectKind, ObjectStorage, audio_object_keys, media_object_id, object_key,
+        },
     },
 };
 use serde::Deserialize;
@@ -304,11 +306,15 @@ pub async fn enqueue_data_saver_jobs(env: &Env) -> Result<(), AppError> {
         let Some(extension) = source_extension(&source.file_name, &source.file_hash) else {
             continue;
         };
+        // Legacy rows keep `<hash>.<extension>` in `file_hash`; the object id
+        // is the bare hash, so the scan must resolve it before it can build
+        // the source and output keys.
+        let object_id = media_object_id(&source.file_hash);
         if !extensions.contains(&extension)
             || object_key(
                 prefix.as_deref(),
                 ObjectKind::OriginalAudio,
-                &source.file_hash,
+                object_id,
                 &extension,
             )
             .is_err()
@@ -321,7 +327,7 @@ pub async fn enqueue_data_saver_jobs(env: &Env) -> Result<(), AppError> {
             &storage,
             &service,
             prefix.as_deref(),
-            &source.file_hash,
+            object_id,
             &extension,
         )
         .await
@@ -379,20 +385,21 @@ async fn enqueue_source_jobs<Q>(
 where
     Q: AudioJobRepository,
 {
-    let input_key = object_key(prefix, ObjectKind::OriginalAudio, file_hash, extension)?;
+    // Callers may hold either file hash convention (`<hash>` or
+    // `<hash>.<extension>`). The object id is the bare hash in both cases, so
+    // the keys and the idempotency key are built from the resolved id: the
+    // same source can then never be encoded twice under two job keys.
+    let file_hash = media_object_id(file_hash);
+    let keys = audio_object_keys(prefix, file_hash, extension)?;
+    let input_key = keys.original;
     let mut first_error = None;
 
     for codec in [AudioCodec::Opus, AudioCodec::Aac] {
-        let output_key = object_key(
-            prefix,
-            ObjectKind::EncodedAudio { codec },
-            file_hash,
-            codec.as_str(),
-        )?;
-        let idempotency_key = match codec {
-            AudioCodec::Opus => format!("data-saver:{file_hash}:opus"),
-            AudioCodec::Aac => format!("data-saver:{file_hash}:aac"),
+        let output_key = match codec {
+            AudioCodec::Opus => keys.opus.clone(),
+            AudioCodec::Aac => keys.aac.clone(),
         };
+        let idempotency_key = format!("data-saver:{file_hash}:{}", codec.as_str());
         if storage.exists(&output_key).await? {
             continue;
         }

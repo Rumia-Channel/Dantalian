@@ -219,11 +219,14 @@ pub fn encoded_path(audio_dir: &str, file_hash: &str, format: &str) -> PathBuf {
 }
 
 pub fn encoded_file_name(file_hash: &str, format: &str) -> String {
-    let hash_stem = file_hash
-        .rsplit_once('.')
-        .map(|(stem, _)| stem)
-        .unwrap_or(file_hash);
-    format!("{}.{}", hash_stem, format)
+    // Encoded variants are named after the object id, so both file hash
+    // conventions (`<hash>` and `<hash>.<extension>`) resolve to the same
+    // output file.
+    format!(
+        "{}.{}",
+        crate::ports::object_storage::media_object_id(file_hash),
+        format
+    )
 }
 
 pub fn ensure_encoded_variants(
@@ -350,6 +353,19 @@ mod tests {
         assert_eq!(
             encoded_file_name("abc-123_X.flac", "opus"),
             "abc-123_X.opus"
+        );
+    }
+
+    #[test]
+    fn names_encoded_variants_after_the_object_id_of_both_hash_conventions() {
+        assert_eq!(encoded_file_name("abc-123_X", "opus"), "abc-123_X.opus");
+        assert_eq!(
+            encoded_file_name("abc-123_X.flac", "opus"),
+            "abc-123_X.opus"
+        );
+        assert_eq!(
+            encoded_file_name("abc-123_X.flac", "aac"),
+            encoded_file_name("abc-123_X", "aac")
         );
     }
 

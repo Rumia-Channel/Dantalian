@@ -1,6 +1,6 @@
 use dantalian::{
     application::error::AppError,
-    ports::object_storage::{AudioCodec, ObjectKind, ObjectStorage, object_key},
+    ports::object_storage::{ObjectStorage, audio_object_keys},
 };
 use serde::Serialize;
 use worker::{Request, Response, Result, RouteContext};
@@ -93,37 +93,17 @@ pub async fn playability(req: Request, ctx: RouteContext<()>) -> Result<Response
         }
     };
     let storage = WasabiStorage::new(config.clone());
-    let original_key = match object_key(
-        config.prefix.as_deref(),
-        ObjectKind::OriginalAudio,
-        file_hash,
-        &extension,
-    ) {
-        Ok(key) => key,
+    // Direct uploads record `<hash>.<extension>` in `file_hash` while
+    // presigned multipart uploads record the bare hash. Both address the same
+    // object, so the availability probes use the resolved object id or a
+    // legacy track would never report its encoded variants.
+    let keys = match audio_object_keys(config.prefix.as_deref(), &file_hash, &extension) {
+        Ok(keys) => keys,
         Err(error) => return error_response(error),
     };
-    let opus_key = match object_key(
-        config.prefix.as_deref(),
-        ObjectKind::EncodedAudio {
-            codec: AudioCodec::Opus,
-        },
-        file_hash,
-        "opus",
-    ) {
-        Ok(key) => key,
-        Err(error) => return error_response(error),
-    };
-    let aac_key = match object_key(
-        config.prefix.as_deref(),
-        ObjectKind::EncodedAudio {
-            codec: AudioCodec::Aac,
-        },
-        file_hash,
-        "aac",
-    ) {
-        Ok(key) => key,
-        Err(error) => return error_response(error),
-    };
+    let original_key = keys.original;
+    let opus_key = keys.opus;
+    let aac_key = keys.aac;
 
     // Probe the three variants concurrently; doing this sequentially added
     // three round trips to Wasabi before playback could start.
@@ -155,9 +135,10 @@ pub async fn playability(req: Request, ctx: RouteContext<()>) -> Result<Response
         None
     };
     if original.available && (!opus.available || !aac.available) {
-        if let Err(error) =
-            crate::audio_job_api::enqueue_data_saver_job_for_source(&ctx.env, file_hash, &extension)
-                .await
+        if let Err(error) = crate::audio_job_api::enqueue_data_saver_job_for_source(
+            &ctx.env, &file_hash, &extension,
+        )
+        .await
         {
             worker::console_error!("data saver job scheduling failed: {error}");
         }
