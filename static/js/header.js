@@ -13,13 +13,13 @@
             '</div>' +
         '</div>' +
         '<nav>' +
-            '<a href="/" id="nav-home">一覧</a>' +
-            '<a href="/books/" id="nav-books"><span class="nav-book-label">本</span></a>' +
-            '<a href="/music/" id="nav-music">音楽</a>' +
-            '<a href="/register/" id="nav-register">登録</a>' +
-            '<a href="/manage/" id="nav-manage">管理</a>' +
-            '<a href="/authors/" id="nav-authors">アーティスト</a>' +
-            '<a href="/licenses/" id="nav-licenses">ライセンス</a>' +
+            '<a href="/" id="nav-home"><span class="nav-icon material-icons" aria-hidden="true">home</span><span class="nav-label">一覧</span></a>' +
+            '<a href="/books/" id="nav-books"><span class="nav-icon material-icons" aria-hidden="true">menu_book</span><span class="nav-label nav-book-label">本</span></a>' +
+            '<a href="/music/" id="nav-music"><span class="nav-icon material-icons" aria-hidden="true">music_note</span><span class="nav-label">音楽</span></a>' +
+            '<a href="/register/" id="nav-register"><span class="nav-icon material-icons" aria-hidden="true">add_circle</span><span class="nav-label">登録</span></a>' +
+            '<a href="/manage/" id="nav-manage"><span class="nav-icon material-icons" aria-hidden="true">settings</span><span class="nav-label">管理</span></a>' +
+            '<a href="/authors/" id="nav-authors"><span class="nav-icon material-icons" aria-hidden="true">person</span><span class="nav-label">アーティスト</span></a>' +
+            '<a href="/licenses/" id="nav-licenses"><span class="nav-icon material-icons" aria-hidden="true">gavel</span><span class="nav-label">ライセンス</span></a>' +
         '</nav>' +
         '<div class="settings-bar">' +
             '<span class="settings-label">表示幅</span>' +

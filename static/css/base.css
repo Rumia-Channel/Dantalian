@@ -296,6 +296,7 @@ a:hover {
 }
 
 .load-error {
+    grid-column: 1 / -1;
     display: grid;
     justify-items: center;
     gap: 0.65rem;
