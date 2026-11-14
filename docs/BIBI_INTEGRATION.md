@@ -61,7 +61,7 @@ node scripts/import_bibi.mjs .tmp/bibi-source
 node scripts/import_bibi.mjs --verify
 ```
 
-固定 toolchain は Bun 1.4.2 / Node.js 24.22.2。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
+固定 toolchain は [`bibi.lock.json`](../bibi.lock.json) の `toolchain` を正とする（現在 Node.js 24.22.2 / Bun 1.4.2、公開成果物の manifest 記録値）。再現性を比較する場合はこれらも同じバージョンに固定する。CI/Linux では Chromium のインストールに `bunx playwright install --with-deps chromium` を使い、`fonts-noto-cjk` もインストールする。検証 EPUB は `Noto Serif CJK JP` / Windows `MS Mincho` を明示する。英字 serif のフォールバックだけでは縦書き漢字の送りが 0 になり重なって描画される環境があるため、実運用でも適切なシステムフォントまたは EPUB 埋め込みフォントを用意する。
 
 固定 checksum は Git の正規バイト列（LF）の `bun.lock` / `LICENSE` から取得する。Windows の CRLF checkout から採った checksum は Linux CI と一致しないため、上記 clone では `core.autocrlf=false` を保存する。pin を更新するときも checkout 後のファイルではなく Git の blob から取得する（例: `git -C .tmp/bibi-source cat-file blob HEAD:bun.lock | sha256sum`）。ホスト独自 preset と host entry の digest に含むキャッシュ・narou クライアント・読書設定 JS も `.gitattributes` の `eol=lf` で固定する。改行差を理由に manifest 検証を省略・緩和しない。
 
@@ -370,6 +370,12 @@ Worker の確認は静的 ASSETS 配信であり、Wasabi の `/epubs/` 経路�
 - Native build、Worker assets 再生成と release Wasm build が成功した。Worker の検証プロセスでは worker-build 0.8.4 と wasm-bindgen 0.2.127 を使用し、ユーザーのグローバル toolchain は変更していない。
 - 隔離 DB の Native `/api/health` は `version:"0.2.6"` を返した。上流の挿絵 EPUB を実 upload API で登録し、Firefox の `/reader/?book=1` から standalone の `dantalian.html` へ遷移した。本文・挿絵の描画、`ready/operable`、schemaVersion 1 と書籍・ファイル識別子、CFI `/6/4!/4/2/2` への復元を確認した。
 - 今回の実ブラウザによるホスト確認は Native。Worker は静的配布物と Wasm build の確認までで、live Wasabi と本番デプロイは検証していない。v0.2.5 からの追加 DB マイグレーションは不要。
+
+### Dantalian 0.4.2 / Bibi 2.3.5 の検証
+
+- 公開済みの [Bibi v2.3.5](https://github.com/Rumia-Channel/bibi/releases/tag/v2.3.5) の ZIP は GitHub release の asset digest `sha256:6c1fc393a7ab405f02b5c25122c06369ee565a97e1547c6b295260479f41caa7` と一致した。公開 manifest の `commit c42d5ae3c6e64134138cde8e260a6e289552ad0f`、`sourceDateEpoch 1794667127`、Node 24.22.2 / Bun 1.4.2 を固定した。ZIP 内の `bibi/` を clean checkout の `__dist/` に配置し、製品 importer が manifest と Git checkout を照合して取り込んだ。
+- 上流 unit tests 102 件（ローカル Bun 1.4.4）、配布物の取り込み検証 6 件、Chromium の読書回帰・ホストナビ 13 シナリオが成功した。iPad サイズの視覚ビューポートでツールバーとセーフエリア制御の完全表示、タッチ境界ジェスチャーを含む。ローカルのテスト実行環境は Node 26.13.0 / Bun 1.4.4 であり、公開成果物の固定 toolchain は変更していない。
+- Native build (`cargo build --features native`) が成功し、`static/vendor/bibi/` は 222 reader assets + ホスト追加分で `--verify` に成功した。取り込み後の実 Native で、スマートフォン (393px)・タブレット (810px)・デスクトップの実画面表示を確認した。
 
 ### 配信時と保存・同期拡張時のホスト受け入れ
 

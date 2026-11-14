@@ -7,7 +7,7 @@
   "licenseSha256": "7932d3471f99ce4214e0fca0147d93f96c60e97b079f0e775a7709f637833ff4",
   "sourceDateEpoch": 1794667127,
   "toolchain": {
-    "node": "26.13.0",
-    "bun": "1.4.4"
+    "node": "24.22.2",
+    "bun": "1.4.2"
   }
 }
