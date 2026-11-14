@@ -274,6 +274,17 @@ a:hover {
     max-width: min(var(--content-width, 60rem), 120rem);
     margin: 0 auto;
     padding: 2rem 1rem;
+    /* 短いページでもフッター (API クレジット) が画面最下部に来るよう
+       縦 flex にして .app-spacer が残りの空きを吸収する */
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-spacer {
+    flex: 1 0 auto;
+    min-height: 2rem;
 }
 
 .service-credit {
@@ -296,6 +307,7 @@ a:hover {
 }
 
 .load-error {
+    grid-column: 1 / -1;
     display: grid;
     justify-items: center;
     gap: 0.65rem;

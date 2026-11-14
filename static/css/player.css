@@ -835,30 +835,3 @@ body.player-mini-active #app {
     box-shadow: 0 0 0 2px var(--color-primary-alpha);
 }
 
-/* ---------- レスポンシブ ---------- */
-@media (max-width: 48rem) {
-    .player-main {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-    }
-
-    .player-coverwrap {
-        position: static;
-        max-width: 18rem;
-        margin: 0 auto;
-        width: 100%;
-    }
-
-    .player-titles {
-        text-align: center;
-        min-height: 0;
-    }
-
-    .player-track-title {
-        font-size: 1.5rem;
-    }
-
-    .player-tracklist {
-        max-height: 14rem;
-    }
-}

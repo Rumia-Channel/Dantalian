@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Dantalian - 管理</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ASSET_VERSION">
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
@@ -91,6 +91,21 @@
                     </div>
                 </section>
 
+                <section aria-labelledby="reader-settings-title">
+                    <h3 id="reader-settings-title" class="manage-panel-title">読書設定（このブラウザ）</h3>
+                    <div class="settings-form-section">
+                        <div class="settings-form-row">
+                            <span class="settings-form-label-inline">PDF・画像ZIPの読み方向</span>
+                            <div id="reader-direction-controls" class="settings-buttons" role="group" aria-label="デフォルトの読み方向">
+                                <button type="button" class="width-btn" data-reader-direction="rtl" aria-pressed="true">右読み（右 → 左）</button>
+                                <button type="button" class="width-btn" data-reader-direction="ltr" aria-pressed="false">左読み（左 → 右）</button>
+                            </div>
+                        </div>
+                        <p class="settings-note">初期値は右読みです。選択はこのブラウザに保存され、次に開くPDF・画像ZIPに適用されます。作品ごとに変更・保存した読み方向を優先し、EPUBの読み方向は変更しません。</p>
+                        <p id="reader-direction-status" class="settings-msg" role="status" aria-live="polite"></p>
+                    </div>
+                </section>
+
                 <section aria-labelledby="narou-settings-title">
                     <h3 id="narou-settings-title" class="manage-panel-title">Web 小説（narou.rs）</h3>
                     <p>ブラウザが narou.rs へ直接アクセスして書誌情報を取得し、通常の一覧に混ぜて表示します。Dantalian のサーバー（DB・ファイル・S3）には書誌情報・EPUB を保存せず、接続先・対象タグだけをこの欄で管理します。EPUB だけは下の設定に従ってこのブラウザ内へキャッシュします（既定 512 MiB、容量 0 で無効）。</p>
@@ -110,6 +125,7 @@
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
     <script src="/js/searchable-select.js?v=ASSET_VERSION"></script>
     <script src="/js/settings.js?v=ASSET_VERSION"></script>
+    <script src="/js/reader-preferences.js?v=ASSET_VERSION"></script>
     <script src="/js/series.js?v=ASSET_VERSION"></script>
     <script src="/js/storage-locations.js?v=ASSET_VERSION"></script>
     <script src="/js/labels.js?v=ASSET_VERSION"></script>

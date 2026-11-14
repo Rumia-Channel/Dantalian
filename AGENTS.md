@@ -26,6 +26,12 @@
 - CSS/JS を変更した場合は必ずリビルド（`cargo build`）すること。リビルドしないとハッシュが更新されず、ブラウザが古いキャッシュを使い続ける。
 - 新しい静的アセット（CSS/JS ファイル）を追加した場合は、`build.rs` に `println!("cargo:rerun-if-changed=static/<file>");` を追加し、`index.html` にも `?v=ASSET_VERSION` を付与すること。
 
+## 生成物の静的アセット
+
+- `static/vendor/bibi/`（Bibi 配布物）と `static/wasm/`（ブラウザ音声プリプロセッサ）は **生成物であり Git 管理しない**。`git status` に現れてもコミットしないこと。
+- `static/wasm/` は `node scripts/build_audio_preprocessor.mjs` で生成する。ブラウザ側プリプロセッサは `isWorkerRuntime()` でガードされており（`static/js/edit/tracks.js`）、**Worker ランタイム専用**である。Native の `cargo build` では生成も実行もされず、ローカル Native 開発でこのファイルが無くても問題ない。生成には `Cargo.lock` の `wasm-bindgen` クレートと同じバージョンの `wasm-bindgen-cli` が必要（現行 0.2.127。`cargo install wasm-bindgen-cli --version 0.2.127 --locked`）。バージョンが違うと生成が失敗する。
+- `worker/build_assets.mjs` は両方を再生成・検証してから `worker/public` に配置するため、Worker 側の作業では同スクリプトが先に実行される。
+
 ## DB スキーマ変更ルール
 
 - バージョン 1.0.0 未満の場合、DB の構造が大きく変わる際は後方互換性を気にせず大幅な変更を加えてよい。

@@ -58,6 +58,8 @@ fn main() {
         "static/js/detail.js",
         "static/js/book-links.js",
         "static/js/reader.js",
+        "static/js/reader-preferences.js",
+        "static/js/reader-preferences-bibi.js",
         "static/js/epub-cache.js",
         "static/js/epub-cache-reader.js",
         "static/js/epub-cache-bibi.js",

@@ -173,21 +173,3 @@
     display: none;
 }
 
-@media (max-width: 44rem) {
-    .licenses-intro,
-    .license-summary,
-    .license-controls,
-    .license-overview {
-        padding: 1rem;
-    }
-
-    .license-summary-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .license-entry summary {
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 0.35rem 0.6rem;
-    }
-
-}

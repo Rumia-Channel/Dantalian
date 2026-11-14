@@ -841,12 +841,6 @@
     font-size: 0.75rem;
 }
 
-@media (max-width: 640px) {
-    .edit-track-head {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 .edit-track-sub {
     display: flex;
     align-items: center;

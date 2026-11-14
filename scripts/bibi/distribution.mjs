@@ -16,7 +16,10 @@ export const requiredAssets = [
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export async function hostReaderVersion() {
-    const scripts = ['epub-cache.js', 'epub-cache-reader.js', 'epub-cache-bibi.js', 'narou-client.js'];
+    const scripts = [
+        'epub-cache.js', 'epub-cache-reader.js', 'epub-cache-bibi.js', 'narou-client.js',
+        'reader-preferences.js', 'reader-preferences-bibi.js',
+    ];
     const digests = await Promise.all(scripts.map(async name =>
         `${name}\0${sha256(await readFile(new URL(`../../static/js/${name}`, import.meta.url)))}`));
     return sha256(Buffer.from(digests.join('\n')));
@@ -33,6 +36,7 @@ export function renderHostEntry(indexBytes, presetBytes, hostVersion) {
     return Buffer.from(html.replace(readerScript, (_, version) =>
         `<script src="/js/epub-cache.js?v=${hostVersion}"></script>\n` +
         `<script src="/js/narou-client.js?v=${hostVersion}"></script>\n` +
+        `<script src="/js/reader-preferences.js?v=${hostVersion}"></script>\n` +
         `<script id="dantalian-reader-bootstrap" src="/js/epub-cache-reader.js?v=${hostVersion}" data-bibi-source="resources/scripts/bibi.js?v=${version}.${sha256(presetBytes)}.${hostVersion}"></script>`));
 }
 
