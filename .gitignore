@@ -18,3 +18,4 @@ worker/.asset-version
 /.cocoindex_code/
 /static/vendor/bibi/
 /static/vendor/.bibi-import-*/
+/static/wasm/
