@@ -109,27 +109,39 @@ pub fn parse_work(
         track_title: Selector,
         track_time: Selector,
     }
-    static S: LazyLock<Selectors> = LazyLock::new(|| Selectors {
+    static S: LazyLock<Selectors> = LazyLock::new(|| {
+        Selectors {
         title: Selector::parse("#work_name").unwrap(),
-        publisher: Selector::parse("#work_maker .maker_name").unwrap(),
-        rows: Selector::parse("#work_outline tr").unwrap(),
-        heading: Selector::parse("th").unwrap(),
-        value: Selector::parse("td").unwrap(),
+        publisher: Selector::parse(
+            "#work_maker .maker_name, .c-productInfo__gridContext .c-productInfo__makerName",
+        )
+        .unwrap(),
+        rows: Selector::parse("#work_outline tr, .c-productInfo__gridContext .c-productInfo__item")
+            .unwrap(),
+        heading: Selector::parse("th, dt").unwrap(),
+        value: Selector::parse("td, dd").unwrap(),
         links: Selector::parse("a").unwrap(),
-        description: Selector::parse("[itemprop=description]").unwrap(),
+        description: Selector::parse("[itemprop=description], .c-productContent").unwrap(),
         image: Selector::parse("meta[property='og:image']").unwrap(),
-        tracks: Selector::parse(".work_parts.type_tracklist .work_tracklist_item").unwrap(),
-        track_title: Selector::parse(".title").unwrap(),
-        track_time: Selector::parse(".time").unwrap(),
+        tracks: Selector::parse(
+            ".work_parts.type_tracklist .work_tracklist_item, .c-productContent .c-productContent__trackListItem",
+        )
+        .unwrap(),
+        track_title: Selector::parse(".title, .c-productContent__trackItemTitle").unwrap(),
+        track_time: Selector::parse(".time, .c-productContent__trackItemTime").unwrap(),
+    }
     });
-    fn text(node: scraper::ElementRef<'_>) -> String {
-        let mut result = String::new();
+    fn append_text(result: &mut String, node: scraper::ElementRef<'_>) {
         for piece in node.text().flat_map(str::split_whitespace) {
             if !result.is_empty() {
                 result.push(' ');
             }
             result.push_str(piece);
         }
+    }
+    fn text(node: scraper::ElementRef<'_>) -> String {
+        let mut result = String::new();
+        append_text(&mut result, node);
         result
     }
     let Some(info) = info.get(id).filter(|value| value.is_object()) else {
@@ -144,6 +156,10 @@ pub fn parse_work(
         .ok_or_else(|| {
             "DLsite work page did not contain a title (access may be restricted)".to_owned()
         })?;
+    let mut description = String::new();
+    for node in document.select(&S.description) {
+        append_text(&mut description, node);
+    }
     let mut work = DlsiteWork {
         dlsite_id: id.to_owned(),
         title,
@@ -157,11 +173,7 @@ pub fn parse_work(
             .and_then(|value| value.as_str())
             .and_then(|value| value.get(..10))
             .map(str::to_owned),
-        description: document
-            .select(&S.description)
-            .next()
-            .map(text)
-            .filter(|value| !value.is_empty()),
+        description: (!description.is_empty()).then_some(description),
         series_title: info
             .get("title_name")
             .and_then(|value| value.as_str())
@@ -206,6 +218,9 @@ pub fn parse_work(
             }
             _ => {}
         }
+    }
+    if work.authors.is_empty() {
+        work.authors.extend(work.publisher.iter().cloned());
     }
     for track in document.select(&S.tracks) {
         let Some(title) = track
@@ -304,6 +319,72 @@ mod tests {
         );
         assert!(parse_work("RJ99999999", &info, html).unwrap().is_none());
         assert!(parse_work("RJ01676238", &info, "<h1>Access denied</h1>").is_err());
+    }
+
+    #[cfg(any(feature = "native", feature = "dlsite"))]
+    #[test]
+    fn authorless_work_uses_circle_without_follow_controls_as_author() {
+        let info = serde_json::json!({"RJ01437353": {}});
+        for maker in [
+            r#"<table id="work_maker"><tr><td><span class="maker_name">グロウクローバー</span></td></tr></table>"#,
+            r#"<dl class="c-productInfo__gridContext c-productInfoPc__list"><div class="c-productInfo__item"><dt>サークル名</dt><dd><a class="c-productInfo__makerName">グロウクローバー</a><a>フォローする</a><span>312</span></dd></div></dl>"#,
+        ] {
+            let html = format!(r#"<h1 id="work_name">彼女VS元カノ</h1>{maker}"#);
+            let work = parse_work("RJ01437353", &info, &html).unwrap().unwrap();
+            assert_eq!(work.publisher.as_deref(), Some("グロウクローバー"));
+            assert_eq!(work.authors, ["グロウクローバー"]);
+            assert!(work.voice_actors.is_empty());
+        }
+        let work = parse_work(
+            "RJ01437353",
+            &info,
+            r#"<h1 id="work_name">Work without credits or circle</h1>"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(work.authors.is_empty());
+        assert!(work.publisher.is_none());
+    }
+
+    #[cfg(any(feature = "native", feature = "dlsite"))]
+    #[test]
+    fn current_layout_preserves_credits_description_and_tracks() {
+        let info = serde_json::json!({"RJ123456": {}});
+        let html = r#"<h1 id="work_name">Audio</h1>
+        <dl class="c-productInfo__gridContext c-productInfoPc__list">
+          <div class="c-productInfo__item"><dt>サークル名</dt><dd><a class="c-productInfo__makerName">Circle</a><a>Follow</a></dd></div>
+          <div class="c-productInfo__item"><dt>作者</dt><dd><a>Writer</a></dd></div>
+          <div class="c-productInfo__item"><dt>声優</dt><dd><a>Voice</a><a>Writer</a></dd></div>
+          <div class="c-productInfo__item"><dt>ページ数</dt><dd>27P</dd></div>
+          <div class="c-productInfo__item"><dt>シリーズ名</dt><dd>Series</dd></div>
+        </dl>
+        <aside><dl><div><dt>作者</dt><dd><a>Advertiser</a></dd></div></dl></aside>
+        <section class="c-productContent"><h3>Synopsis</h3><div class="c-productContent__text">First paragraph.</div></section>
+        <section class="c-productContent"><div class="c-productContent__text">Second paragraph.</div>
+          <ul class="c-productContent__trackList">
+            <li class="c-productContent__trackListItem"><div class="c-productContent__trackItemTitle">Opening</div><div class="c-productContent__trackItemTime">4:35</div></li>
+            <li class="c-productContent__trackListItem"><div class="c-productContent__trackItemTitle">Closing</div><div class="c-productContent__trackItemTime"></div></li>
+          </ul>
+        </section>
+        <section class="sample"><audio src="https://media.example/sample.mp3"></audio>
+          <div class="c-productContent__trackListItem"><div class="c-productContent__trackItemTitle">Preview</div></div>
+        </section>"#;
+        let work = parse_work("RJ123456", &info, html).unwrap().unwrap();
+        assert_eq!(work.publisher.as_deref(), Some("Circle"));
+        assert_eq!(work.authors, ["Writer", "Voice"]);
+        assert_eq!(work.voice_actors, ["Voice", "Writer"]);
+        assert_eq!(work.extent.as_deref(), Some("27P"));
+        assert_eq!(work.series_title.as_deref(), Some("Series"));
+        assert_eq!(
+            work.description.as_deref(),
+            Some("Synopsis First paragraph. Second paragraph. Opening 4:35 Closing")
+        );
+        let tracks = work
+            .tracks
+            .iter()
+            .map(|track| (track.title.as_str(), track.duration.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(tracks, [("Opening", Some("4:35")), ("Closing", None)]);
     }
 
     #[cfg(any(feature = "native", feature = "dlsite"))]
