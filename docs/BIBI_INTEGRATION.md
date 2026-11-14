@@ -1,8 +1,7 @@
 # Bibi 組み込み仕様と Dantalian 側の追加・接続作業
 
 ## 対象バージョンと役割
-
-Bibi **2.3.4** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.4/HOST_SERIES_NAVIGATION_ja.md) を参照する。
+Bibi **2.3.5** のホスト連携機能を使用する。固定した repository・commit・lock/license の SHA-256・sourceDateEpoch・Node/Bun は [`bibi.lock.json`](../bibi.lock.json) を正とする。既存の schemaVersion 1 の位置 API を維持し、サイト限定の巻間ナビゲーション API を使用する。全契約は [Bibi の日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.5/HOST_SERIES_NAVIGATION_ja.md) を参照する。
 
 - **Bibi**: EPUB・PDF・画像ZIP の取得・描画、目次・移動、操作可能状態、元本文に対応した位置、進捗、端末内 Automark、公開 API と配布物検証。
 - **Dantalian**: 認証・認可、書籍 ID とファイル版の管理、サーバー保存・同期、競合解決、現在位置と最遠位置、明示的な読了状態、ライブラリ一覧表示。
@@ -37,6 +36,10 @@ Bibi **2.3.4** のホスト連携機能を使用する。固定した repository
 
 2.3.3 では、挿絵の直前の本文を再レイアウトして空きができた場合、縦長の挿絵の配置先を再評価する。挿絵の元ソース CFI を維持したまま先行本文と同じ見開きへ戻す。ホスト preset と schemaVersion 1 の位置・ホストナビ API は変更しない。
 
+2.3.4 では、Range probe を無視して EPUB 全体を返すサーバーでも本文を一度だけ取得し、受信済みの応答をそのまま完全展開に渡す。認証・レート制限・サーバーエラーは HTTP 状態を保持し、フォルダ形式の再取得が返す 404 で隠さない。ホスト preset と schemaVersion 1 の位置・ホストナビ API は変更しない。
+
+2.3.5 では、メニュー・サブパネル・目次・検索バー・スライダー履歴・PoweredBy のタッチ領域を 44px に拡大し、タップ許容とフリック距離を 10px のポインタ誤差に統一した。パネル・スライダー・ヘルプバー・nombre・通知・PoweredBy バーはセーフエリア (ノッチ・ホームインジケータ・ジェスチャーバー) を避け、iPadOS のデスクトップモード・デュアルスクリーン・タッチ付きPC など UA が iOS/Android と判定しない coarse-pointer 端末にも `pointer: coarse` でタッチ UI を適用する。位置・ホストナビ API の schemaVersion は 1 のまま。
+
 ## 1. 配布物の取り込み
 
 クリーンな別 checkout で [`bibi.lock.json`](../bibi.lock.json) の固定 ref・toolchain と `bun.lock` を使用する。ローカルの作業中ディレクトリや古い `__dist` をそのままコピーしない。次は Dantalian のルートで実行する:
@@ -44,7 +47,7 @@ Bibi **2.3.4** のホスト連携機能を使用する。固定した repository
 ```sh
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.4
+git checkout --detach v2.3.5
 bun install --frozen-lockfile
 bun test
 bun run build
