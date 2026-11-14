@@ -9,6 +9,9 @@ const AUDIO_PREBUFFER_POLL_MS = 200;
 class PlayerEngine {
     constructor() {
         this.audio = new Audio();
+        // Worker の署名付き URL へのリダイレクトも Web Audio で扱えるよう、
+        // src を設定する前に CORS モードにする。同一 origin の認証 Cookie は維持する。
+        this.audio.crossOrigin = "anonymous";
         this.audio.preload = "metadata";
         this.queue = [];
         this.index = -1;
@@ -420,6 +423,7 @@ class PlayerEngine {
     }
 
     async _loadCurrent(autoplay) {
+        if (autoplay) this._applyVolume();
         this._restorePlaybackWarmup(this._playRequestId);
         const token = ++this._loadToken;
         this._playRequestId += 1;
@@ -490,6 +494,8 @@ class PlayerEngine {
 
 
     play() {
+        // ソース解決やバッファ待ちより前、ユーザー操作の同期スタック内で再開する。
+        this._applyVolume();
         const allowActivationWarmup = this._hasUserActivation();
         if (allowActivationWarmup) this._playActivationPending = true;
         this._playRequested = true;
@@ -683,11 +689,16 @@ class PlayerEngine {
         return this.audio.duration || 0;
     }
 
-    // iOS / iPadOS Safari は HTMLMediaElement.volume が読み取り専用で設定を無視する。
-    // その環境では Web Audio API の GainNode へ経路を切り替える。要素の volume を
-    // 実際に書き戻して確認するランタイム検出なので UA 判定に頼らない。
+    // iOS は volume の読み戻しに成功しても実際の出力音量が変わらない場合がある。
+    // デスクトップ表示の iPadOS も含め GainNode を使い、それ以外は機能検出する。
     _supportsElementVolume() {
         if (this._elementVolumeSupported === undefined) {
+            const nav = typeof navigator === "undefined" ? {} : navigator;
+            if (/iPad|iPhone|iPod/.test(nav.userAgent || "")
+                || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1)) {
+                this._elementVolumeSupported = false;
+                return false;
+            }
             try {
                 this.audio.volume = 0.5;
                 this._elementVolumeSupported = this.audio.volume === 0.5;
@@ -725,7 +736,7 @@ class PlayerEngine {
 
     _resumeVolumeGraph() {
         const graph = this._volumeGraph;
-        if (graph && graph.ctx.state === "suspended") {
+        if (graph && (graph.ctx.state === "suspended" || graph.ctx.state === "interrupted")) {
             graph.ctx.resume().catch(() => {});
         }
     }
