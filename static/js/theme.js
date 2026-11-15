@@ -13,9 +13,9 @@
     const CARD_SIZE_KEY = "dantalian_card_size";
     const CARD_SIZES = ["lg", "md", "sm"];
     const savedCardSize = localStorage.getItem(CARD_SIZE_KEY);
-    if (CARD_SIZES.includes(savedCardSize)) {
-        document.documentElement.dataset.cardSize = savedCardSize;
-    }
+    document.documentElement.dataset.cardSize =
+        CARD_SIZES.includes(savedCardSize) ? savedCardSize : "md";
+
 
 
     function savedMode() {
