@@ -2,11 +2,10 @@
 
 `fdk-aac` クレートの依存先決定と、それに至る調査の記録。
 
-## 最終構成 (2026-08-31)
+## 現行構成 (2026-09-06 解消後)
 
-- **採用**: crates.io `fdk-aac-rust = "0"` (resolved 0.2.3)。Fraunhofer FDK AAC
-  の純 Rust 移植版。C/C++ コンパイラ不要。
-- `opus-rs = "0"` (resolved 0.1.32)。純 Rust Opus 実装。
+- **採用**: `Rumia-Channel/fdk-aac-rust` (`rev f5d8ed5`, Fraunhofer FDK AAC の純 Rust 移植版修正フォーク、C/C++ コンパイラ不要)。
+- `opus-rs = "0"` (`Rumia-Channel/opus-rs` git 依存)。純 Rust Opus 実装。
 - `src/audio_codec.rs`: `PureRustEncoderParameters` + `set_parameter()` 方式。
   `encode_transport_f32(&[f32])` でエンコード。入力は f32 インタリーブ。
   `ChannelMode` は u32 (1=mono, 2=stereo)。>2ch は明示エラー
@@ -14,7 +13,7 @@
 - `EncoderParams` 構造体は不要。`input_samples_per_channel()` でフレーム長取得。
   `encoder_delay()` で遅延取得。EOF flush はサイレントフレームのエンコードで代替。
 
-## 既知の制限: fdk-aac-rust 0.2.3 無音欠陥
+## 調査経緯: fdk-aac-rust 0.2.3 無音欠陥（2026-08-31 当初）
 
 純Rust AAC-LC エンコーダのビットストリーム書き出しに欠陥があり、
 **標準デコーダ (ffmpeg) でのデコード結果が完全無音**。

@@ -1,146 +1,64 @@
-# Production deployment checklist
+# 本番デプロイチェックリスト（Cloudflare Workers / D1 / Wasabi）
 
-## Before deployment
+本番環境（`v*` タグによるデプロイ）およびステージング環境への反映前後で確認するチェックリストです。
 
-- [ ] `develop` is the reviewed source branch; merges to `master` are reviewed release candidates, `master` pushes deploy staging, and only `v*` tags deploy production.
-- [ ] Native database backup completed and restore tested.
-- [ ] Native is bound to loopback by default; if it must listen beyond loopback, `DANTALIAN_API_TOKEN` is set and `BIND_ADDR` is explicit (the Native server refuses to start unauthenticated on a non-loopback address).
-- [ ] Native writes are frozen for the migration snapshot.
-- [ ] D1 Time Travel の移行前 bookmark を本番CIの Job summary に記録済み（復元は書き込みを止めたうえで `wrangler d1 time-travel restore` を使用する）。
-- [ ] Current Worker migrations are applied to the target D1 database.
-- [ ] Wasabi bucket, region, endpoint, and a unique migration prefix are confirmed.
-- [ ] D1 and Wasabi credentials are stored only in the deployment secret store.
-- [x] No credential, Authorization header, cookie token, signing key, or full presigned URL appears in logs or artifacts.
-- [ ] Production custom domain is protected by a Cloudflare Access application with an explicit allow policy. The production deploy now fails if unauthenticated `GET /api/health` reaches the application or if the `workers.dev` route answers 200.
-- [x] Production Worker uses Cloudflare Access as its user-facing authentication boundary; local/CI can require the app token fail-closed.
-- [ ] Presigned URL routes are only reachable after the Access-protected application boundary.
-- [x] Worker audio routes retain the external-processing boundary; no Worker-side full decode, FFmpeg, or large PCM allocation is enabled.
-- [x] Worker upload routes reject the native chunk query protocol (`upload_id`/`part`/`total_parts`) with HTTP 400 instead of storing a partial chunk as a complete media object.
-- [x] The audio controller proxies only the internal audio-job paths (plus `/api/health`) with the processor token; other paths are rejected before the token is attached.
+---
 
-## MyDeploy production inputs
+## 1. デプロイ前の確認
 
-- [ ] GitHub Environment `production` contains the Cloudflare API credentials and five Wasabi `*_SECRET_NAME` references used by both target jobs.
-- [ ] GitHub Environment `production` contains a random `DANTALIAN_STAGING_API_TOKEN`; it is used only for staging API tests and is not reused by production.
-- [ ] GitHub Environment `production` contains the base `DANTALIAN_D1_DATABASE_NAME=dantalian` and `DANTALIAN_AUDIO_JOB_QUEUE=dantalian-audio-jobs` values; CI appends `-staging` or `-production` and resolves/creates the resources.
-- [ ] Staging uses `dantalian/staging` as its automatic Wasabi prefix and production uses `dantalian/production`; the bucket remains shared.
-- [ ] Production `SERVICE_DOMAIN` is present only in the production Environment and is attached as the custom domain.
-- [ ] The production Wrangler template contains the non-secret Secrets Store resource ID; it is not copied into GitHub secrets.
+- [ ] `develop` の変更がレビュー済みであり、リリース候補として `master` へ `--no-ff` マージされている（`master` への push で staging、本番は `master` 上の `v*` タグのみでデプロイ）。
+- [ ] バージョン番号が `python scripts/bump_version.py X.Y.Z` で更新され、旧バージョン文字列の残存がない。
+- [ ] Native 環境から移行する場合、SQLite バックアップの取得とリストア確認が完了し、移行スナップショット中の Native 書き込みを停止している。
+- [ ] 本番 D1 の移行前スナップショットについて、D1 Time Travel の復元用ブックマークが記録されている（復元は書き込み停止後に `wrangler d1 time-travel restore` を使用）。
+- [ ] 対象の D1 データベースへ最新の `worker/migrations/` が適用済みである。
+- [ ] Wasabi のバケット・リージョン・エンドポイント・環境別プレフィックス（staging: `dantalian/staging`、production: `dantalian/production`）を確認済み。
+- [ ] D1 / Wasabi / トークン類はシークレットストアのみに格納し、ログやビルド成果物に平文出力されない。
 
-## Verification before traffic shift
+---
 
-- [x] Native checks pass: `cargo check --no-default-features`.
-- [x] Native codec WASM check passes when applicable.
-- [x] Native tests pass with `cargo test --features native --no-fail-fast`.
-- [x] Worker checks pass: `cargo check --target wasm32-unknown-unknown` and `cargo test --lib`.
-- [x] `worker-build --release` succeeds.
-- [x] Wrangler local contracts pass: health, authenticated routes, static assets, scheduled handler, audio 501 boundary, and books pagination.
-- [x] Wasabi basic lifecycle passes: PUT, HEAD, full GET, range GET byte equality, and DELETE.
-- [x] Wasabi multipart lifecycle passes: init, direct part upload, complete, full GET byte equality, abort, and invalid-session cases.
-- [x] Wasabi audio multipart finalize passes: presigned parts attach to a CD track, the stream route redirects to the canonical `audio/<hash>.<ext>` object, a repeated finalize is a conflict, and a completed EPUB session is rejected as the wrong kind (`worker/tests/wasabi_audio_multipart_e2e.mjs`, `WASABI_E2E=1`).
-- [x] Deployed develop Worker to Wasabi completion and multipart E2E pass (run 38038598391, "Test develop Wasabi basic and multipart lifecycle").
-- [x] Client upload contracts pass without a live bucket: `worker/tests/upload_target_unit.mjs` derives the audio and book-file session/finalize URLs, and `worker/tests/upload_integration_unit.mjs` verifies multipart isolation, refusal to proxy book bytes when init fails, and fail-closed runtime detection with recovery on an explicit retry. Both run in the worker job. `worker/tests/wasabi_multipart_e2e.mjs` also executes the actual browser upload helper against the deployed Worker and Wasabi, checking a small PDF (one final part below 5 MiB) and a 20 MiB ZIP (below the former 95 MiB proxy threshold) for byte equality, MIME preservation, and zero Worker payload bytes.
-- [x] Production deploy smoke check passes: `…/api/cds/:id/tracks/:track_id/audio/multipart` answers with a non-404 status after the Worker deploy.
-- [x] Cloudflare remote-preview verification passes cover completion, multipart completion, and media-sync object existence checks.
-- [ ] Migration dry-run report contains no missing media or invalid object keys.
-- [ ] Migration apply uses a unique state file and produces a reconciliation report with no missing rows.
+## 2. Cloudflare Access / セキュリティ境界
 
-## Verification record
+- [ ] 本番カスタムドメイン（`SERVICE_DOMAIN`）が Cloudflare Access アプリケーションで保護され、明示的な許可ポリシーが設定されている。
+- [ ] `workers.dev` ルートが無効化されており、未認証の `GET /api/health` がアプリへ到達しない（本番 CI が自動検証）。
+- [ ] 署名付き URL 発行ルートはすべて Access 保護下のアプリ境界内からのみ到達可能である。
+- [ ] `DANTALIAN_STAGING_API_TOKEN`（staging テスト用）は本番トークンと独立したランダム値になっている。
 
-The checked items above record repository, local Wrangler, local live Wasabi, and Cloudflare remote-preview verification completed on 2026-08-13, plus the audio presigned-multipart verification completed on 2026-10-10. The remote preview initially failed because the Worker-side authenticated Wasabi `HEAD` request returned HTTP 403 from the endpoint's Cloudflare edge. Wasabi metadata validation now uses a bounded `GET` with `Range: bytes=0-0`, reads the original size from `Content-Range`, and never proxies the object body to the client. Local and remote-preview basic, multipart, and audio object-existence checks pass.
+---
 
-Audio uploads now leave the Worker out of the media path: the browser requests a
-presigned multipart session, PUTs the parts straight to Wasabi, and the Worker
-only binds the completed object to the track. The develop deployment verified
-that contract against the real bucket (run 38038598391) after the same suite
-passed locally against a stub endpoint. The deployed E2E step writes a TAP
-report that is uploaded as the `<target>-wasabi-e2e` artifact, so a failure can
-be diagnosed without another live run. Credentials and signed URLs were not
-printed in verification logs.
+## 3. 外部音声プロセッサ（Queue / Container）
 
-## External audio processor deployment
+- [ ] GitHub Environment `production` の環境変数（Cloudflare API 認証情報、5 つの Wasabi `*_SECRET_NAME`、`DANTALIAN_D1_DATABASE_NAME=dantalian`、`DANTALIAN_AUDIO_JOB_QUEUE=dantalian-audio-jobs`、`SERVICE_DOMAIN`）が揃っている。
+- [ ] `wrangler.audio.toml` を本番へ手動デプロイしていない（CI の描画済み本番設定を使用する）。
+- [ ] 音声プロセッサ用の Wasabi アクセスキーには最小権限 IAM キーを使用し、ルートキーを使っていない。
+- [ ] キューの ack がコンテナ起動後に返され、音声プロセッサのログに機密値や署名付き URL 全文が出力されない。
+- [ ] テスト用の短い音声で Opus / AAC 変換ジョブが `queued → running → completed`（および失敗時リトライ）に遷移することを確認済み。
 
-The tag-triggered production pipeline now provisions the queues, renders and
-deploys `dantalian-audio-controller` (service binding `dantalian-worker`,
-`PROCESSOR_API_BASE_URL` pointing at the controller's own `/internal-api` on
-workers.dev), and stores `DANTALIAN_PROCESSOR_TOKEN` on both the Worker and the
-controller. Do not deploy `wrangler.audio.toml` manually: it consumes the
-unsuffixed `dantalian-audio-jobs` queue, not the production queue.
+---
 
-- [ ] Store a dedicated least-privilege Wasabi access key for the processor; never use the Wasabi account root key.
-- [ ] Verify queue messages are acknowledged after container start, not after audio completion.
-- [ ] Verify processor logs contain only job id, attempt, status, and redacted error class/summary.
-- [ ] Run a short Opus and AAC job through queued, running, completed, and failed/retry transitions before traffic shift.
+## 4. Wasabi バケット CORS 設定（ブラウザ直送用）
 
-## Credential incident and cleanup
+Worker 本番環境では全書籍ファイル（EPUB / PDF / ZIP）および 8 MiB 以上の音声をブラウザから Wasabi へ presigned multipart で直接アップロードし、再生・閲覧時は署名付き URL へ `302` リダイレクトします。Wasabi バケットに以下の CORS ルールを設定してください（未設定の場合、ブラウザ側で `net::ERR_FAILED` や ETag 取得不可エラーになります）。
 
-- [ ] Immediately disable and rotate the exposed Wasabi root key before any further Wasabi access.
-- [x] Using the replacement credential, delete only `e2e/20260813/a1/` and `e2e/20260813/a2/` from `test.dantalian.dev`.
-- [x] Confirm both test prefixes are empty; unrelated objects were not targeted.
-- [ ] Store the replacement credential only in the secret store or ignored local configuration; the Wasabi IAM check still identifies the replacement access key as a root key, so least-privilege status is unconfirmed.
-## Traffic shift
+- [ ] **Allowed Origins**: `https://<SERVICE_DOMAIN>` のみ（ワイルドカード `*` 不可）
+- [ ] **Allowed Methods**: `PUT`, `GET`, `HEAD`
+- [ ] **Allowed Headers**: 指定不要（クライアントはカスタムヘッダを送らないため単純リクエストになる）
+- [ ] **Expose Headers**: `ETag`（multipart 完了通知で各パートの ETag 読み取りに必須）
 
-- [ ] Deploy Worker with the intended D1 binding, Static Assets binding, Cron, and Wasabi variables.
-- [ ] Confirm the production custom domain is protected by Cloudflare Access and `workers.dev` is disabled.
-- [ ] Apply the Wasabi bucket CORS rules below before testing browser uploads.
-- [ ] Test one representative book, cover, EPUB, CD, and audio track through the Access-protected domain.
-- [ ] Confirm browser book-file uploads go directly to Wasabi regardless of size.
-      Audio at or above `PRESIGNED_MULTIPART_MIN_BYTES` (8 MiB) uses
-      `POST /api/{cds|books}/:id/tracks/:track_id/audio/multipart` → direct part `PUT`
-      → `complete` → `POST /api/{cds|books}/:id/tracks/:track_id/audio/finalize`.
-      All EPUB, ZIP and PDF files use `POST /api/uploads/multipart/init` with
-      `object_kind: "epub"` → direct part `PUT` → `complete` →
-      `POST /api/books/:id/files/finalize`. The `epub` kind and `epubs/` prefix
-      cover all three book formats; the Worker receives only session metadata.
-      Smaller audio and cover uploads still use the Worker route; covers are
-      capped at 10 MiB. A failed direct upload must not fall back to proxying.
-- [ ] Select an audio file above 100 MiB and a book file above 100 MiB through
-      the actual edit-page file inputs, not only the upload helper. The Worker
-      must receive metadata only; Native-only `upload.audio_max_mb` and
-      `upload.file_max_mb` settings must not reject either file in the browser.
-      Confirm local WASM audio metadata is saved and the stored bytes match.
-- [ ] Verify an EPUB, a ZIP below 95 MiB, and a PDF below 5 MiB through the
-      Access-protected domain: parts go straight to Wasabi, finalize returns 200,
-      and `/epubs/<hash>.<extension>` serves identical bytes with the correct MIME.
-- [ ] Open one book in the reader through the Access-protected domain and confirm the
-      browser console shows no Content-Security-Policy violation. The static `_headers`
-      CSP allows `https:` for `connect-src`/`img-src`/`media-src` because `/epubs`,
-      `/images`, and `/audio` redirect to the signed Wasabi origin (CSP checks redirect
-      targets); the bucket CORS rules below must expose the redirected GET response.
-- [ ] Confirm `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and
-      `Content-Security-Policy` are present on a static page response. The Worker
-      itself only answers `/api`, `/audio`, `/images`, `/epubs`; static assets inherit
-      `_headers`.
-- [ ] Known limit: cover uploads stay on the Worker direct route (their own cap
-      is 10 MiB); any cover file larger than `WORKER_DIRECT_UPLOAD_MAX_BYTES` is
-      rejected before sending. All book files and presigned audio avoid that cap
-      because both have a presigned finalize binding.
-- [ ] Monitor structured migration/job events by `job_id`, `object_key`, status, attempt, processor, and error class. Do not log secrets or full signed URLs.
-- [ ] Keep Native available as rollback until post-deployment reconciliation is complete.
+---
 
-## Wasabi bucket CORS for direct browser uploads
+## 5. デプロイ・スモーク確認
 
-The browser PUTs presigned part URLs and receives the presigned GET redirect, so
-the bucket must allow the site origin. Without these rules the upload fails in
-the browser with `net::ERR_FAILED` while the object parts are already stored, and
-the UI reports a CORS hint instead of an HTTP status.
+- [ ] CI の全チェック（`bibi` ビルド検証、`native` チェック・テスト、`worker` wasm ビルド・各種契約テスト、deployed E2E）が成功している。
+- [ ] 静的アセット（`_headers`）のレスポンスに `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` / `Content-Security-Policy` が付与されている。
+- [ ] 書籍登録、カバー画像アップロード（上限 10 MiB、Worker 経由）、書籍ファイルアップロード（EPUB / PDF / ZIP、Wasabi 直送）、CD・8 MiB 以上の音声アップロード（Wasabi 直送 + ローカル WASM メタデータ解析）が成功し、Network パネルで `PUT` 応答の `ETag` と `/finalize` の `200` を確認できる。
+- [ ] Bibi リーダーで書籍を開き、ブラウザコンソールに CSP 違反が出ない。
+- [ ] 移行（`dantalian_migrate`）を実施した場合、reconciliation レポートで件数・チェックサムの不整合がない。切り戻しが必要になるまで Native 環境をロールバック用として保持する。
 
-- [ ] Allow origins: `https://<SERVICE_DOMAIN>` only (no wildcard).
-- [ ] Allow methods: `PUT`, `GET`, `HEAD`.
-- [ ] Allow headers: none required. The client sends no custom headers, so the
-      presigned `PUT` stays a CORS simple request and no preflight is needed.
-- [ ] **Expose headers: `ETag`.** The multipart `complete` call needs every part
-      ETag, and browsers hide response headers unless they are exposed. A missing
-      `ETag` surfaces as `presignedKind === "etag"` in the client.
-- [ ] Verify with one audio track larger than 8 MiB: the Network panel must show
-      `PUT https://<bucket endpoint>/...?partNumber=1&uploadId=...` returning 200
-      with an `ETag` response header, followed by the `finalize` call returning 200.
+---
 
+## 6. ロールバック手順
 
-## Rollback
-
-- [ ] Stop Worker writes and route reads/writes back to Native.
-- [ ] Preserve the migration state/report and relevant redacted logs.
-- [ ] Do not delete shared Wasabi objects during rollback.
-- [ ] Investigate D1/object reconciliation before retrying.
-- [ ] Resume only with a new reviewed migration run if the source snapshot changed.
+1. Worker への書き込みトラフィックを停止し、読み書きを Native（または復元した D1 Time Travel ポイント）へ切り戻す。
+2. 移行ステート／レポートおよび機密情報をマスクしたログを保全する。
+3. ロールバック中に共有 Wasabi バケット上のオブジェクトを削除しない（テスト用プレフィックスのみ個別調査後に削除）。
+4. D1 とオブジェクトストレージの整合性を確認してから再実施する。
