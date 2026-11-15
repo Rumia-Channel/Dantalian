@@ -48,10 +48,9 @@ function renderBookSelect() {
 }
 
 async function renderBookEdit(id) {
-    // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する
-    // (アップロード中は進めない。対象が変わればトークンが進む)。
+    // アップロード中の再描画では、そのトラックの後処理を無効化しない。
     if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
-        nextTrackOperationToken();
+        trackOperationTokens.clear();
     }
     let book;
     try {
@@ -642,7 +641,7 @@ async function renderCdEdit(cdId) {
     }
     // 別の対象を開いたら、進行中のアップロードの確認ダイアログは無効化する。
     if (typeof trackUploadsInFlight !== "undefined" && trackUploadsInFlight.size === 0) {
-        nextTrackOperationToken();
+        trackOperationTokens.clear();
     }
 
     // タグ由来のアルバム情報を取得(cd 側の編集値とは別に出し、仮入力/参考表示に使う)
