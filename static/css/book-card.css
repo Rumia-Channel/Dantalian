@@ -234,7 +234,7 @@
 
 .author-group-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), var(--card-max-w)));
     gap: 1rem;
 }
 
@@ -244,7 +244,7 @@
 
 .book-grid-author {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), var(--card-max-w)));
     gap: 1rem;
     align-items: start;
 }
@@ -255,7 +255,7 @@
 
 #book-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), var(--card-max-w)));
     gap: 1rem;
 }
 
@@ -495,4 +495,42 @@
     background: var(--color-accent-alpha);
     border-color: var(--color-accent);
     color: var(--color-accent-hover);
+}
+
+/* ---------- カードサイズによる密度調整 ----------
+   「中」「小」は書籍ID行を畳み、「小」はさらに CD トラック一覧も
+   畳んでカード高さを抑える（ID 行は詳細モーダル側で確認できる）。 */
+html[data-card-size="md"] .book-card .book-id,
+html[data-card-size="sm"] .book-card .book-id {
+    display: none;
+}
+
+html[data-card-size="sm"] .book-card .book-info {
+    padding: 0.5rem 0.55rem;
+}
+
+html[data-card-size="sm"] .book-card .book-title {
+    font-size: 0.75rem;
+    margin-bottom: 0.15rem;
+}
+
+html[data-card-size="sm"] .book-card .book-author,
+html[data-card-size="sm"] .book-card .book-meta {
+    font-size: 0.65rem;
+}
+
+html[data-card-size="sm"] .cd-card-tracks,
+html[data-card-size="sm"] .cd-card-more {
+    display: none;
+}
+
+html[data-card-size="sm"] .cd-card-v .book-info {
+    padding: 0.4rem 0.5rem;
+}
+
+html[data-card-size="sm"] .media-badge {
+    top: 0.25rem;
+    left: 0.25rem;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.55rem;
 }

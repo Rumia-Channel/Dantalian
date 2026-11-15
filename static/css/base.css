@@ -7,8 +7,17 @@
 :root {
     color-scheme: dark;
 
-    --card-min-w: 12.5rem;
+    /* カードグリッドの幅帯。未指定 (= 中) が既定。
+       data-card-size (lg/sm) とブレークポイント (responsive.css) で上書きする。
+       「中」の音楽カードは従来の密度 (min 11rem) を 12.5rem 固定幅として再現、
+       書籍カードはそれより一段小さい固定幅。固定幅は端数 px が出ない値を選ぶ。 */
+    --card-min-w: 8.75rem;
+    --card-max-w: 8.75rem;
+    --music-card-min-w: 12.5rem;
+    --music-card-max-w: 12.5rem;
     --card-min-w-in-series: calc(var(--card-min-w) * 0.75);
+    /* カード高さをサイズに比例させるための係数（シリーズカード等で使用） */
+    --card-scale: 0.72;
 
     /* 書庫らしさを出すセリフ書体（ワードマーク・見出し・題名に使用） */
     --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino,
@@ -108,11 +117,49 @@
     /* セレクトボックスの矢印（data URI 内はエンコード済みの色） */
     --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa0b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+
+/* カードサイズ切り替え（大/小。未指定 = 中 = 既定）。
+   ブレークポイント別の値は responsive.css の各メディアクエリで上書きする。 */
+html[data-card-size="lg"] {
+    --card-min-w: 12.5rem;
+    --card-max-w: 1fr;
+    --music-card-min-w: 13.75rem;
+    --music-card-max-w: 1fr;
+    --card-scale: 1;
+}
+
+html[data-card-size="sm"] {
+    --card-min-w: 6rem;
+    --card-max-w: 6rem;
+    --music-card-min-w: 11rem;
+    --music-card-max-w: 11rem;
+    --card-scale: 0.45;
+}
+
+/* 「中」「小」はトラック幅を固定して余白を列間に配分し、
+   「大」（従来の伸縮グリッド）と見分けがつく密度にする。 */
+html[data-card-size="md"] .author-group-grid,
+html[data-card-size="md"] .book-grid-author,
+html[data-card-size="md"] #book-grid,
+html[data-card-size="sm"] .author-group-grid,
+html[data-card-size="sm"] .book-grid-author,
+html[data-card-size="sm"] #book-grid {
+    justify-content: space-between;
+}
+
+html[data-card-size="md"] .music-grid,
+html[data-card-size="md"] .music-page .author-group-grid,
+html[data-card-size="sm"] .music-grid,
+html[data-card-size="sm"] .music-page .author-group-grid {
+    justify-content: space-between;
+}
+
 html[data-theme="light"] {
     color-scheme: light;
 
     --color-primary: #2f6ae0;
     --color-primary-hover: #2456c4;
+
     --color-primary-alpha: rgba(47, 106, 224, 0.13);
     --color-primary-alpha-faint: rgba(47, 106, 224, 0.07);
     --color-primary-alpha-border: rgba(47, 106, 224, 0.3);

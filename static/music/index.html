@@ -47,22 +47,7 @@
     <script src="/js/header.js?v=ASSET_VERSION"></script>
     <script src="/js/auth.js?v=ASSET_VERSION"></script>
     <script src="/js/pwa.js?v=ASSET_VERSION"></script>
-    <script>
-        (function () {
-            var bar = document.querySelector(".settings-bar");
-            if (!bar) return;
-            var group = document.createElement("div");
-            group.className = "settings-group";
-            group.innerHTML =
-                '<span class="settings-label">並び順</span>' +
-                '<div class="settings-buttons" id="music-sort-buttons">' +
-                '<button class="width-btn" data-sort="id">登録順</button>' +
-                '<button class="width-btn" data-sort="title">タイトル順</button>' +
-                '<button class="width-btn" data-sort="publish_date">発売日順</button>' +
-                '</div>';
-            bar.appendChild(group);
-        })();
-    </script>
+    <script src="/js/catalogue-controls.js?v=ASSET_VERSION"></script>
     <script src="/js/utils.js?v=ASSET_VERSION"></script>
     <script src="/js/settings.js?v=ASSET_VERSION"></script>
     <script src="/js/player/audio-source.js?v=ASSET_VERSION"></script>

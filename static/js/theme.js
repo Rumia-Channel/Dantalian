@@ -8,6 +8,15 @@
     const FALLBACK_META = { dark: "#05070f", light: "#eff1f7" };
     const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
+    // カードサイズ (小 / 中 / 大) は <html> の data-card-size で CSS に伝える。
+    // 最初の描画前に確定させるため、テーマと同じく <head> で同期的に適用する。
+    const CARD_SIZE_KEY = "dantalian_card_size";
+    const CARD_SIZES = ["lg", "md", "sm"];
+    const savedCardSize = localStorage.getItem(CARD_SIZE_KEY);
+    document.documentElement.dataset.cardSize =
+        CARD_SIZES.includes(savedCardSize) ? savedCardSize : "md";
+
+
 
     function savedMode() {
         const mode = localStorage.getItem(STORAGE_KEY);
