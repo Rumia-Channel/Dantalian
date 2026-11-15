@@ -20,7 +20,18 @@
 
 @media (max-width: 56rem) {
     :root {
+        --card-min-w: 6.5rem;
+        --card-max-w: 7.5rem;
+        --music-card-min-w: 11rem;
+    }
+    html[data-card-size="lg"] {
         --card-min-w: 10rem;
+    }
+    html[data-card-size="sm"] {
+        --card-min-w: 3.5rem;
+        --card-max-w: 5rem;
+        --music-card-min-w: 7rem;
+        --music-card-max-w: 9.5rem;
     }
 
     #app {
@@ -151,7 +162,19 @@
    Surface Duo の片側ペイン (≈540px) や大型スマホ横までを「積み直す」層 */
 @media (max-width: 40rem) {
     :root {
+        --card-min-w: 5.5rem;
+        --card-max-w: 6.75rem;
+        --music-card-min-w: 8.5rem;
+    }
+    html[data-card-size="lg"] {
         --card-min-w: 9rem;
+        --music-card-min-w: 9.5rem;
+    }
+    html[data-card-size="sm"] {
+        --card-min-w: 3.25rem;
+        --card-max-w: 4.5rem;
+        --music-card-min-w: 5.5rem;
+        --music-card-max-w: 8rem;
     }
 
     /* 入力行・フォーム行は縦積み */
@@ -214,7 +237,7 @@
     /* --- 音楽グリッド (旧 music.css の 40rem メディアクエリ) --- */
     .music-grid,
     .music-page .author-group-grid {
-        grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(var(--music-card-min-w), var(--music-card-max-w)));
     }
 
     /* --- プレイリスト (旧 playlist.css の 40rem メディアクエリ) --- */
@@ -296,9 +319,21 @@
 /* ===== スマートフォン (<= 30rem / 480px) ===== */
 @media (max-width: 30rem) {
     :root {
-        --card-min-w: 8.5rem;
+        --card-min-w: 5rem;
+        --card-max-w: 6.25rem;
+        --music-card-min-w: 8.5rem;
         /* ボトムナビの実高さ。ミニプレイヤーの浮き位置にも使う */
         --bottom-nav-h: 3.4rem;
+    }
+    html[data-card-size="lg"] {
+        --card-min-w: 8.5rem;
+        --music-card-min-w: 9.25rem;
+    }
+    html[data-card-size="sm"] {
+        --card-min-w: 3rem;
+        --card-max-w: 4.25rem;
+        --music-card-min-w: 5rem;
+        --music-card-max-w: 7.5rem;
     }
 
     #app {

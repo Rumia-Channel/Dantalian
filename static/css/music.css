@@ -64,7 +64,7 @@
 /* ---------- アルバムグリッド ---------- */
 .music-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--music-card-min-w), var(--music-card-max-w)));
     gap: 1.5rem 1.25rem;
 }
 
@@ -74,7 +74,7 @@
 }
 
 .music-page .author-group-grid {
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--music-card-min-w), var(--music-card-max-w)));
     gap: 1.5rem 1.25rem;
 }
 
