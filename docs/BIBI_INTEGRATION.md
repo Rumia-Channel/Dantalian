@@ -6,8 +6,8 @@ Dantalian における電子書籍リーダー [Bibi](https://github.com/Rumia-C
 
 ## 1. 対象バージョンと役割分担
 
-- **Bibi バージョン**: **2.3.6**（リポジトリ・commit・`bun.lock` / `LICENSE` の SHA-256・`sourceDateEpoch`・Node/Bun バージョンの正本は [`bibi.lock.json`](../bibi.lock.json)）
-- **連携 API**: `schemaVersion: 1` の位置 API およびホスト限定シリーズ間ナビゲーション API（[Bibi 日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.6/HOST_SERIES_NAVIGATION_ja.md)）
+- **Bibi バージョン**: **2.3.7**（リポジトリ・commit・`bun.lock` / `LICENSE` の SHA-256・`sourceDateEpoch`・Node/Bun バージョンの正本は [`bibi.lock.json`](../bibi.lock.json)）
+- **連携 API**: `schemaVersion: 1` の位置 API およびホスト限定シリーズ間ナビゲーション API（[Bibi 日本語仕様書](https://github.com/Rumia-Channel/bibi/blob/v2.3.7/HOST_SERIES_NAVIGATION_ja.md)）
 - **対応フォーマット**: EPUB・PDF・画像 ZIP（PNG / JPEG / GIF / WebP / AVIF / BMP を自然順・サブフォルダ順で描画）
 
 | コンポーネント | 責務 |
@@ -27,12 +27,12 @@ Dantalian における電子書籍リーダー [Bibi](https://github.com/Rumia-C
 # 1. 固定リファレンスをクリーンに取得・ビルド
 git clone --config core.autocrlf=false https://github.com/Rumia-Channel/bibi.git .tmp/bibi-source
 cd .tmp/bibi-source
-git checkout --detach v2.3.6
+git checkout --detach v2.3.7
 bun install --frozen-lockfile
 bun test
 bun run build
 bun run verify:dist
-bunx playwright install chromium
+bunx playwright install --with-deps chromium webkit
 bun run test:browser
 bun run archive
 cd ../..
@@ -52,6 +52,7 @@ node scripts/import_bibi.mjs --verify
   - ホスト専用エントリページ `dantalian.html`（キャッシュ・読書設定・narou 拡張を読み込み、preset `dantalian` を固定）
 - **CI パイプライン**: [`.github/workflows/build.yml`](../.github/workflows/build.yml) の `bibi` ジョブが成果物（`bibi-reader`）を 1 度だけビルドし、Native / Worker の各ジョブが同一成果物を検証して組み込みます。
 - **Linux 環境での縦書きフォント**: 縦書き漢字の送りが崩れないよう、Linux ブラウザ検証時は `fonts-noto-cjk` 等を導入します（`scripts/install_ci_fonts.mjs`）。
+- **WebKit の検証環境**: Bibi 2.3.7 の `test:browser` は iPad PWA 回帰を WebKit で実行します。Chromium だけでなく WebKit と OS 依存パッケージもインストールします。
 
 ### `bibi.lock.json` 更新時の注意
 
@@ -78,6 +79,12 @@ git -C .tmp/bibi-source cat-file blob HEAD:LICENSE | sha256sum
 - **Native `/epubs/` Range 正規化**: [`src/epub.rs`](../src/epub.rs) のミドルウェアにより、ZIP 末尾取得の `Range: bytes=-65557` がファイルサイズより大きい場合は `bytes=0-` へ正規化して `206` を返します（小さな EPUB での `416` エラー回避）。
 - **Worker → Wasabi リダイレクト**: `/epubs/{file_hash}` が署名付き Wasabi URL へ `302` リダイレクトする場合、Wasabi バケット側に `GET` / `HEAD` の CORS（`Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length`、`Accept-Ranges: bytes`）が必要です。
 - **CSP 方針**: `allow-scripts-in-content: false` を維持し、EPUB 本文内のスクリプト実行は無効化します。ホスト側の `_headers` CSP では、リダイレクト先 Wasabi Origin（`https:`）への `connect-src`、WASM 用の `wasm-unsafe-eval`、ZIP Worker / 本文 iframe 用の `worker-src` / `frame-src` (`'self' blob:`) を許可しています。
+
+### iPad PWA の操作と EPUB の混在レイアウト
+
+- **iPad の standalone PWA・ページ表示**では、ブラウザが認識した `click` と `pointerup` の座標でタップを処理します。開始座標のずれをページ送り・巻間移動のスワイプと誤認しないよう、この条件ではスワイプ操作を無効にします。左右タップ・中央メニュー・本文リンク・文字選択は維持します。通常の Safari タブ、PC、スクロール表示は対象外です。
+- **リフロー本文と固定画像が混在する EPUB**では、左右の見開き指定を同じ spread に結合するのは両方が固定レイアウトの場合だけです。クレジット本文と挿絵の誤結合や、画像への二重の位置補正による画面外へのはみ出しを防ぎます。
+- これらは Bibi 2.3.7 の変更であり、Dantalian のプリセット・位置 API・シリーズナビゲーション API の変更は不要です。
 
 ### PDF・画像 ZIP の既定読み方向
 
@@ -156,6 +163,9 @@ node scripts/import_bibi.mjs --verify
 
 # 端末内 EPUB キャッシュとリーダーのブラウザ結合テスト（要クリーン Bibi ソース）
 node scripts/epub-cache/browser.test.mjs --bibi-source .tmp/bibi-source
+
+# iPad PWA のタップ・混在レイアウトの WebKit 回帰
+(cd .tmp/bibi-source && node tests/browser/ipad-pwa-input.mjs)
 
 # シリーズ間ナビゲーション API の HTTP 契約テスト（起動済みサーバーに対して実行）
 READER_NAVIGATION_BACKEND=native WORKER_BASE_URL=http://127.0.0.1:3000 node --test worker/tests/reader_navigation_contract.mjs

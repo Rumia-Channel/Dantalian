@@ -50,7 +50,7 @@ jobs:
           bun test
           bun run build
           bun run verify:dist
-          bunx playwright install chromium
+          bunx playwright install --with-deps chromium webkit
           bun run test:browser
       - name: Verify host import boundaries
         run: node --test scripts/bibi/distribution.test.mjs
