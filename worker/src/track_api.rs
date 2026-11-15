@@ -600,7 +600,14 @@ async fn finalize_track_audio(
             "uploaded audio object size does not match the multipart session".to_string(),
         ));
     }
-    let file_name = format!("{}.{}", session.file_hash, session.extension);
+    let fallback_name;
+    let file_name = match session.original_name.as_deref() {
+        Some(name) => name,
+        None => {
+            fallback_name = format!("{}.{}", session.file_hash, session.extension);
+            &fallback_name
+        }
+    };
     let created_at = Date::now().as_millis().to_string();
     // Claim the session before touching the media rows: only the first finalize
     // can move complete -> finalized, so one object cannot be attached twice.

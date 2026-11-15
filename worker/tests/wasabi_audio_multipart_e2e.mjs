@@ -54,7 +54,8 @@ test("Wasabi audio multipart finalize attaches the object to a CD track", { skip
     assert.equal(finalized.response.status, 200);
     const fileHash = upload.objectKey.split("/").at(-1).replace(/\.flac$/, "");
     assert.equal(finalized.body.file_hash, fileHash);
-    assert.equal(finalized.body.file_name, `${fileHash}.flac`);
+    // tracks.file_name keeps the original client name, not the object key.
+    assert.equal(finalized.body.file_name, "Presigned Track.flac");
     assert.equal(finalized.body.object_key, upload.objectKey);
 
     // The stream route must resolve the canonical key the finalize step wrote.
