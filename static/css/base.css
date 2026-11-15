@@ -9,11 +9,12 @@
 
     /* カードグリッドの幅帯。未指定 (= 中) が既定。
        data-card-size (lg/sm) とブレークポイント (responsive.css) で上書きする。
-       「中」の音楽カードは従来の 11rem 基準、書籍カードはそれより一段小さい。 */
-    --card-min-w: 8rem;
-    --card-max-w: 9rem;
-    --music-card-min-w: 11rem;
-    --music-card-max-w: 1fr;
+       「中」の音楽カードは従来の密度 (min 11rem) を 12.5rem 固定幅として再現、
+       書籍カードはそれより一段小さい固定幅。固定幅は端数 px が出ない値を選ぶ。 */
+    --card-min-w: 8.75rem;
+    --card-max-w: 8.75rem;
+    --music-card-min-w: 12.5rem;
+    --music-card-max-w: 12.5rem;
     --card-min-w-in-series: calc(var(--card-min-w) * 0.75);
     /* カード高さをサイズに比例させるための係数（シリーズカード等で使用） */
     --card-scale: 0.72;
@@ -122,16 +123,16 @@
 html[data-card-size="lg"] {
     --card-min-w: 12.5rem;
     --card-max-w: 1fr;
-    --music-card-min-w: 12.5rem;
+    --music-card-min-w: 13.75rem;
     --music-card-max-w: 1fr;
     --card-scale: 1;
 }
 
 html[data-card-size="sm"] {
-    --card-min-w: 4.5rem;
+    --card-min-w: 6rem;
     --card-max-w: 6rem;
-    --music-card-min-w: 8rem;
-    --music-card-max-w: 10.5rem;
+    --music-card-min-w: 11rem;
+    --music-card-max-w: 11rem;
     --card-scale: 0.45;
 }
 
@@ -146,6 +147,8 @@ html[data-card-size="sm"] #book-grid {
     justify-content: space-between;
 }
 
+html[data-card-size="md"] .music-grid,
+html[data-card-size="md"] .music-page .author-group-grid,
 html[data-card-size="sm"] .music-grid,
 html[data-card-size="sm"] .music-page .author-group-grid {
     justify-content: space-between;
