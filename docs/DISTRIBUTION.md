@@ -53,14 +53,13 @@ applicable patent owners or a licensing administrator. Copyright-license
 compliance does not establish patent clearance for any product, territory, or
 use case.
 
-## Known encoder limitation
+## Encoder status
 
-The pure-Rust AAC encoder (`fdk-aac-rust` v0.2.3) has a known bitstream defect:
-the encoded ADTS output is structurally valid and decodable by standard
-decoders (e.g. ffmpeg), but the decoded PCM is silent. This is a documented
-limitation of the pure-Rust port — the analysis filterbank and quantizer work,
-but the scaling/global_gain semantics are broken. See
-[`docs/FDK_AAC_RUST_HANDOFF.md`](FDK_AAC_RUST_HANDOFF.md) for details.
+An earlier release of `fdk-aac-rust` (crates.io v0.2.3) had a bitstream scaling
+defect that produced silent decoded PCM. Dantalian pins the fixed fork
+`Rumia-Channel/fdk-aac-rust` (see [`Cargo.toml`](../Cargo.toml) and
+[`docs/FDK_AAC_RUST_HANDOFF.md`](FDK_AAC_RUST_HANDOFF.md)) and verifies audible
+AAC round-trip output in `cargo test --lib audio_codec`.
 
 ## Review checklist
 
