@@ -23,10 +23,10 @@
                         <label class="settings-form-label"><input id="narou-favorites" type="checkbox" ${settings["narou.use_favorites"] !== "false" ? "checked" : ""}> narou.rs のお気に入りタグを対象にする</label>
                     </div>
                     <div class="settings-form-row">
-                        <label class="settings-form-label-inline" for="narou-tags">追加の対象タグ<br>（1 行に 1 タグ）</label>
-                        <textarea id="narou-tags" class="form-input" rows="5">${escapeHtml(tags.join("\n"))}</textarea>
+                        <label class="settings-form-label-inline" for="narou-tags">対象タグの条件<br>（1 行に 1 条件）</label>
+                        <textarea id="narou-tags" class="form-input" rows="5" placeholder="sf ファンタジー&#10;恋愛|ラブコメ -r15&#10;-凍結">${escapeHtml(tags.join("\n"))}</textarea>
                     </div>
-                    <p class="settings-note">対象は指定タグとお気に入りタグの和集合に完全一致する小説です。画面にはブラウザが取得した書誌情報だけを表示し、カバーは表示されません。接続先・対象タグ以外は保存しません。</p>
+                    <p class="settings-note">行どうしは OR、行の中の空白区切りは AND、<code>|</code> は OR、先頭の <code>-</code> は除外です。例: <code>sf ファンタジー</code> は両方のタグを持つ作品、<code>恋愛|ラブコメ -r15</code> は恋愛かラブコメで r15 を持たない作品。<code>-凍結</code> のように除外だけの行は全体から除きます。空白を含むタグは <code>"..."</code> で囲んでください（<code>|</code> を含むタグは使えません）。お気に入りタグは 1 タグ 1 条件として OR に追加されます。タグは narou.rs 側の完全一致で絞り込まれ、全件取得は行いません。画面にはブラウザが取得した書誌情報だけを表示し、カバーは表示されません。接続先・対象タグ以外は保存しません。</p>
                     <div class="settings-form-group">
                         <button class="btn btn-primary" type="submit">設定を保存</button>
                         <button class="btn btn-ghost" id="narou-check" type="button">接続を確認</button>
