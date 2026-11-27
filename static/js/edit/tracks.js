@@ -101,17 +101,23 @@ function renderTracksHtml(tracks, editType, parentId) {
 // - トラック一覧の再描画はトークンで順序を守り、古い応答を捨てる。破棄された
 //   応答で innerHTML を書き換えると、ユーザーが直前に選択したファイルの input が
 //   作り直されて選択が消える。
+// - 操作トークンはトラック単位。別のトラックのアップロードが始まっても
+//   進行中の長さ取得やメタデータ反映を中断させない。同じトラックへの
+//   新しいアップロードだけが古い操作を無効化する。
 const trackUploadsInFlight = new Set();
 const trackListRenderTokens = new Map();
-let trackOperationToken = 0;
+const trackOperationTokens = new Map();
 
-function nextTrackOperationToken() {
-    trackOperationToken += 1;
-    return trackOperationToken;
+function nextTrackOperationToken(editType, parentId, trackId) {
+    const key = `${editType}:${parentId}:${trackId}`;
+    const token = { key };
+    trackOperationTokens.set(key, token);
+    return token;
 }
 
-function trackOperationIsCurrent(token) {
-    return token === trackOperationToken;
+function trackOperationIsCurrent(operationToken) {
+    if (!operationToken) return false;
+    return trackOperationTokens.get(operationToken.key) === operationToken;
 }
 
 function trackListRenderToken(listId) {
@@ -377,9 +383,10 @@ async function uploadTrackAudio(editType, parentId, trackId, input) {
                 return;
             }
         }
-        // このアップロードより新しい操作が始まったら、確認ダイアログや反映を
-        // 中断する (別のアップロードの結果を混ぜない)。
-        const operationToken = nextTrackOperationToken();
+        // このトラックにより新しい操作が始まったら、確認ダイアログや反映を
+        // 中断する (別のアップロードの結果を混ぜない)。別トラックの
+        // アップロードはこのトークンを無効化しない。
+        const operationToken = nextTrackOperationToken(editType, parentId, trackId);
         await runTrackAudioUpload(editType, parentId, trackId, file, operationToken);
     } catch (error) {
         console.error("uploadTrackAudio error:", error);

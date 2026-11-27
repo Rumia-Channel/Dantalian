@@ -87,3 +87,84 @@ test("an unavailable runtime check reports failure without sending the selected 
   assert.equal(page.requests.some(({ method }) => method === "POST"), false);
   assert.equal(vm.runInContext("trackUploadsInFlight.size", page.context), 0);
 });
+
+test("overlapping track uploads save both durations even when the second finishes first", async () => {
+  const savedDurations = new Map();
+  const inputs = new Map([[190, { value: "" }], [191, { value: "" }]]);
+  const list = {
+    innerHTML: "",
+    querySelector: (selector) => inputs.get(Number(/data-track-id="(\d+)"/.exec(selector)?.[1])),
+  };
+  let releaseFirst;
+  let firstStarted;
+  const firstUpload = new Promise((resolve) => { releaseFirst = resolve; });
+  const started = new Promise((resolve) => { firstStarted = resolve; });
+  const context = vm.createContext({
+    Response, FormData, Blob, File, URLSearchParams, console,
+    document: { getElementById: (id) => id === "edit-tracks-list" ? list : null },
+    escapeAttr: String, escapeHtml: String, jsStringAttr: JSON.stringify,
+    alert: (message) => assert.fail(message),
+    showConfirm: () => assert.fail("empty durations must not ask for confirmation"),
+    fetch: async (url, init = {}) => {
+      if (url === "/api/health") return Response.json({ runtime: "cloudflare-worker" });
+      if (url === "/api/cds/11/tracks") {
+        return Response.json([190, 191].map((id, index) => ({
+          id, title: `Track ${index + 1}`, track_number: index + 1,
+          duration: savedDurations.get(id) ?? "",
+        })));
+      }
+      const id = Number(/\/tracks\/(\d+)/.exec(url)?.[1]);
+      if (init.method === "POST" && url.endsWith("/audio")) {
+        if (id === 190) {
+          firstStarted();
+          await firstUpload;
+        }
+        return Response.json({ file_hash: `${id}.wav`, metadata: { duration_seconds: id - 65 } });
+      }
+      if (init.method === "PUT") {
+        savedDurations.set(id, JSON.parse(init.body).duration);
+        return Response.json("ok");
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+  for (const source of sources) vm.runInContext(source, context);
+  vm.runInContext(await readFile(new URL("../../static/js/edit/track-duration.js", import.meta.url), "utf8"), context);
+  const file = new File(["audio"], "Track.wav", { type: "audio/wav" });
+  const first = context.uploadTrackAudio("cd", 11, 190, { files: [file], value: "selected" });
+  await started;
+  try {
+    await context.uploadTrackAudio("cd", 11, 191, { files: [file], value: "selected" });
+  } finally {
+    releaseFirst();
+    await first;
+  }
+  assert.deepEqual([...savedDurations].sort(([a], [b]) => a - b), [[190, "02:05"], [191, "02:06"]]);
+});
+
+test("overlapping overwrite confirmations keep separate messages and decisions", async () => {
+  const document = new EventTarget();
+  const elements = new Map();
+  for (const id of ["confirm-overlay", "confirm-message", "confirm-ok", "confirm-cancel"]) {
+    const element = new EventTarget();
+    element.classList = { add() {}, remove() {} };
+    element.focus = () => { document.activeElement = element; };
+    elements.set(id, element);
+  }
+  document.getElementById = (id) => elements.get(id);
+  const context = vm.createContext({ document });
+  vm.runInContext(await readFile(new URL("../../static/js/utils.js", import.meta.url), "utf8"), context);
+  const first = context.showConfirm({ message: "First track: 02:05" });
+  const second = context.showConfirm({ message: "Second track: 02:06" });
+  await new Promise(setImmediate);
+  assert.equal(elements.get("confirm-message").textContent, "First track: 02:05");
+  let secondResolved = false;
+  second.then(() => { secondResolved = true; });
+  elements.get("confirm-ok").dispatchEvent(new Event("click"));
+  assert.equal(await first, true);
+  await new Promise(setImmediate);
+  assert.equal(secondResolved, false);
+  assert.equal(elements.get("confirm-message").textContent, "Second track: 02:06");
+  elements.get("confirm-cancel").dispatchEvent(new Event("click"));
+  assert.equal(await second, false);
+});

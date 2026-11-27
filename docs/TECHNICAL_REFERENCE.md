@@ -9,7 +9,7 @@ Native / Worker 両ランタイムの運用仕様、ストレージ・アップ�
 | 項目 | Native (`src/main.rs`) | Worker (`worker/src/lib.rs`) |
 | --- | --- | --- |
 | 実行基盤 | Rust (`axum` + `tokio`) | Cloudflare Workers (Wasm) |
-| データベース | SQLite (`rusqlite`, スキーマ **19**) | Cloudflare D1 (`worker/migrations/0001`〜`0023`) |
+| データベース | SQLite (`rusqlite`, スキーマ **19**) | Cloudflare D1 (`worker/migrations/0001`〜`0024`) |
 | メディア保存 | ローカルディスク (`{DATA_DIR}/Dantalian/`) | Wasabi (S3 互換オブジェクトストレージ) |
 | 認証 | 任意 (`DANTALIAN_API_TOKEN`)、非ループバック時は必須 | `DANTALIAN_API_TOKEN`（本番は Cloudflare Access 併用） |
 | 書籍・大容量音声の送信 | サーバー受信（チャンクアップロード対応） | ブラウザから Wasabi へ presigned multipart 直送 |
@@ -19,7 +19,7 @@ Native / Worker 両ランタイムの運用仕様、ストレージ・アップ�
 ### DB スキーマの整合性
 
 - **Native**: 現行スキーマバージョンは **19**（[`src/db/schema.rs`](../src/db/schema.rs)）。対応版より新しい DB を開いた場合は起動を拒否します。
-- **Worker**: `worker/migrations/` 配下の D1 マイグレーション（最新 `0023_retire_narou_cache.sql`）を適用します。
+- **Worker**: `worker/migrations/` 配下の D1 マイグレーション（最新 `0024_restore_audio_file_names.sql`）を適用します。
 - **整合性制約**: `grand_series_items` の参照整合性（`0016_grand_series_integrity.sql` および Native 側トリガ）により、存在しない書籍・CD・シリーズへの所属を拒否し、対象削除時に関連行を自動削除します。
 
 ### 読み取り一貫性とキャッシュ制御（Worker）
@@ -98,6 +98,16 @@ DB の `settings` テーブル（`media_sync.*`）または環境変数（`MEDIA
 ---
 
 ## 4. 音声再生・省データ再生・音量制御
+
+### 音声アップロードのファイル名
+
+- 音声の保存キー（`file_hash`）と表示名（`file_name`）は別です。Worker の直接送信・presigned multipart のどちらでも、表示・ダウンロードには元ファイル名を保持します。
+- Worker migration `0024_restore_audio_file_names.sql` は、現在の音声オブジェクトと一致する `object_uploads.original_name` から、誤ってハッシュ名になった表示名だけを復元します。元名が未記録・曖昧な場合や、既に別名が設定されている場合は変更しません。
+
+### トラック音声の並行アップロード
+
+- 別トラックのアップロード開始で、先行トラックの時間取得・メタデータ保存を中断しません。同一トラックへの二重アップロードは完了まで拒否します。
+- 時間欄が空なら自動保存し、既存値は確認してから上書きします。複数の確認は順に表示し、確認待ちの手入力は上書きしません。
 
 ### 省データ再生（Opus / AAC トランスコード）
 

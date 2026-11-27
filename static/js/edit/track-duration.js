@@ -50,7 +50,7 @@ async function offerToApplyAudioDuration(
         : await probeAudioDuration(`/audio/${fileHash}?_=${Date.now()}`);
     const formatted = secondsToMmSs(secs);
     if (!formatted) return false;
-    // 長さの取得中に別の操作が始まっていたら、確認も反映もしない。
+    // 長さの取得中に同じトラックへ別の操作が始まっていたら、確認も反映もしない。
     if (operationToken !== null && !trackOperationIsCurrent(operationToken)) return false;
 
     // 長さの取得中に入力された値を尊重する。

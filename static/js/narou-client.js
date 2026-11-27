@@ -26,6 +26,8 @@
         return payload;
     }
 
+    // params は [key, value] のペア列。`tag` / `not_tag` の繰り返しを
+    // サーバーへ届けるため、URLSearchParams#set ではなく append で組み立てる。
     function readUrl(connection, path, params) {
         let url;
         try {
@@ -33,8 +35,8 @@
         } catch {
             throw new Error("narou.rs の接続先 URL が不正です。");
         }
-        for (const [key, value] of Object.entries(params || {})) {
-            if (value != null) url.searchParams.set(key, String(value));
+        for (const [key, value] of params || []) {
+            if (value != null) url.searchParams.append(key, String(value));
         }
         return url.href;
     }
@@ -83,31 +85,155 @@
         return payload.tags.filter((tag) => typeof tag === "string" && tag.trim());
     }
 
-    async function fetchNovels(connection) {
-        const payload = await readJson(connection, "/novels", { limit: "all" });
-        if (!Array.isArray(payload.data)) throw new Error("小説一覧の応答が不正です。");
-        return payload.data;
-    }
+    // タグ条件のパース。設定の 1 行が 1 つの条件 (メンバー) で、行どうしは
+    // OR。行の中では空白区切りが AND、`|` が OR、先頭の `-` が除外。
+    //
+    //   "sf ファンタジー"   → sf AND ファンタジー
+    //   "sf|ファンタジー"   → sf OR ファンタジー
+    //   "sf -r15"           → sf AND NOT r15
+    //   "sf", "恋愛" (2 行) → sf OR 恋愛
+    //
+    // 空白を含むタグは "..." で囲む。`|` を含むタグは表現できない
+    // (narou.rs 側の OR 区切りと衝突するため)。
 
-    // 指定タグとお気に入りタグの和集合（完全一致）。
-    function selectTags(connection, favourites, useFavourites) {
-        const tags = new Set();
-        const configured = Array.isArray(connection.tags) ? connection.tags : [];
-        for (const tag of configured) {
-            if (typeof tag === "string" && tag.trim()) tags.add(tag.trim());
-        }
-        if (useFavourites) {
-            for (const tag of favourites || []) {
-                if (typeof tag === "string" && tag.trim()) tags.add(tag.trim());
+    // 引用符を意識して空白で分割する。
+    function splitTerms(text) {
+        const terms = [];
+        let current = "";
+        let quoted = false;
+        for (const ch of text) {
+            if (ch === '"') {
+                quoted = !quoted;
+                current += ch;
+                continue;
             }
+            if (/\s/.test(ch) && !quoted) {
+                if (current.trim()) terms.push(current.trim());
+                current = "";
+                continue;
+            }
+            current += ch;
         }
-        return tags;
+        if (current.trim()) terms.push(current.trim());
+        return terms;
     }
 
-    // 部分一致ではなく完全一致で判定する。
-    function matchesTags(novel, tags) {
+    function stripQuotes(value) {
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            return value.slice(1, -1);
+        }
+        return value;
+    }
+
+    // `|` 区切りの OR 候補へ分ける (引用符の中の `|` は区切らない)。
+    // narou.rs 側では `|` を含むタグを表現できないため、引用符の有無に
+    // かかわらず `|` を含む候補は残さない。
+    function splitAlternatives(value) {
+        const alternatives = [];
+        let current = "";
+        let quoted = false;
+        for (const ch of value) {
+            if (ch === '"') {
+                quoted = !quoted;
+                current += ch;
+                continue;
+            }
+            if (ch === "|" && !quoted) {
+                pushAlternative(alternatives, current);
+                current = "";
+                continue;
+            }
+            current += ch;
+        }
+        pushAlternative(alternatives, current);
+        return alternatives;
+    }
+
+    function pushAlternative(alternatives, raw) {
+        const tag = stripQuotes(raw.trim()).trim();
+        if (tag && !tag.includes("|") && !alternatives.includes(tag)) {
+            alternatives.push(tag);
+        }
+    }
+
+    // 設定行の配列をクエリ用の構造へ変換する。
+    // 返り値: { members: [{ groups: [[tag,...],...], notTags: [...] }], exclusions: [...] }
+    // exclusions は「`-tag` だけの行」の全体除外。メンバー内の `-tag` は
+    // そのメンバーだけに効く notTags。
+    function parseTagQuery(lines) {
+        const members = [];
+        const exclusions = [];
+        const seenMembers = new Set();
+        for (const rawLine of lines || []) {
+            if (typeof rawLine !== "string" || !rawLine.trim()) continue;
+            const groups = [];
+            const notTags = [];
+            for (const term of splitTerms(rawLine.trim())) {
+                const negated = term.startsWith("-") || term.startsWith("^") || term.startsWith("!");
+                const body = negated ? term.slice(1) : term;
+                const alternatives = splitAlternatives(body);
+                if (!alternatives.length) continue;
+                if (negated) {
+                    for (const tag of alternatives) {
+                        if (!notTags.includes(tag)) notTags.push(tag);
+                    }
+                } else {
+                    groups.push(alternatives);
+                }
+            }
+            if (!groups.length) {
+                // 否定だけの行は全体の除外として扱う。
+                for (const tag of notTags) {
+                    if (!exclusions.includes(tag)) exclusions.push(tag);
+                }
+                continue;
+            }
+            const key = JSON.stringify([groups, notTags]);
+            if (seenMembers.has(key)) continue;
+            seenMembers.add(key);
+            members.push({ groups, notTags });
+        }
+        return { members, exclusions };
+    }
+
+    // メンバー (設定 1 行) に対応するクエリパラメータ。`tag` は繰り返しで
+    // AND、`|` 区切りで OR、`not_tag` は完全一致の除外 (narou.rs 0.6.14
+    // 以降)。URL のどのパラメータへ落ちるかをテストできるよう純粋関数にする。
+    function memberParams(member, globalExclusions) {
+        const params = [["limit", "all"]];
+        for (const group of member.groups) {
+            params.push(["tag", group.join("|")]);
+        }
+        const exclusions = [];
+        for (const tag of [...member.notTags, ...(globalExclusions || [])]) {
+            if (!exclusions.includes(tag)) exclusions.push(tag);
+        }
+        if (exclusions.length) {
+            params.push(["not_tag", exclusions.join("|")]);
+        }
+        return params;
+    }
+
+    // 1 メンバー (= 設定 1 行) 分の一覧をサーバー側の絞り込みで取得する。
+    // 古い narou.rs は `|` 入りの完全一致や未知の not_tag を正しく扱えない
+    // ため、受け取った行はクライアント側でも完全一致で再検証して過不足を防ぐ。
+    async function fetchMemberNovels(connection, member, globalExclusions) {
+        const payload = await readJson(connection, "/novels", memberParams(member, globalExclusions));
+        if (!Array.isArray(payload.data)) throw new Error("小説一覧の応答が不正です。");
+        return payload.data.filter((novel) => matchesMember(novel, member, globalExclusions));
+    }
+
+    // 完全一致の再検証。サーバーが返した行だけに適用する。
+    function matchesMember(novel, member, globalExclusions) {
         if (!novel || !Array.isArray(novel.tags)) return false;
-        return novel.tags.some((tag) => typeof tag === "string" && tags.has(tag.trim()));
+        const tags = novel.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim());
+        for (const group of member.groups) {
+            if (!group.some((wanted) => tags.includes(wanted))) return false;
+        }
+        for (const excluded of [...member.notTags, ...globalExclusions]) {
+            if (tags.includes(excluded)) return false;
+        }
+        return true;
     }
 
     function datePart(value) {
@@ -161,6 +287,11 @@
     }
 
     // カタログ全体を取得する。EPUB の取得は行わない。
+    //
+    // 絞り込みは narou.rs 側のクエリで行う (`tag` / `not_tag`)。設定行ごと
+    // (行どうしは OR) に 1 クエリを投げ、作品 ID で和集合を取る。全件を
+    // 落としてクライアントで選別する従来の方法は、ライブラリが大きいと
+    // API 全体が重く応答しないため使わない。
     async function loadCatalogue({ verifyConnection = false } = {}) {
         const connection = await fetchConnection();
         if (!connection.configured) {
@@ -173,19 +304,44 @@
             // お気に入りタグを使うかどうかはサーバー側と同じ既定値に従う。
             const useFavourites = connection.use_favorites !== false;
             const favourites = useFavourites || verifyConnection ? await fetchFavouriteTags(connection) : [];
-            const tags = selectTags(connection, favourites, useFavourites);
-            if (tags.size === 0) {
+            const query = parseTagQuery(Array.isArray(connection.tags) ? connection.tags : []);
+            if (useFavourites) {
+                // お気に入りタグは 1 タグ 1 行 (= OR の和集合) として足す。
+                const seen = new Set(query.members.map((member) => JSON.stringify([member.groups, member.notTags])));
+                for (const tag of favourites) {
+                    if (typeof tag !== "string" || !tag.trim() || tag.includes("|")) continue;
+                    const groups = [[tag.trim()]];
+                    const key = JSON.stringify([groups, []]);
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    query.members.push({ groups, notTags: [] });
+                }
+            }
+            if (!query.members.length) {
                 // 対象タグが無いときは一覧を取得しない。
                 const result = { state: "ready", items: [], tags: [], connection };
                 client.items = result.items;
                 client.state = result.state;
                 return result;
             }
-            const novels = await fetchNovels(connection);
-            const items = novels
-                .filter((novel) => matchesTags(novel, tags))
-                .map((novel) => catalogueItem(novel, connection));
-            const result = { state: "ready", items, tags: [...tags], connection };
+            const perMember = await Promise.all(
+                query.members.map((member) => fetchMemberNovels(connection, member, query.exclusions)),
+            );
+            // 作品 ID で和集合を取る (narou ID 昇順で安定させる)。
+            const novelsById = new Map();
+            for (const novels of perMember) {
+                for (const novel of novels) {
+                    const id = Number(novel && novel.id);
+                    if (Number.isFinite(id) && !novelsById.has(id)) novelsById.set(id, novel);
+                }
+            }
+            const items = [...novelsById.keys()]
+                .sort((a, b) => a - b)
+                .map((id) => catalogueItem(novelsById.get(id), connection));
+            const tags = (Array.isArray(connection.tags) ? connection.tags : [])
+                .filter((line) => typeof line === "string" && line.trim());
+            if (useFavourites && favourites.length) tags.push("お気に入りタグ");
+            const result = { state: "ready", items, tags, connection };
             client.items = items;
             client.state = result.state;
             return result;
@@ -274,6 +430,10 @@
         epubUrl,
         bookKey,
         contentHash,
+        // 条件の解釈をブラウザから確かめられるよう公開する (テスト用)。
+        parseTagQuery,
+        matchesMember,
+        memberParams,
         catalogueItem,
         openUrl,
     };

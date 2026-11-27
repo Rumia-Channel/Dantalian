@@ -111,13 +111,13 @@ NDL / Open Library には表紙画像が含まれないため、商品ページ�
 | --- | --- | --- |
 | `narou.url` | ブラウザから到達できる narou.rs の HTTPS URL（Native ループバックのみ HTTP 可、パス接頭辞可） | 空（無効） |
 | `narou.use_favorites` | narou.rs のお気に入りタグを対象に含めるか | `true` |
-| `narou.tags` | 追加で対象にするタグ名の JSON 配列（UI では 1 行 1 タグ） | `[]` |
+| `narou.tags` | 対象タグの条件の JSON 配列（UI では 1 行に 1 条件）。行どうしは OR、行の中の空白区切りは AND、`|` は OR、先頭の `-` は除外。空白を含むタグは `"..."` で囲む | `[]` |
 
 ### 動作・制約
 
 - **CORS 設定**: narou.rs 側の `external-api.allowed-origins` に Dantalian の Origin（スキーム・ホスト・ポート、パスなし）を登録しておく必要があります（`/api/read/v1` が credentialed CORS を返します）。
 - **同一サイト Cookie**: ローカル Native 同士を連携する場合は、両方 `127.0.0.1` または両方 `localhost` で開いてください。
-- **対象作品の絞り込み**: `narou.use_favorites` と `narou.tags` の和集合に完全一致する小説を取得します（対象タグが空の場合は全作品取得を行いません）。表紙は空欄とし、著者名で通常書籍と同じグループに表示します。
+- **対象作品の絞り込み**: タグ条件は narou.rs 側のクエリ（`/api/read/v1/novels` の `tag` / `not_tag` パラメータ）で絞り込みます。条件行ごとに 1 クエリを発行し、作品 ID の和集合を表示します（全件取得は行いません）。`narou.use_favorites` のお気に入りタグは 1 タグ 1 条件の OR として追加されます。タグの照合は完全一致です。この絞り込みには繰り返し `tag` / `not_tag` を解釈できる narou.rs（0.6.14 以降相当）が必要で、古い narou.rs では `|` を含む候補や除外が効かず結果が空になります。表紙は空欄とし、著者名で通常書籍と同じグループに表示します。
 - **エンドポイント**:
   - `GET /api/narou/connection`: 設定済みの接続先 URL と対象タグのみ返します。
   - `GET|HEAD /api/narou/novels/{id}/epub`: 設定済み narou.rs の `/api/read/v1/novels/{id}/epub` へ `302` リダイレクトするのみで、本文を中継・保存しません。

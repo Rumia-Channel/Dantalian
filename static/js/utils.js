@@ -431,6 +431,17 @@ function isBookInGrandSeriesViaSeries(bookId) {
 }
 
 function showConfirm(opts) {
+    // オーバーレイは1つだけなので、表示中に別の確認を始めると文言と
+    // イベントが混ざる。別トラックの並行アップロードで上書き確認が
+    // 同時に来るため、呼び出し順に直列化して1件ずつ表示する。
+    const result = showConfirmQueue.then(() => showConfirmDialog(opts));
+    showConfirmQueue = result.then(() => {}, () => {});
+    return result;
+}
+
+let showConfirmQueue = Promise.resolve();
+
+function showConfirmDialog(opts) {
     if (typeof opts === "string") opts = { message: opts };
 
     const message = opts.message || "";
