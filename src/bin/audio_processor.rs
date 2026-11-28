@@ -50,8 +50,17 @@ struct FailureBody<'a> {
 
 #[derive(Debug)]
 enum ProcessError {
-    Retryable(&'static str),
-    Permanent(&'static str),
+    Retryable(String),
+    Permanent(String),
+}
+
+impl ProcessError {
+    fn retryable(summary: impl Into<String>) -> Self {
+        Self::Retryable(summary.into())
+    }
+    fn permanent(summary: impl Into<String>) -> Self {
+        Self::Permanent(summary.into())
+    }
 }
 
 #[tokio::main]
@@ -173,7 +182,7 @@ async fn process_claim(
     match result {
         Ok(()) => complete(client, config, &claim)
             .await
-            .map_err(|_| ProcessError::Retryable("worker completion update failed")),
+            .map_err(|_| ProcessError::retryable("worker completion update failed")),
         Err(error) => {
             let failure = AudioJobFailure {
                 error_summary: error.summary().to_string(),
@@ -186,7 +195,7 @@ async fn process_claim(
             };
             fail(client, config, &claim, failure)
                 .await
-                .map_err(|_| ProcessError::Retryable("worker failure update failed"))
+                .map_err(|_| ProcessError::retryable("worker failure update failed"))
                 .map(|_| ())
         }
     }
@@ -220,7 +229,7 @@ fn spawn_heartbeat(
 async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), ProcessError> {
     let workspace = env::temp_dir().join(format!("dantalian-audio-{}", claim.job.id));
     fs::create_dir_all(&workspace)
-        .map_err(|_| ProcessError::Retryable("audio workspace creation failed"))?;
+        .map_err(|_| ProcessError::retryable("audio workspace creation failed"))?;
     let input_path = workspace.join("input");
     let output_path = workspace.join("output");
 
@@ -232,24 +241,24 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
             .key(&claim.job.input_object_key)
             .send()
             .await
-            .map_err(|_| ProcessError::Retryable("input object metadata lookup failed"))?;
+            .map_err(|_| ProcessError::retryable("input object metadata lookup failed"))?;
         let input_size = metadata
             .content_length()
-            .ok_or(ProcessError::Permanent("input object size is unavailable"))?;
+            .ok_or(ProcessError::permanent("input object size is unavailable"))?;
         if !(1..=MAX_PROCESSOR_INPUT_BYTES).contains(&input_size) {
-            return Err(ProcessError::Permanent(
+            return Err(ProcessError::permanent(
                 "input object exceeds processor limit",
             ));
         }
         let required_space = (input_size as u64)
             .checked_add(MIN_DISK_HEADROOM_BYTES)
-            .ok_or(ProcessError::Permanent(
+            .ok_or(ProcessError::permanent(
                 "input object disk requirement overflows",
             ))?;
         let available_space = available_space(&workspace)
-            .map_err(|_| ProcessError::Retryable("audio disk headroom lookup failed"))?;
+            .map_err(|_| ProcessError::retryable("audio disk headroom lookup failed"))?;
         if available_space < required_space {
-            return Err(ProcessError::Retryable(
+            return Err(ProcessError::retryable(
                 "audio processor disk headroom is insufficient",
             ));
         }
@@ -261,22 +270,22 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
             .key(&claim.job.input_object_key)
             .send()
             .await
-            .map_err(|_| ProcessError::Retryable("input object download failed"))?;
+            .map_err(|_| ProcessError::retryable("input object download failed"))?;
         let mut reader = object
             .body
             .into_async_read()
             .take((MAX_PROCESSOR_INPUT_BYTES + 1) as u64);
         let mut file = tokio::fs::File::create(&input_path)
             .await
-            .map_err(|_| ProcessError::Retryable("input workspace open failed"))?;
+            .map_err(|_| ProcessError::retryable("input workspace open failed"))?;
         let copied = tokio::io::copy(&mut reader, &mut file)
             .await
-            .map_err(|_| ProcessError::Retryable("input object streaming failed"))?;
+            .map_err(|_| ProcessError::retryable("input object streaming failed"))?;
         file.flush()
             .await
-            .map_err(|_| ProcessError::Retryable("input workspace flush failed"))?;
+            .map_err(|_| ProcessError::retryable("input workspace flush failed"))?;
         if copied > MAX_PROCESSOR_INPUT_BYTES as u64 {
-            return Err(ProcessError::Permanent(
+            return Err(ProcessError::permanent(
                 "input object exceeds processor limit",
             ));
         }
@@ -285,7 +294,7 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
         let bitrate_kbps = claim.job.bitrate_kbps;
         let source_extension = extension(&claim.job.input_object_key)
             .map(str::to_string)
-            .ok_or(ProcessError::Permanent("input object extension is invalid"))?;
+            .ok_or(ProcessError::permanent("input object extension is invalid"))?;
         let job_id = claim.job.id.clone();
         let input_for_encoder = input_path.clone();
         let output_for_encoder = output_path.clone();
@@ -297,17 +306,21 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
                 &job_id,
                 bitrate_kbps,
             )
-            .map_err(|_| ProcessError::Permanent("audio Opus encoding failed")),
+            .map_err(|error| {
+                ProcessError::permanent(format!("audio Opus encoding failed: {error}"))
+            }),
             AudioCodec::Aac => dantalian::audio_codec::encode_aac_file_with_bitrate(
                 input_for_encoder,
                 output_for_encoder,
                 &source_extension,
                 bitrate_kbps,
             )
-            .map_err(|_| ProcessError::Permanent("audio AAC encoding failed")),
+            .map_err(|error| {
+                ProcessError::permanent(format!("audio AAC encoding failed: {error}"))
+            }),
         })
         .await
-        .map_err(|_| ProcessError::Permanent("audio processor task failed"))??;
+        .map_err(|_| ProcessError::permanent("audio processor task failed"))??;
 
         let content_type = match codec {
             AudioCodec::Opus => "audio/ogg",
@@ -315,7 +328,7 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
         };
         let output = ByteStream::from_path(&output_path)
             .await
-            .map_err(|_| ProcessError::Retryable("output workspace read failed"))?;
+            .map_err(|_| ProcessError::retryable("output workspace read failed"))?;
         config
             .s3_client
             .put_object()
@@ -325,14 +338,14 @@ async fn process_object(config: &Config, claim: &AudioJobClaim) -> Result<(), Pr
             .body(output)
             .send()
             .await
-            .map_err(|_| ProcessError::Retryable("output object upload failed"))?;
+            .map_err(|_| ProcessError::retryable("output object upload failed"))?;
         Ok(())
     }
     .await;
 
     match tokio::fs::remove_dir_all(&workspace).await {
         Ok(()) => result,
-        Err(_) => Err(ProcessError::Retryable("audio workspace cleanup failed")),
+        Err(_) => Err(ProcessError::retryable("audio workspace cleanup failed")),
     }
 }
 
@@ -397,7 +410,7 @@ fn log_event(
 }
 
 impl ProcessError {
-    fn summary(&self) -> &'static str {
+    fn summary(&self) -> &str {
         match self {
             Self::Retryable(summary) | Self::Permanent(summary) => summary,
         }

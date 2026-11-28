@@ -560,9 +560,18 @@ where
         .map_err(|error| format!("audio decoder creation failed: {error}"))?;
     let mut resampler = StreamingResampler::new(source_rate, profile.target_rate, source_channels);
     loop {
+        // symphonia の FLAC リーダは末尾の破損フレームで EOF エラーを返す。
+        // ffmpeg や一般的なプレーヤは同じファイルを最後まで再生できるため、
+        // 物理 EOF に達した時点を正常終端として扱い、復号できた区間をそのまま
+        // 変換に使う。
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) | Err(SymphoniaError::ResetRequired) => break,
+            Err(SymphoniaError::IoError(error))
+                if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
             Err(error) => return Err(format!("audio packet read failed: {error}")),
         };
         if packet.track_id != track_id {
@@ -862,9 +871,15 @@ fn decode_audio_source<S: MediaSource>(
         .unwrap_or(2);
     let mut samples = Vec::new();
     loop {
+        // ストリーミング経路と同じく、末尾破損による EOF は正常終端として扱う。
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) | Err(SymphoniaError::ResetRequired) => break,
+            Err(SymphoniaError::IoError(error))
+                if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
             Err(error) => return Err(format!("audio packet read failed: {}", error)),
         };
         if packet.track_id != track_id {
@@ -1180,6 +1195,83 @@ mod tests {
 
         assert_eq!(packet_count, 6);
         assert_eq!(decoded_samples, 6 * 960);
+    }
+
+    #[test]
+    fn encodes_truncated_flac_using_the_decodable_prefix() {
+        use std::process::Command;
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            eprintln!("skipping truncated FLAC test: ffmpeg not found");
+            return;
+        }
+        // 末尾破損 FLAC を再現する最小条件は切り詰め: symphonia の FLAC リーダは
+        // 宣言フレーム数に届かず UnexpectedEof を返すが、ffmpeg や一般的な
+        // プレーヤと同じく復号できた区間で変換を完了させるのが契約。
+        let root =
+            std::env::temp_dir().join(format!("dantalian-flac-truncated-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create truncated FLAC test directory");
+        let source_wav = root.join("source.wav");
+        let full_flac = root.join("full.flac");
+        let truncated_flac = root.join("truncated.flac");
+        std::fs::write(&source_wav, sine_wav(44_100, 2, 44_100 * 4, 440.0, 0.5))
+            .expect("write source wav");
+        let encode = Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-i",
+                &source_wav.to_string_lossy(),
+                "-c:a",
+                "flac",
+                &full_flac.to_string_lossy(),
+            ])
+            .output()
+            .expect("ffmpeg flac encode");
+        assert!(
+            encode.status.success(),
+            "ffmpeg flac encode failed: {}",
+            String::from_utf8_lossy(&encode.stderr)
+        );
+        let flac_bytes = std::fs::read(&full_flac).expect("read full flac");
+        // 半分に切り詰めてもエラーにならず、残りの区間が変換されることを確認する。
+        std::fs::write(&truncated_flac, &flac_bytes[..flac_bytes.len() / 2])
+            .expect("write truncated flac");
+
+        let opus_output = root.join("output.ogg");
+        let aac_output = root.join("output.aac");
+        encode_opus_file_with_bitrate(&truncated_flac, &opus_output, "flac", "truncated", 192)
+            .expect("truncated FLAC Opus encoding should finish");
+        encode_aac_file_with_bitrate(&truncated_flac, &aac_output, "flac", 192)
+            .expect("truncated FLAC AAC encoding should finish");
+        assert!(
+            std::fs::read(&opus_output)
+                .expect("read truncated Opus output")
+                .starts_with(b"OggS")
+        );
+        assert!(
+            std::fs::read(&aac_output)
+                .expect("read truncated AAC output")
+                .starts_with(&[0xff, 0xf1])
+        );
+        // 切り詰めた入力の半分近くが残っていることだけ確認する (細かい尺は
+        // エンコーダ遅延で変わるため厳密には検査しない)。
+        let mut reader = PacketReader::new(Cursor::new(
+            std::fs::read(&opus_output).expect("read Opus for duration check"),
+        ));
+        let mut packet_count = 0;
+        while let Some(packet) = reader.read_packet().expect("audio packet") {
+            if !packet.data.starts_with(b"OpusHead") && !packet.data.starts_with(b"OpusTags") {
+                packet_count += 1;
+            }
+        }
+        // 2 秒分 (48kHz × 2s / 960 samples/frame ≈ 100 frames) の半分以上は残る。
+        assert!(
+            packet_count >= 50,
+            "truncated FLAC should still yield most of the decodable prefix, got {packet_count} packets"
+        );
+
+        std::fs::remove_dir_all(root).expect("remove truncated FLAC test directory");
     }
 
     #[test]
