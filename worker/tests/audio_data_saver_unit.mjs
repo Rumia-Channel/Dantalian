@@ -172,3 +172,55 @@ test("an eligible direct upload schedules both compressed variants immediately",
     assertCanonicalJobs(await fixture.jobs(), bareHash);
   } finally { await fixture.close(); }
 });
+
+test("failed data-saver jobs are retried as bounded lineage generations, then capped", { timeout: 30000 }, async () => {
+  const fixture = await audioFixture();
+  try {
+    await fixture.json("PUT", "/api/settings", settings);
+    const { bareHash } = await fixture.upload();
+    const initial = await fixture.jobs();
+    assertCanonicalJobs(initial, bareHash);
+
+    // 各コーデックのジョブを失敗扱いにして走査を回し、系譜が伸びることを確認する。
+    for (const generation of [1, 2, 3]) {
+      const current = await fixture.jobs();
+      const actives = current.filter(job => job.status === "queued");
+      assert.equal(actives.length, 2, `generation ${generation - 1} should have two active jobs`);
+      for (const job of actives) {
+        await fixture.db.prepare(
+          "UPDATE audio_jobs SET status = 'failed', error_summary = 'test failure' WHERE id = ?",
+        ).bind(job.id).run();
+      }
+      await fixture.json("PUT", "/api/settings", settings);
+      const after = await fixture.jobs();
+      const retryJobs = after.filter(job => job.status === "queued");
+      assert.equal(retryJobs.length, 2, `retry generation ${generation} should be registered`);
+      for (const job of retryJobs) {
+        assert.equal(
+          job.idempotency_key,
+          `data-saver:${bareHash}:${job.codec}:retry${generation}`,
+        );
+      }
+    }
+
+    // 上限世代も失敗させると、次の走査では新規ジョブが作られない。
+    const capped = await fixture.jobs();
+    for (const job of capped.filter(job => job.status === "queued")) {
+      await fixture.db.prepare(
+        "UPDATE audio_jobs SET status = 'failed', error_summary = 'test failure' WHERE id = ?",
+      ).bind(job.id).run();
+    }
+    await fixture.json("PUT", "/api/settings", settings);
+    const finalJobs = await fixture.jobs();
+    assert.equal(
+      finalJobs.filter(job => job.status === "queued").length,
+      0,
+      "capped lineage must not create further retries",
+    );
+    assert.equal(
+      new Set(finalJobs.map(job => job.id)).size,
+      2 * 4,
+      "head + 3 retry generations per codec, no duplicates",
+    );
+  } finally { await fixture.close(); }
+});
