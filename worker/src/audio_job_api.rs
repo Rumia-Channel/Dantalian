@@ -27,6 +27,9 @@ use crate::{
 const QUEUE_MESSAGE_VERSION: u8 = 1;
 const RECOVERY_BATCH_SIZE: u32 = 100;
 const DATA_SAVER_DEFAULT_EXTENSIONS: &str = "wav,flac,aiff,alac";
+// data-saver の自動リトライは同一系譜でこの世代数まで。恒久失敗が走査ごとに
+// 無限にコンテナを起動しないための上限。手動のリトライ API は対象外。
+const DATA_SAVER_MAX_RETRY_GENERATION: u32 = 3;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAudioJobRequest {
@@ -257,6 +260,8 @@ struct AudioSourceRow {
 struct DataSaverJobRow {
     id: String,
     status: String,
+    #[serde(skip)]
+    generation: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -404,16 +409,36 @@ where
             continue;
         }
 
-        if let Some(existing) = audio_job_state(db, &idempotency_key).await? {
+        // 失敗したジョブは同じ行を再実行せず、系譜キー (`…:retryN`) の新規ジョブとして
+        // 再登録する。恒久失敗 (破損入力・エンコーダの拒否など) が data-saver の
+        // 走査ごとに無限にコンテナ時間を消費しないよう、系譜の世代数に上限を設ける。
+        if let Some(existing) = audio_job_lineage_state(db, &idempotency_key).await? {
             let job_id = match data_saver_job_action(&existing.status) {
-                DataSaverJobAction::Retry => match service.retry(&existing.id).await {
-                    Ok(job) => Some(job.id),
-                    Err(AppError::Conflict(_)) => None,
-                    Err(error) => {
-                        first_error.get_or_insert(error);
+                DataSaverJobAction::Retry => {
+                    if existing.generation >= DATA_SAVER_MAX_RETRY_GENERATION {
                         None
+                    } else {
+                        let retry_key =
+                            format!("{idempotency_key}:retry{}", existing.generation + 1);
+                        match prepare_request(
+                            input_key.clone(),
+                            output_key.clone(),
+                            codec,
+                            Some(DEFAULT_AUDIO_BITRATE_KBPS),
+                            Some(retry_key),
+                        ) {
+                            Ok(request) => match service.submit(storage, request).await {
+                                Ok(job) => Some(job.id),
+                                Err(AppError::NotFound | AppError::Conflict(_)) => None,
+                                Err(error) => {
+                                    first_error.get_or_insert(error);
+                                    None
+                                }
+                            },
+                            Err(_) => None,
+                        }
                     }
-                },
+                }
                 DataSaverJobAction::RequeueMissingOutput => {
                     match service.requeue_missing_output(storage, &existing.id).await {
                         Ok(job) => Some(job.id),
@@ -498,22 +523,42 @@ async fn load_data_saver_config(
     Ok((enabled, extensions))
 }
 
-async fn audio_job_state(
+/// 系譜キー (`<key>`, `<key>:retry1`, `<key>:retry2`, …) のうち最新世代の行を
+/// 返す。失敗時の再登録は新しい系譜キーで行うため、単純な完全一致では
+/// 最新の状態を追えない。
+async fn audio_job_lineage_state(
     db: &worker::D1Database,
     idempotency_key: &str,
 ) -> Result<Option<DataSaverJobRow>, AppError> {
     let owner = D1Type::Text(OWNER_SCOPE);
-    let idempotency_key = D1Type::Text(idempotency_key);
-    db.prepare(
-        "SELECT id, status FROM audio_jobs
-         WHERE owner = ? AND idempotency_key = ?
-         LIMIT 1",
-    )
-    .bind_refs([&owner, &idempotency_key])
-    .map_err(|error| AppError::Database(error.to_string()))?
-    .first::<DataSaverJobRow>(None)
-    .await
-    .map_err(|error| AppError::Database(error.to_string()))
+    let mut latest: Option<DataSaverJobRow> = None;
+    for generation in 0..=DATA_SAVER_MAX_RETRY_GENERATION {
+        let key = if generation == 0 {
+            idempotency_key.to_string()
+        } else {
+            format!("{idempotency_key}:retry{generation}")
+        };
+        let key_value = D1Type::Text(&key);
+        let row = db
+            .prepare(
+                "SELECT id, status FROM audio_jobs
+                 WHERE owner = ? AND idempotency_key = ?
+                 LIMIT 1",
+            )
+            .bind_refs([&owner, &key_value])
+            .map_err(|error| AppError::Database(error.to_string()))?
+            .first::<DataSaverJobRow>(None)
+            .await
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        match row {
+            Some(mut row) => {
+                row.generation = generation;
+                latest = Some(row);
+            }
+            None => break,
+        }
+    }
+    Ok(latest)
 }
 
 fn data_saver_job_action(status: &str) -> DataSaverJobAction {
